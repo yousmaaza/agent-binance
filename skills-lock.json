@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "binance": {
+      "source": "binance/binance-skills-hub",
+      "sourceType": "github",
+      "skillPath": "skills/binance/binance/SKILL.md",
+      "computedHash": "05df646950f9f44e8284e34e02d465185ce7d6f9ea4fa90a599af6d24428f81c"
+    }
+  }
+}

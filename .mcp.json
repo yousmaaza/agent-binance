@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "telegram-assistant": {
+      "command": "python",
+      "args": ["/Users/yousrimaazaoui/.claude/mcp-servers/telegram-assistant-mcp/mcp_telegram_tool.py"],
+      "env": {
+        "TELEGRAM_BOT_TOKEN": "${TELEGRAM_BOT_TOKEN}",
+        "TELEGRAM_CHAT_ID": "${TELEGRAM_CHAT_ID}"
+      }
+    }
+  }
+}

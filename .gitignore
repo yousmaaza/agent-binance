@@ -1,0 +1,27 @@
+# Secrets — ne jamais committer
+.env
+
+# État runtime (recréés automatiquement)
+state/daemon.log
+state/telegram_offset.json
+state/agent_lock.json
+state/pending_callback.json
+state/pending_trades.json
+state/webhook_pids.json
+
+# Rapports générés à chaque cycle
+reports/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code settings locaux
+.claude/settings.local.json
