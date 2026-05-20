@@ -7,6 +7,7 @@ Telegram polling bot for Binance trading agent v2.
 - Secrets loaded from .env (never hardcoded)
 """
 
+import glob
 import json
 import math
 import os
@@ -14,6 +15,9 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone, timedelta
+
+from loguru import logger
+from pymongo import MongoClient
 
 
 def _load_env():
@@ -36,6 +40,40 @@ BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 if not TOKEN or not CHAT_ID:
     print("❌ TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID manquant dans .env")
 
+# Setup loguru : logs internes du bot avec rotation quotidienne, rétention 30j
+LOGS_DIR = os.path.join(PROJECT_DIR, "logs")
+os.makedirs(f"{LOGS_DIR}/stdout", exist_ok=True)
+os.makedirs(f"{LOGS_DIR}/stderr", exist_ok=True)
+logger.add(
+    f"{LOGS_DIR}/bot_{{time:YYYY-MM-DD}}.log",
+    rotation="1 day",
+    retention="30 days",
+    level="INFO",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+)
+
+# MongoDB (lazy connection)
+MONGO_URI = os.environ.get("MONGODB_URI", "").strip()
+MONGO_DB = os.environ.get("MONGODB_DB", "agent-binance").strip()
+_mongo_client = None
+
+
+def get_mongo():
+    """Retourne la DB Mongo ou None si non configuré / non joignable."""
+    global _mongo_client
+    if not MONGO_URI:
+        return None
+    if _mongo_client is None:
+        try:
+            _mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+            _mongo_client.admin.command("ping")
+            logger.info("MongoDB connecté")
+        except Exception as e:
+            logger.error(f"MongoDB connexion échouée : {e}")
+            _mongo_client = None
+            return None
+    return _mongo_client[MONGO_DB]
+
 # Template: __BOT_TOKEN__ et __CHAT_ID__ sont remplacés dynamiquement au démarrage
 _TRADE_PROMPT_TEMPLATE = """Tu es un agent de trading Binance automatisé. Répertoire de travail : __PROJECT_DIR__
 
@@ -48,7 +86,7 @@ def tg(text):
         ["curl", "-s", "-X", "POST",
          "https://api.telegram.org/bot__BOT_TOKEN__/sendMessage",
          "-H", "Content-Type: application/json",
-         "-d", payload, "--max-time", "10"],
+         "-d", payload, "--max-time", "20"],
         capture_output=True)
 
 Envoie une notification à la FIN de chaque phase avant de passer à la suivante.
@@ -233,17 +271,78 @@ PHASE 6 — RAPPORT FINAL
   * Budget utilisé / disponible
   * Positions ouvertes totales (depuis trade_history.json)
 
-- Calcule l'heure du prochain cycle automatique (slot 4h UTC + 5 min) :
+- Calcule l'heure du prochain cycle automatique (slot 4h UTC + 5 min, affiché en heure locale) :
 import datetime as _dt
 _now = _dt.datetime.now(_dt.timezone.utc)
 _slot_h = (_now.hour // 4) * 4
 _next = _now.replace(hour=_slot_h, minute=5, second=0, microsecond=0)
 if _next <= _now:
     _next += _dt.timedelta(hours=4)
-_next_str = _next.strftime("%d/%m %H:%M UTC")
+_next_str = _next.astimezone().strftime("%d/%m %H:%M") + " (heure locale)"
 
-- Notification de synthèse :
-  tg("✅ Cycle terminé\\n{N} ordre(s) exécuté(s) | {M} skippés\\nBudget utilisé : {total:.2f} USDC\\nPositions actives : {open_positions}\\n⏰ Prochain cycle : " + _next_str)
+PHASE 7 — PERSISTANCE EN BASE (MongoDB)
+
+CYCLE_ID = "__CYCLE_ID__"   # déjà substitué par Python avant l'appel
+
+Construis un document Python `doc` représentant ce cycle :
+
+doc = {
+  "_id": CYCLE_ID,
+  "cycle_id": CYCLE_ID,
+  "timestamp": "{ISO UTC du début du cycle}",
+  "status": "completed",
+  "trigger": "manual",
+  "portfolio": {
+    "total_usdc": <portfolio_total>,
+    "budget_disponible": <budget_disponible>,
+    "positions_ouvertes": <open_positions>,
+    "daily_pnl": <daily_pnl>
+  },
+  "market_context": {
+    "sentiment": "<Strongly Bullish | Bullish | Neutral | Bearish | Strongly Bearish>",
+    "universe_size": <N>,
+    "coins_scanned": [<liste des coins analysés>]
+  },
+  "decisions": [
+    {
+      "coin": "BTC",
+      "score": <0-10>,
+      "signal_4h": "<BUY|SELL|NEUTRAL|STRONG_BUY|STRONG_SELL>",
+      "signal_1d": "...",
+      "rsi_4h": <number>,
+      "decision": "<BUY|HOLD|SKIP|SELL>",
+      "reason": "Phrase courte expliquant pourquoi cette décision"
+    },
+    ... un objet par coin analysé
+  ],
+  "orders_placed": [
+    {"coin": "...", "score": ..., "entry_price": ..., "stop_price": ...,
+     "tp_price": ..., "quantity": ..., "risk_usdc": ...}
+  ],
+  "orders_skipped_count": <N>,
+  "log_files": {
+    "stdout": f"logs/stdout/cycle_{CYCLE_ID}.log",
+    "stderr": f"logs/stderr/cycle_{CYCLE_ID}.log"
+  },
+  "explanation_fr": "Paragraphe de 3 à 5 phrases en FRANÇAIS expliquant à un non-expert en crypto : (a) ce qu'on a fait ce cycle, (b) pourquoi on a (ou pas) placé des ordres, (c) la météo du marché. ÉVITE le jargon technique. Au lieu de 'RSI à 32', dis 'l'indicateur de pression vendeuse'. Au lieu de 'score 7/10', dis 'signal solide'. Au lieu de 'ATR×2', dis 'protection ajustée à la volatilité'."
+}
+
+Écris ce document en Mongo via Python :
+
+import os
+from pymongo import MongoClient
+_uri = os.environ.get("MONGODB_URI", "").strip()
+if _uri:
+    try:
+        _client = MongoClient(_uri, serverSelectionTimeoutMS=5000)
+        _db = _client[os.environ.get("MONGODB_DB", "agent-binance")]
+        _db.cycles.update_one({"_id": CYCLE_ID}, {"$set": doc}, upsert=True)
+        _client.close()
+    except Exception as _e:
+        tg(f"⚠️ Mongo write failed : {_e}")
+
+- Notification de synthèse (DOIT inclure le cycle_id) :
+  tg(f"✅ Cycle {CYCLE_ID} terminé\\n{N} ordre(s) exécuté(s) | {M} skippés\\nBudget utilisé : {total:.2f} USDC\\nPositions actives : {open_positions}\\n⏰ Prochain cycle : {_next_str}\\n📊 /raisonnement pour les détails")
 
 - Écris state/agent_lock.json : {"running": false, "started_at": null}"""
 
@@ -263,6 +362,12 @@ def next_4h_slot():
     if nxt <= now:
         nxt += timedelta(hours=4)
     return nxt
+
+
+def fmt_local(dt_utc):
+    """Convertit un datetime UTC en heure locale lisible, ex: '22:05 (heure locale)'."""
+    local = dt_utc.astimezone()  # timezone locale du système
+    return local.strftime("%d/%m %H:%M") + " (heure locale)"
 
 
 NEXT_AUTO_TRADE = None  # initialisé dans main_loop
@@ -319,9 +424,9 @@ def release_lock():
 
 
 def fmt_next():
-    """Retourne l'heure du prochain cycle sous forme lisible."""
+    """Retourne l'heure du prochain cycle en heure locale."""
     if NEXT_AUTO_TRADE:
-        return NEXT_AUTO_TRADE.strftime("%d/%m %H:%M UTC")
+        return fmt_local(NEXT_AUTO_TRADE)
     return "–"
 
 
@@ -472,30 +577,133 @@ def run_perf():
     send_telegram("\n".join(lines), parse_mode="HTML")
 
 
-def run_trade_workflow():
+def run_trade_workflow(trigger="manual"):
     global NEXT_AUTO_TRADE
     if is_locked():
         send_telegram("⏳ Un cycle est déjà en cours. Réessaie dans quelques minutes.")
         return
 
     acquire_lock()
-    # Planifier le prochain slot avant de lancer (même si ce cycle échoue)
     NEXT_AUTO_TRADE = next_4h_slot()
-    send_telegram(f"🔄 Analyse en cours... Scan du marché Binance.\n⏰ Prochain cycle auto : {fmt_next()}")
+
+    cycle_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    started_at = datetime.now(timezone.utc)
+    logger.info(f"[Cycle {cycle_id}] Démarrage (trigger={trigger})")
+
+    send_telegram(
+        f"🔄 <b>Cycle {cycle_id}</b> — analyse en cours...\n"
+        f"⏰ Prochain cycle auto : {fmt_next()}",
+        parse_mode="HTML"
+    )
+
+    # Injecte le cycle_id + trigger dans le prompt
+    prompt = TRADE_PROMPT.replace("__CYCLE_ID__", cycle_id).replace('"trigger": "manual"', f'"trigger": "{trigger}"')
+
+    stdout_path = f"{LOGS_DIR}/stdout/cycle_{cycle_id}.log"
+    stderr_path = f"{LOGS_DIR}/stderr/cycle_{cycle_id}.log"
+    exit_code = -1
 
     try:
         result = subprocess.run(
-            ["claude", "--print", "--dangerously-skip-permissions", TRADE_PROMPT],
+            ["claude", "--print", "--dangerously-skip-permissions", prompt],
             capture_output=True, text=True, timeout=3600, cwd=PROJECT_DIR
         )
-        if result.returncode != 0:
-            send_telegram(f"❌ Erreur workflow :\n{result.stderr[:500]}")
+        exit_code = result.returncode
+        duration = (datetime.now(timezone.utc) - started_at).total_seconds()
+
+        # Toujours sauvegarder stdout et stderr séparément (succès OU erreur)
+        with open(stdout_path, "w") as f:
+            f.write(result.stdout or "(vide)")
+        with open(stderr_path, "w") as f:
+            f.write(result.stderr or "(vide)")
+
+        logger.info(f"[Cycle {cycle_id}] Terminé exit={exit_code} en {duration:.0f}s")
+
+        if exit_code != 0:
+            err_extract = (result.stderr or "")[:400]
+            send_telegram(
+                f"❌ <b>Cycle {cycle_id}</b> — erreur (code {exit_code})\n"
+                f"<code>{err_extract}</code>\n\n"
+                f"📋 Logs : logs/stderr/cycle_{cycle_id}.log",
+                parse_mode="HTML"
+            )
+            # Fallback Mongo : trace minimale en cas d'échec
+            try:
+                db = get_mongo()
+                if db is not None:
+                    db.cycles.update_one(
+                        {"_id": cycle_id},
+                        {"$set": {
+                            "cycle_id": cycle_id,
+                            "timestamp": started_at.isoformat(),
+                            "status": "error",
+                            "trigger": trigger,
+                            "exit_code": exit_code,
+                            "duration_seconds": duration,
+                            "log_files": {"stdout": stdout_path, "stderr": stderr_path},
+                            "explanation_fr": "Le cycle a échoué avant de produire un résultat exploitable. Voir les logs pour le détail."
+                        }},
+                        upsert=True
+                    )
+            except Exception as e:
+                logger.error(f"[Cycle {cycle_id}] Mongo fallback échec : {e}")
+
     except subprocess.TimeoutExpired:
-        send_telegram("⏰ Timeout — le workflow a pris trop de temps.")
+        send_telegram(f"⏰ Cycle {cycle_id} — timeout (>1h).")
+        logger.error(f"[Cycle {cycle_id}] Timeout")
     except Exception as e:
-        send_telegram(f"❌ Erreur inattendue : {e}")
+        send_telegram(f"❌ Cycle {cycle_id} — erreur inattendue : {e}")
+        logger.exception(f"[Cycle {cycle_id}] Exception")
     finally:
         release_lock()
+
+
+def run_raisonnement():
+    """Envoie l'explication vulgarisée du dernier cycle (lue depuis MongoDB)."""
+    db = get_mongo()
+    if db is None:
+        send_telegram("⚠️ MongoDB non configuré (MONGODB_URI absent ou invalide dans .env).")
+        return
+
+    try:
+        doc = db.cycles.find_one(sort=[("timestamp", -1)])
+    except Exception as e:
+        send_telegram(f"❌ Erreur Mongo : {e}")
+        return
+
+    if not doc:
+        send_telegram("📭 Aucun cycle en base. Lance /trade pour générer le premier.")
+        return
+
+    cycle_id = doc.get("cycle_id", "?")
+    lines = [f"🧠 <b>Raisonnement — cycle {cycle_id}</b>"]
+    lines.append(f"<i>{doc.get('timestamp', '?')} · status: {doc.get('status', '?')}</i>\n")
+
+    p = doc.get("portfolio") or {}
+    if p:
+        lines.append(f"💼 Portfolio : <code>{p.get('total_usdc', 0):.2f}</code> USDC")
+        lines.append(f"   Budget dispo : <code>{p.get('budget_disponible', 0):.2f}</code>")
+        lines.append(f"   Positions ouvertes : {p.get('positions_ouvertes', 0)}\n")
+
+    m = doc.get("market_context") or {}
+    if m:
+        lines.append(f"📊 Sentiment : <b>{m.get('sentiment', '?')}</b>")
+        lines.append(f"   Coins analysés : {m.get('universe_size', 0)}\n")
+
+    explanation = doc.get("explanation_fr", "")
+    if explanation:
+        lines.append("💬 <b>Explication</b>")
+        lines.append(explanation)
+
+    orders = doc.get("orders_placed") or []
+    if orders:
+        lines.append(f"\n✅ <b>{len(orders)} ordre(s) placé(s)</b>")
+        for o in orders[:5]:
+            lines.append(f"  • {o.get('coin')} score {o.get('score', '?')}/10")
+    else:
+        lines.append("\n🚫 <b>Aucun ordre placé ce cycle</b>")
+
+    send_telegram("\n".join(lines), parse_mode="HTML")
 
 
 def handle_callback(cq):
@@ -539,7 +747,7 @@ def main_loop():
 
     send_telegram(
         f"🤖 Bot v2 démarré\n"
-        f"Commandes : /trade /status /perf /reset\n"
+        f"Commandes : /trade /status /perf /raisonnement /reset\n"
         f"⏰ Prochain cycle auto : {fmt_next()}",
         parse_mode=None
     )
@@ -549,7 +757,7 @@ def main_loop():
             # Auto-scheduler : déclenche /trade au prochain slot 4h UTC
             if NEXT_AUTO_TRADE and datetime.now(timezone.utc) >= NEXT_AUTO_TRADE and not is_locked():
                 print(f"[Scheduler] Auto-trade → prochain slot sera {next_4h_slot().strftime('%H:%M UTC')}")
-                threading.Thread(target=run_trade_workflow, daemon=True).start()
+                threading.Thread(target=run_trade_workflow, kwargs={"trigger": "auto"}, daemon=True).start()
 
             data = tg_post("getUpdates", {
                 "offset": offset,
@@ -576,16 +784,18 @@ def main_loop():
                 print(f"[Bot] Commande: {text!r}")
 
                 if text.startswith("/trade"):
-                    threading.Thread(target=run_trade_workflow, daemon=True).start()
+                    threading.Thread(target=run_trade_workflow, kwargs={"trigger": "manual"}, daemon=True).start()
                 elif text.startswith("/status"):
                     threading.Thread(target=run_status, daemon=True).start()
                 elif text.startswith("/perf"):
                     threading.Thread(target=run_perf, daemon=True).start()
+                elif text.startswith("/raisonnement"):
+                    threading.Thread(target=run_raisonnement, daemon=True).start()
                 elif text.startswith("/reset"):
                     release_lock()
                     send_telegram(f"🔓 Lock réinitialisé.\n⏰ Prochain cycle auto : {fmt_next()}")
                 elif text:
-                    send_telegram(f"Commandes : /trade /status /perf /reset\n⏰ Prochain cycle : {fmt_next()}")
+                    send_telegram(f"Commandes : /trade /status /perf /raisonnement /reset\n⏰ Prochain cycle : {fmt_next()}")
 
         except Exception as e:
             print(f"[Polling] Erreur: {e}")

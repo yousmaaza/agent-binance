@@ -12,6 +12,9 @@ state/webhook_pids.json
 # Rapports générés à chaque cycle
 reports/
 
+# Logs (stdout/stderr Claude + log interne bot)
+logs/
+
 # Python
 __pycache__/
 *.pyc
