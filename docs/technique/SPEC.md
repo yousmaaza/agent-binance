@@ -2,7 +2,7 @@
 
 > **Généré par** : `binance-doc-tech` one-shot
 > **Dernière mise à jour** : 2026-05-21
-> **Commit** : 96cb455
+> **Commit** : 100b75f
 
 ---
 
@@ -135,7 +135,8 @@ webhook_server.py (process principal)
 | `run_status()` | :441 | Handler `/status` : appelle `binance-cli` pour solde + ordres ouverts, format HTML Telegram |
 | `run_perf()` | :493 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
 | `_format_stream_event()` | :588 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
-| `run_trade_workflow()` | :635 | Orchestre un cycle complet : lock → subprocess Claude stream-json → capture logs → fallback Mongo en cas d'erreur → unlock |
+| `PROMPT_VERSION` _(constante module)_ | :373 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
+| `run_trade_workflow()` | :653 | Orchestre un cycle complet : lock → subprocess Claude stream-json → capture logs → fallback Mongo en cas d'erreur → unlock ; injecte `__CYCLE_ID__`, `__PROMPT_VERSION__` et `trigger` dans le prompt |
 | `run_raisonnement()` | :726 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
 | `handle_callback()` | :774 | Gère les réponses aux inline keyboards Telegram (CONFIRM/CANCEL → `pending_callback.json`) |
 | `get_offset()` | :789 | Lit le dernier offset Telegram depuis `telegram_offset.json` (persistance entre redémarrages) |
@@ -239,3 +240,4 @@ webhook_server.py (process principal)
 | Spec initiale | 2026-05-21 | Génération initiale de SPEC.md via `binance-doc-tech` one-shot |
 | [#17](pr-17-rotation-loguru-daemon-log.md) | 2026-05-21 | Rotation loguru activée sur `state/daemon.log` (10 MB, 5 fichiers) ; remplacement des `print()` par loguru ; suppression du handler stderr par défaut (id=0) |
 | [#21](pr-21-differencer-notif-telegram-manual-vs-auto.md) | 2026-05-21 | Notification de démarrage de cycle différenciée : `🤖 Cycle auto 4h démarré (heure locale)` vs `🔧 Cycle manuel {cycle_id} démarré` ; suppression de `parse_mode="HTML"` sur ces messages |
+| [#22](pr-22-ajout-prompt-version-sha1-mongo.md) | 2026-05-21 | Ajout de `PROMPT_VERSION` (SHA-1 8 chars sur le template brut) injecté dans chaque document Mongo `cycles` sous le champ `prompt_version` |
