@@ -19,6 +19,8 @@ from datetime import datetime, timezone, timedelta
 from loguru import logger
 from pymongo import MongoClient
 
+logger.remove(0)  # Retire le handler stderr par défaut avant tout logger.add() pour éviter la double écriture via nohup 2>&1
+
 
 def _load_env():
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
@@ -52,18 +54,14 @@ logger.add(
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
 )
 
-# Handler daemon.log avec rotation 10 MB, rétention 5 fichiers — idempotent
-_DAEMON_LOG_ADDED = False
-if not _DAEMON_LOG_ADDED:
-    logger.remove(0)  # Supprime le handler stderr par défaut (id=0) pour éviter la double écriture dans daemon.log via nohup 2>&1
-    logger.add(
-        f"{PROJECT_DIR}/state/daemon.log",
-        rotation="10 MB",
-        retention=5,
-        level="INFO",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
-    )
-    _DAEMON_LOG_ADDED = True
+# Handler daemon.log avec rotation 10 MB, rétention 5 fichiers
+logger.add(
+    f"{PROJECT_DIR}/state/daemon.log",
+    rotation="10 MB",
+    retention=5,
+    level="INFO",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+)
 
 # MongoDB (lazy connection)
 MONGO_URI = os.environ.get("MONGODB_URI", "").strip()
