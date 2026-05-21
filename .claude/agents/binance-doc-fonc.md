@@ -108,6 +108,38 @@ Si le slug existe déjà :
 - Utilise `Edit` pour modifier uniquement les sections impactées — ne réécris pas les sections inchangées.
 - Mets à jour la ligne `> **Statut**` si la feature passe de "En cours" à "Disponible".
 
+### Phase 3c — Générer un diagramme D2 si la feature a un workflow
+
+Si la feature implique **un séquencement d'étapes non trivial** (ex : un cycle de trading, une commande qui appelle plusieurs services, un workflow multi-acteurs) :
+
+1. Génère un fichier D2 dans `docs/visuals/<slug>.d2`
+2. Rends le SVG via Kroki.io :
+
+```bash
+SLUG="<slug>"
+D2_FILE="docs/visuals/${SLUG}.d2"
+SVG_FILE="docs/visuals/${SLUG}.svg"
+
+JSON_BODY=$(python3 -c "import json; content=open('$D2_FILE').read(); print(json.dumps({'diagram_source': content}))")
+curl -s -f -X POST https://kroki.io/d2/svg \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: agent-binance-docs/1.0" \
+  --data-raw "$JSON_BODY" \
+  -o "$SVG_FILE"
+```
+
+3. Ajoute le bloc suivant dans la section `## Comment l'utiliser` de la page fonctionnelle :
+
+```markdown
+### Diagramme du workflow
+
+![<Nom feature>](../visuals/<slug>.svg)
+```
+
+**Ne génère pas de diagramme** pour les features simples (ex : une commande qui renvoie un message statique, une rotation de fichier de log). Réserve-le aux flows avec ≥ 3 acteurs ou ≥ 4 étapes.
+
+Règles D2 à respecter : IDs sans espaces ni accents, labels entre guillemets doubles, shapes `person`/`cloud`/`cylinder`/`diamond`/`document`, `direction: down` par défaut ou `shape: sequence_diagram` pour un séquencement chronologique.
+
 ### Phase 4 — Mettre à jour l'index
 
 Ouvre `docs/fonctionnel/README.md` et ajoute une ligne dans le tableau `Index des fonctionnalités` :
@@ -122,7 +154,9 @@ Si une ligne pour cette feature existe déjà → mise à jour de la ligne.
 
 ```bash
 git-perso
+# Inclure le SVG si un diagramme a été généré à la Phase 3c
 git add docs/fonctionnel/<slug>.md docs/fonctionnel/README.md
+[ -f docs/visuals/<slug>.d2 ] && git add docs/visuals/<slug>.d2 docs/visuals/<slug>.svg
 git commit -m "docs(fonc): <nom feature> — page fonctionnelle initiale
 
 Co-Authored-By: Claude Sonnet 4.6 (1M context) <noreply@anthropic.com>"
@@ -134,6 +168,8 @@ git push origin main
 ### Phase 6 — Miroir GitHub Wiki (best-effort)
 
 ```bash
+PROJET=/Users/yousrimaazaoui/Documents/projets/test-debile/agent-binance
+
 # Clone le wiki dans un dossier temporaire
 cd /tmp && rm -rf agent-binance.wiki
 git clone https://github.com/yousmaaza/agent-binance.wiki.git agent-binance.wiki 2>/dev/null || {
@@ -141,24 +177,30 @@ git clone https://github.com/yousmaaza/agent-binance.wiki.git agent-binance.wiki
   exit 0
 }
 
-# Crée le dossier Fonctionnel si absent
+# Crée les dossiers nécessaires
 mkdir -p /tmp/agent-binance.wiki/Fonctionnel
+mkdir -p /tmp/agent-binance.wiki/visuals
+
+# Synchronise tous les SVG et D2 (chemins ../visuals/ dans les .md fonctionnent tel quel)
+cp "$PROJET"/docs/visuals/*.svg /tmp/agent-binance.wiki/visuals/ 2>/dev/null || true
+cp "$PROJET"/docs/visuals/*.d2  /tmp/agent-binance.wiki/visuals/ 2>/dev/null || true
 
 # Copie la page
-cp /Users/yousrimaazaoui/Documents/projets/test-debile/agent-binance/docs/fonctionnel/<slug>.md \
+cp "$PROJET/docs/fonctionnel/<slug>.md" \
    /tmp/agent-binance.wiki/Fonctionnel/<slug>.md
 
 # Copie l'index
-cp /Users/yousrimaazaoui/Documents/projets/test-debile/agent-binance/docs/fonctionnel/README.md \
+cp "$PROJET/docs/fonctionnel/README.md" \
    /tmp/agent-binance.wiki/Fonctionnel/Home.md
 
 cd /tmp/agent-binance.wiki
 git config user.email "claude-bot@github.com"
 git config user.name "claude[bot]"
 git add Fonctionnel/
-git diff --cached --quiet || git commit -m "docs(fonc): mirror <slug> depuis docs/"
+git add Fonctionnel/ visuals/
+git diff --cached --quiet || git commit -m "docs(fonc): mirror <slug> depuis docs/ + visuels D2"
 git push origin master 2>/dev/null || git push origin main 2>/dev/null || echo "Push wiki échoué (ignorer)"
-cd /Users/yousrimaazaoui/Documents/projets/test-debile/agent-binance
+cd "$PROJET"
 ```
 
 Si le wiki échoue (non initialisé, permissions) → continue sans erreur. La doc dans `docs/` est la source de vérité.

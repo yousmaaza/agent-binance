@@ -1,0 +1,72 @@
+direction: down
+
+input: "TRADE_PROMPT + cycle_id" {
+  shape: document
+}
+
+p0: "Phase 0 — Verifications" {
+  p0a: "Solde USDC disponible"
+  p0b: "Daily loss limit OK ?"
+  p0c: "Positions ouvertes (max 5)"
+  p0a -> p0b -> p0c
+}
+
+stop: "STOP - conditions non remplies" {
+  shape: oval
+  style.fill: "#ffd6d6"
+}
+
+p1: "Phase 1 — Scan marche" {
+  p1a: "top_gainers"
+  p1b: "volume_breakout_scanner"
+  p1c: "market_sentiment"
+  p1d: "rating_filter"
+  p1a -> p1b -> p1c -> p1d
+}
+
+p2: "Phase 2 — Analyse multi-TF" {
+  p2a: "coin_analysis 4h (signal primaire)"
+  p2b: "coin_analysis 1d (confirmation)"
+  p2a -> p2b
+}
+
+p3: "Phase 3 — Scoring 0-10" {
+  p3a: "Score ADX, RSI, MACD, volume"
+  p3b: "Filtre score >= 6"
+  p3a -> p3b
+}
+
+p4: "Phase 4 — Sizing ordres" {
+  p4a: "ATR stop-loss x2"
+  p4b: "Risk 1% portefeuille"
+  p4c: "TP = 3x distance stop"
+  p4a -> p4b -> p4c
+}
+
+p5: "Phase 5 — Execution OTOCO" {
+  p5a: "Prix limite -0.5% prix actuel"
+  p5b: "order-list-otoco Binance Spot"
+  p5c: "Ecriture trade_history.json"
+  p5a -> p5b -> p5c
+}
+
+p6: "Phase 6 — Rapport MD" {
+  p6a: "reports/YYYY-MM-DD_HH-MM_trade.md"
+}
+
+p7: "Phase 7 — Persistance" {
+  p7a: "upsert MongoDB cycles"
+  p7b: "release agent_lock.json"
+  p7c: "Notification Telegram FR"
+  p7a -> p7b -> p7c
+}
+
+input -> p0
+p0 -> stop: "echec verifications"
+p0 -> p1: "OK"
+p1 -> p2
+p2 -> p3
+p3 -> p4
+p4 -> p5
+p5 -> p6
+p6 -> p7

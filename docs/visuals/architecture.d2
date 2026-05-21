@@ -1,0 +1,83 @@
+direction: down
+
+user: "Utilisateur Telegram" {
+  shape: person
+}
+
+telegram: "Telegram Bot API" {
+  shape: cloud
+}
+
+daemon: "webhook_server.py" {
+  poll: "Poll getUpdates 30s"
+  filter: "Filtre chat_id" {
+    shape: diamond
+  }
+  dispatch: "Dispatch commande" {
+    shape: diamond
+  }
+  scheduler: "Auto-scheduler 4h UTC"
+  lock: "acquire / release lock"
+  status_handler: "run_status"
+  perf_handler: "run_perf"
+  raisonnement_handler: "run_raisonnement"
+
+  poll -> filter
+  filter -> dispatch: "autorise"
+  dispatch -> lock: "trade"
+  dispatch -> status_handler: "status"
+  dispatch -> perf_handler: "perf"
+  dispatch -> raisonnement_handler: "raisonnement"
+  scheduler -> lock: "slot 4h"
+}
+
+claude: "Claude CLI" {
+  p0: "Phase 0 - Verifications"
+  p1: "Phase 1 - Scan marche"
+  p2: "Phase 2 - Analyse multi-TF"
+  p3: "Phase 3 - Scoring"
+  p4: "Phase 4 - Sizing ordres"
+  p5: "Phase 5 - Execution OTOCO"
+  p6: "Phase 6 - Rapport MD"
+  p7: "Phase 7 - Persistance"
+
+  p0 -> p1 -> p2 -> p3 -> p4 -> p5 -> p6 -> p7
+}
+
+binance: "Binance API" {
+  shape: cylinder
+}
+
+tradingview: "TradingView MCP" {
+  shape: cylinder
+}
+
+mongodb: "MongoDB Atlas" {
+  shape: cylinder
+}
+
+logs: "logs/cycle_id" {
+  shape: document
+}
+
+history: "trade_history.json" {
+  shape: document
+}
+
+user -> telegram: "commandes"
+telegram -> daemon.poll: "long-poll 30s"
+daemon.lock -> claude: "subprocess stream-json"
+daemon.lock -> logs: "stdout/stderr"
+
+daemon.status_handler -> binance: "binance-cli"
+daemon.perf_handler -> history: "lecture stats"
+daemon.raisonnement_handler -> mongodb: "find_one cycles"
+
+claude.p0 -> binance: "get-account"
+claude.p5 -> binance: "order-list-otoco"
+claude.p5 -> history: "ecriture"
+claude.p0 -> history: "lecture"
+claude.p1 -> tradingview: "MCP tools"
+claude.p2 -> tradingview: "coin_analysis"
+claude.p7 -> mongodb: "upsert cycles"
+claude.p7 -> telegram: "notification FR"

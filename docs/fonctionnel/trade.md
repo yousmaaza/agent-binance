@@ -11,6 +11,14 @@ Lancer `/trade` demande au bot d'analyser le marché immédiatement et, si les c
 
 Envoie `/trade` dans le chat Telegram avec le bot. Le bot te répond aussitôt pour confirmer que l'analyse est en cours, puis t'envoie une notification à la fin de chaque grande étape. L'ensemble du cycle dure entre 5 et 15 minutes environ.
 
+### Séquence d'un cycle
+
+![Séquence d'un cycle /trade](../visuals/trade.svg)
+
+### Les 7 phases du cycle
+
+![Phases de l'analyse et du trading](../visuals/trade-phases.svg)
+
 ### Commandes Telegram
 
 | Commande | Description | Réponse attendue |

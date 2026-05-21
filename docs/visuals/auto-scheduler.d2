@@ -1,0 +1,56 @@
+direction: down
+
+start: "Bot demarre" {
+  shape: oval
+}
+
+main_loop: "main_loop en cours" {
+  poll: "Poll Telegram 30s"
+  check_slot: "Prochain slot 4h UTC atteint ?" {
+    shape: diamond
+  }
+  next_slot: "Calculer prochain slot"
+
+  poll -> check_slot
+  check_slot -> next_slot: "non"
+}
+
+slots: "Slots 4h UTC" {
+  s1: "00h05"
+  s2: "04h05"
+  s3: "08h05"
+  s4: "12h05"
+  s5: "16h05"
+  s6: "20h05"
+}
+
+check_lock: "Cycle deja en cours ?" {
+  shape: diamond
+}
+
+skip: "Ignorer ce slot"
+
+run_trade: "run_trade_workflow trigger=auto" {
+  shape: rectangle
+}
+
+notify_start: "Notification Telegram debut"
+phases: "7 phases analyse et trading"
+notify_end: "Notification Telegram resume"
+release: "release_lock"
+
+start -> main_loop.poll
+main_loop.check_slot -> check_lock: "oui, slot atteint"
+check_lock -> skip: "oui, deja en cours"
+check_lock -> run_trade: "non, libre"
+skip -> main_loop.next_slot
+run_trade -> notify_start
+notify_start -> phases
+phases -> notify_end
+notify_end -> release
+release -> main_loop.next_slot
+main_loop.next_slot -> main_loop.poll
+
+slots.s1 -> main_loop.check_slot: "declenchement"
+slots.s2 -> main_loop.check_slot: "declenchement"
+slots.s3 -> main_loop.check_slot: "declenchement"

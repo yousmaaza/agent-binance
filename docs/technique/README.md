@@ -8,6 +8,19 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 |---|---|---|
 | [SPEC.md](SPEC.md) | Spécification technique globale du projet | 2026-05-21 |
 
+## Diagrammes
+
+Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dans `docs/visuals/*.d2`.
+
+| Diagramme | Source D2 | SVG |
+|---|---|---|
+| Architecture globale | [`../visuals/architecture.d2`](../visuals/architecture.d2) | [`../visuals/architecture.svg`](../visuals/architecture.svg) |
+| Flux de données | [`../visuals/data-flow.d2`](../visuals/data-flow.d2) | [`../visuals/data-flow.svg`](../visuals/data-flow.svg) |
+| Commandes Telegram | [`../visuals/commands.d2`](../visuals/commands.d2) | [`../visuals/commands.svg`](../visuals/commands.svg) |
+| Phases du cycle | [`../visuals/trade-phases.d2`](../visuals/trade-phases.d2) | [`../visuals/trade-phases.svg`](../visuals/trade-phases.svg) |
+| Séquence /trade | [`../visuals/trade.d2`](../visuals/trade.d2) | [`../visuals/trade.svg`](../visuals/trade.svg) |
+| Auto-scheduler | [`../visuals/auto-scheduler.d2`](../visuals/auto-scheduler.d2) | [`../visuals/auto-scheduler.svg`](../visuals/auto-scheduler.svg) |
+
 ## Historique technique par PR
 
 | PR | Titre | Date |

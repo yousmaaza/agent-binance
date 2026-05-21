@@ -45,6 +45,8 @@ main_loop()
         └── release_lock()   [finally]
 ```
 
+![Phases du cycle de trading](../visuals/trade-phases.svg)
+
 ### 2.2 Flux de données
 
 ```
@@ -85,7 +87,26 @@ webhook_server.py (process principal)
                      + curl → Telegram         (notifications à chaque phase)
 ```
 
-### 2.3 Composants externes
+![Flux de données](../visuals/data-flow.svg)
+
+### 2.3 Diagrammes
+
+> Générés par le skill `/generate-diagrams` (D2 + Kroki.io). Sources versionnables dans `docs/visuals/*.d2`.
+
+| Diagramme | Fichier source | Rendu SVG |
+|---|---|---|
+| Architecture globale | [`docs/visuals/architecture.d2`](../visuals/architecture.d2) | [`architecture.svg`](../visuals/architecture.svg) |
+| Flux de données | [`docs/visuals/data-flow.d2`](../visuals/data-flow.d2) | [`data-flow.svg`](../visuals/data-flow.svg) |
+| Commandes Telegram | [`docs/visuals/commands.d2`](../visuals/commands.d2) | [`commands.svg`](../visuals/commands.svg) |
+| Phases du cycle | [`docs/visuals/trade-phases.d2`](../visuals/trade-phases.d2) | [`trade-phases.svg`](../visuals/trade-phases.svg) |
+| Séquence /trade | [`docs/visuals/trade.d2`](../visuals/trade.d2) | [`trade.svg`](../visuals/trade.svg) |
+| Auto-scheduler | [`docs/visuals/auto-scheduler.d2`](../visuals/auto-scheduler.d2) | [`auto-scheduler.svg`](../visuals/auto-scheduler.svg) |
+
+![Architecture agent-binance](../visuals/architecture.svg)
+
+---
+
+### 2.4 Composants externes
 
 | Composant | Rôle | Config |
 |---|---|---|

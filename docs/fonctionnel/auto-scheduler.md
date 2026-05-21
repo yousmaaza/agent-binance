@@ -11,6 +11,10 @@ Le bot se déclenche automatiquement toutes les 4 heures pour analyser le march�
 
 Aucune action requise. Dès que le bot est démarré, il planifie lui-même les cycles automatiques. Les horaires de déclenchement sont fixes et alignés sur les grandes périodes d'analyse des marchés : environ 02h05, 06h05, 10h05, 14h05, 18h05 et 22h05 (en heure de Paris, l'heure exacte dépend du décalage UTC du moment).
 
+### Fonctionnement du scheduler
+
+![Scheduler automatique 4h](../visuals/auto-scheduler.svg)
+
 ### Commandes Telegram
 
 Cette feature est automatique — aucune commande requise.

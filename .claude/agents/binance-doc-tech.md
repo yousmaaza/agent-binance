@@ -161,11 +161,38 @@ Telegram (user) → [curl long-poll] → webhook_server.py
 | _(initial)_ | YYYY-MM-DD | Génération initiale de la spec |
 ```
 
-**4. Mettre à jour README.md**
+**4. Générer les diagrammes D2**
+
+Après avoir écrit SPEC.md, génère les diagrammes architecture et data-flow via le skill `/generate-diagrams` :
+
+```bash
+# Génère architecture.d2 + architecture.svg via Kroki.io
+D2_FILE="docs/visuals/architecture.d2"
+SVG_FILE="docs/visuals/architecture.svg"
+
+# Le code D2 doit refléter le §2 Architecture de SPEC.md
+# Utilise les mêmes règles que le skill generate-diagrams :
+# - IDs sans espaces ni accents
+# - Labels entre guillemets doubles
+# - Shapes : person, cloud, cylinder, diamond, document
+# - Rendu via POST JSON : https://kroki.io/d2/svg
+JSON_BODY=$(python3 -c "import json; content=open('$D2_FILE').read(); print(json.dumps({'diagram_source': content}))")
+curl -s -f -X POST https://kroki.io/d2/svg \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: agent-binance-docs/1.0" \
+  --data-raw "$JSON_BODY" \
+  -o "$SVG_FILE"
+```
+
+Si `docs/visuals/architecture.d2` n'existe pas encore, génère-le à partir du §2 de SPEC.md avant d'appeler Kroki.
+
+Assure-toi que SPEC.md contient la section `### 2.3 Diagrammes` avec le lien vers `../visuals/architecture.svg` et l'embed `![Architecture agent-binance](../visuals/architecture.svg)`.
+
+**5. Mettre à jour README.md**
 
 Dans `docs/technique/README.md`, remplace la ligne SPEC.md avec la date réelle.
 
-**5. Commit + push + wiki** (voir Phase commune ci-dessous)
+**6. Commit + push + wiki** (voir Phase commune ci-dessous)
 
 ---
 
@@ -239,7 +266,14 @@ Lis en entier **chaque fichier modifié** (pas juste le diff — le contexte com
 - <Règle 1 applicable et comment elle a été respectée>
 ```
 
-**4. Mettre à jour SPEC.md**
+**4. Régénérer le diagramme architecture si impacté**
+
+Si la PR touche `webhook_server.py` (nouveaux handlers, nouvelles phases, nouveaux composants externes) :
+- Met à jour `docs/visuals/architecture.d2` pour refléter les changements
+- Régénère le SVG via Kroki : `POST https://kroki.io/d2/svg` avec le nouveau `.d2` en JSON body
+- Les deux fichiers (`.d2` + `.svg`) seront inclus dans le commit
+
+**5. Mettre à jour SPEC.md**
 
 Sections à mettre à jour selon les changements :
 - **Fonctions clés** : ajouter/modifier les lignes des fonctions touchées
@@ -263,7 +297,7 @@ Ajoute une ligne dans le tableau "Historique technique par PR" :
 
 ```bash
 git-perso   # en local uniquement — skip en CI
-git add docs/technique/
+git add docs/technique/ docs/visuals/
 git commit -m "docs(tech): <description courte>
 
 Co-Authored-By: Claude Sonnet 4.6 (1M context) <noreply@anthropic.com>"
@@ -273,26 +307,33 @@ git push origin main
 ### Miroir GitHub Wiki (best-effort)
 
 ```bash
+PROJET=/Users/yousrimaazaoui/Documents/projets/test-debile/agent-binance
+
 cd /tmp && rm -rf agent-binance.wiki
 git clone https://github.com/yousmaaza/agent-binance.wiki.git agent-binance.wiki 2>/dev/null || {
   echo "Wiki non initialisé — skip miroir"
   exit 0
 }
 mkdir -p /tmp/agent-binance.wiki/Technique
+mkdir -p /tmp/agent-binance.wiki/visuals
+
+# Copie les SVG et les sources D2 (pour que les chemins ../visuals/ fonctionnent dans le wiki)
+cp "$PROJET"/docs/visuals/*.svg /tmp/agent-binance.wiki/visuals/ 2>/dev/null || true
+cp "$PROJET"/docs/visuals/*.d2  /tmp/agent-binance.wiki/visuals/ 2>/dev/null || true
 
 # Copie SPEC.md et la doc PR
-cp <projet>/docs/technique/SPEC.md /tmp/agent-binance.wiki/Technique/SPEC.md
-[ -f <projet>/docs/technique/pr-<N>-<slug>.md ] && \
-  cp <projet>/docs/technique/pr-<N>-<slug>.md /tmp/agent-binance.wiki/Technique/PR-<N>-<slug>.md
+cp "$PROJET/docs/technique/SPEC.md" /tmp/agent-binance.wiki/Technique/SPEC.md
+[ -f "$PROJET/docs/technique/pr-<N>-<slug>.md" ] && \
+  cp "$PROJET/docs/technique/pr-<N>-<slug>.md" /tmp/agent-binance.wiki/Technique/PR-<N>-<slug>.md
 
 # Met à jour la Home wiki avec l'index
-cp <projet>/docs/technique/README.md /tmp/agent-binance.wiki/Technique/Home.md
+cp "$PROJET/docs/technique/README.md" /tmp/agent-binance.wiki/Technique/Home.md
 
 cd /tmp/agent-binance.wiki
 git config user.email "claude-bot@github.com"
 git config user.name "claude[bot]"
-git add Technique/
-git diff --cached --quiet || git commit -m "docs(tech): mirror depuis docs/technique/"
+git add Technique/ visuals/
+git diff --cached --quiet || git commit -m "docs(tech): mirror depuis docs/technique/ + visuels D2"
 git push origin master 2>/dev/null || git push origin main 2>/dev/null || echo "Push wiki échoué"
 cd -
 ```

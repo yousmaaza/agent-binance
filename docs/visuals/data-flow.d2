@@ -1,0 +1,56 @@
+direction: right
+
+user: "Utilisateur Telegram" {
+  shape: person
+}
+
+daemon: "webhook_server.py" {
+  tg_post: "tg_post() via curl"
+  run_status: "run_status"
+  run_perf: "run_perf"
+  run_raisonnement: "run_raisonnement"
+  run_trade: "run_trade_workflow"
+}
+
+telegram: "Telegram Bot API" {
+  shape: cloud
+}
+
+claude: "Claude CLI" {
+  mcp: "mcp__tradingview"
+  binance_cli: "binance-cli spot"
+  state_files: "state/trade_history"
+  reports: "reports/*.md"
+  mongo_write: "MongoDB Atlas write"
+  notif: "curl -> Telegram"
+}
+
+binance: "Binance API" {
+  shape: cylinder
+}
+
+tradingview: "TradingView MCP" {
+  shape: cylinder
+}
+
+mongodb: "MongoDB Atlas" {
+  shape: cylinder
+}
+
+history: "trade_history.json" {
+  shape: document
+}
+
+user -> telegram: "commandes"
+telegram -> daemon: "long-poll curl 30s"
+daemon.tg_post -> telegram: "sendMessage / getUpdates"
+daemon.run_status -> binance: "get-account, get-open-orders"
+daemon.run_perf -> history: "lecture stats"
+daemon.run_raisonnement -> mongodb: "find_one cycles"
+daemon.run_trade -> claude: "subprocess stream-json"
+
+claude.mcp -> tradingview: "top_gainers, coin_analysis"
+claude.binance_cli -> binance: "get-account, order-list-otoco"
+claude.state_files -> history: "lecture Phase 0, ecriture Phase 5"
+claude.mongo_write -> mongodb: "upsert cycles"
+claude.notif -> telegram: "notifications phases"

@@ -1,0 +1,57 @@
+direction: right
+
+user: "Utilisateur Telegram" {
+  shape: person
+}
+
+tg: "Telegram Bot API" {
+  shape: cloud
+}
+
+daemon: "webhook_server.py" {
+  dispatch: "Dispatch commande" {
+    shape: diamond
+  }
+  trade_h: "run_trade_workflow"
+  status_h: "run_status"
+  perf_h: "run_perf"
+  rais_h: "run_raisonnement"
+  reset_h: "release_lock"
+  unknown_h: "liste commandes"
+
+  dispatch -> trade_h: "/trade"
+  dispatch -> status_h: "/status"
+  dispatch -> perf_h: "/perf"
+  dispatch -> rais_h: "/raisonnement"
+  dispatch -> reset_h: "/reset"
+  dispatch -> unknown_h: "autre"
+}
+
+binance: "Binance API" {
+  shape: cylinder
+}
+
+mongodb: "MongoDB Atlas" {
+  shape: cylinder
+}
+
+history: "trade_history.json" {
+  shape: document
+}
+
+claude: "Claude CLI 7 phases" {
+  shape: rectangle
+}
+
+user -> tg: "commande"
+tg -> daemon.dispatch: "update getUpdates"
+daemon.trade_h -> claude: "subprocess"
+daemon.status_h -> binance: "binance-cli"
+daemon.perf_h -> history: "lecture"
+daemon.rais_h -> mongodb: "find_one"
+daemon.trade_h -> tg: "Cycle demarre"
+daemon.status_h -> tg: "Portefeuille HTML"
+daemon.perf_h -> tg: "Stats /perf"
+daemon.rais_h -> tg: "Explication FR"
+daemon.reset_h -> tg: "Verrou libere"
+daemon.unknown_h -> tg: "Liste commandes"
