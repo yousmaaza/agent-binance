@@ -29,6 +29,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#21](pr-21-differencer-notif-telegram-manual-vs-auto.md) | [M2] Différencier notif Telegram manual vs auto au démarrage de cycle | 2026-05-21 |
 | [#22](pr-22-ajout-prompt-version-sha1-mongo.md) | [M1] Ajouter PROMPT_VERSION (sha1) dans Mongo cycles | 2026-05-21 |
 | [#23](pr-23-heartbeats-par-phase-jsonl.md) | [M2] Heartbeats par phase en JSONL (logs/cycle_<id>_phases.jsonl) | 2026-05-21 |
+| [#36](pr-36-uniformiser-accents-logger-boot.md) | [REC] Uniformiser les accents dans les messages logger de boot | 2026-05-21 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*

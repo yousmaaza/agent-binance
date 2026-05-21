@@ -252,3 +252,4 @@ webhook_server.py (process principal)
 | [#21](pr-21-differencer-notif-telegram-manual-vs-auto.md) | 2026-05-21 | Notification de démarrage de cycle différenciée : `🤖 Cycle auto 4h démarré (heure locale)` vs `🔧 Cycle manuel {cycle_id} démarré` ; suppression de `parse_mode="HTML"` sur ces messages |
 | [#22](pr-22-ajout-prompt-version-sha1-mongo.md) | 2026-05-21 | Ajout de `PROMPT_VERSION` (SHA-1 8 chars sur le template brut) injecté dans chaque document Mongo `cycles` sous le champ `prompt_version` |
 | [#23](pr-23-heartbeats-par-phase-jsonl.md) | 2026-05-21 | Injection de `_hb_start()`/`hb()` dans le TRADE_PROMPT : écrit `logs/cycle_<id>_phases.jsonl` avec timestamp, durée et résumé à la fin de chaque phase 0–7 |
+| [#36](pr-36-uniformiser-accents-logger-boot.md) | 2026-05-21 | Correction orthographique de 3 messages `logger.*()` dans `main_loop()` : `demarre` → `démarre`, `autorise` → `autorisé`, `Ignore` → `Ignoré` — aucun impact fonctionnel |
