@@ -134,6 +134,8 @@ webhook_server.py (process principal)
 | `release_lock()` | :429 | Libère le mutex dans `agent_lock.json` |
 | `run_status()` | :441 | Handler `/status` : appelle `binance-cli` pour solde + ordres ouverts, format HTML Telegram |
 | `run_perf()` | :493 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
+| `_hb_start(phase)` | TRADE_PROMPT:111 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
+| `hb(phase, status, summary)` | TRADE_PROMPT:114 | Clôture une phase (dans le sous-processus Claude) — calcule la durée, écrit une ligne JSON dans `logs/cycle_<id>_phases.jsonl`, flush immédiat |
 | `_format_stream_event()` | :588 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
 | `PROMPT_VERSION` _(constante module)_ | :373 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
 | `run_trade_workflow()` | :653 | Orchestre un cycle complet : lock → subprocess Claude stream-json → capture logs → fallback Mongo en cas d'erreur → unlock ; injecte `__CYCLE_ID__`, `__PROMPT_VERSION__` et `trigger` dans le prompt |
@@ -169,6 +171,14 @@ webhook_server.py (process principal)
 | `pending_trades.json` | JSON array | Trades en attente de confirmation utilisateur (pré-exécution) |
 | `webhook_pids.json` | JSON object | PIDs du processus webhook (usage legacy v1 / monitoring externe) |
 | `daemon.log` | Log texte | Journal loguru du process principal (rotation à 10 MB, rétention 5 fichiers rotatifs) — premier fichier à consulter en cas d'anomalie |
+
+**Logs de cycle** (`logs/`) :
+
+| Fichier | Type | Rôle |
+|---|---|---|
+| `logs/stdout/cycle_<id>.log` | Log brut | Sortie stdout du sous-processus Claude (stream-json) — toujours écrit, même en cas d'erreur |
+| `logs/stderr/cycle_<id>.log` | Log brut | Sortie stderr du sous-processus Claude — toujours écrit, même en cas d'erreur |
+| `logs/cycle_<id>_phases.jsonl` | JSONL | Heartbeats par phase : une ligne JSON par phase terminée (0–7), avec `ts`, `phase`, `status`, `duration_s`, `summary` — base pour le watchdog ticket #7 |
 
 ---
 
@@ -241,3 +251,4 @@ webhook_server.py (process principal)
 | [#17](pr-17-rotation-loguru-daemon-log.md) | 2026-05-21 | Rotation loguru activée sur `state/daemon.log` (10 MB, 5 fichiers) ; remplacement des `print()` par loguru ; suppression du handler stderr par défaut (id=0) |
 | [#21](pr-21-differencer-notif-telegram-manual-vs-auto.md) | 2026-05-21 | Notification de démarrage de cycle différenciée : `🤖 Cycle auto 4h démarré (heure locale)` vs `🔧 Cycle manuel {cycle_id} démarré` ; suppression de `parse_mode="HTML"` sur ces messages |
 | [#22](pr-22-ajout-prompt-version-sha1-mongo.md) | 2026-05-21 | Ajout de `PROMPT_VERSION` (SHA-1 8 chars sur le template brut) injecté dans chaque document Mongo `cycles` sous le champ `prompt_version` |
+| [#23](pr-23-heartbeats-par-phase-jsonl.md) | 2026-05-21 | Injection de `_hb_start()`/`hb()` dans le TRADE_PROMPT : écrit `logs/cycle_<id>_phases.jsonl` avec timestamp, durée et résumé à la fin de chaque phase 0–7 |
