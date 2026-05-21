@@ -2,7 +2,7 @@
 
 > **Généré par** : `binance-doc-tech` one-shot
 > **Dernière mise à jour** : 2026-05-21
-> **Commit** : 054dc1f311198b3509599c088ff853efc79adeb7
+> **Commit** : 96cb455
 
 ---
 
@@ -238,3 +238,4 @@ webhook_server.py (process principal)
 | v2 — 2bf48c0 | 2025-xx-xx | Mise à jour README et ajout CLAUDE.md (contraintes non négociables) |
 | Spec initiale | 2026-05-21 | Génération initiale de SPEC.md via `binance-doc-tech` one-shot |
 | [#17](pr-17-rotation-loguru-daemon-log.md) | 2026-05-21 | Rotation loguru activée sur `state/daemon.log` (10 MB, 5 fichiers) ; remplacement des `print()` par loguru ; suppression du handler stderr par défaut (id=0) |
+| [#21](pr-21-differencer-notif-telegram-manual-vs-auto.md) | 2026-05-21 | Notification de démarrage de cycle différenciée : `🤖 Cycle auto 4h démarré (heure locale)` vs `🔧 Cycle manuel {cycle_id} démarré` ; suppression de `parse_mode="HTML"` sur ces messages |
