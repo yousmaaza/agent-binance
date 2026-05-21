@@ -820,8 +820,8 @@ def main_loop():
     offset = get_offset()
 
     claude_mode = "API (pay-per-use)" if os.environ.get("ANTHROPIC_API_KEY") else "abonnement Claude Code"
-    logger.info(f"Bot v2 demarre en mode polling (offset={offset})")
-    logger.info(f"Chat ID autorise : {CHAT_ID}")
+    logger.info(f"Bot v2 démarre en mode polling (offset={offset})")
+    logger.info(f"Chat ID autorisé : {CHAT_ID}")
     logger.info(f"Subprocess Claude : {claude_mode}")
     logger.info(f"Prochain cycle auto : {fmt_next()}")
 
@@ -858,7 +858,7 @@ def main_loop():
                 chat_id = str(msg.get("chat", {}).get("id", ""))
 
                 if chat_id != CHAT_ID:
-                    logger.warning(f"[Security] Ignore chat_id={chat_id}")
+                    logger.warning(f"[Security] Ignoré chat_id={chat_id}")
                     continue
 
                 logger.info(f"[Bot] Commande: {text!r}")
