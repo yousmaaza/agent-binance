@@ -38,7 +38,7 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 if not TOKEN or not CHAT_ID:
-    print("❌ TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID manquant dans .env")
+    logger.warning("TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID manquant dans .env")
 
 # Setup loguru : logs internes du bot avec rotation quotidienne, rétention 30j
 LOGS_DIR = os.path.join(PROJECT_DIR, "logs")
@@ -51,6 +51,18 @@ logger.add(
     level="INFO",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
 )
+
+# Handler daemon.log avec rotation 10 MB, rétention 5 fichiers — idempotent
+_DAEMON_LOG_ADDED = False
+if not _DAEMON_LOG_ADDED:
+    logger.add(
+        f"{PROJECT_DIR}/state/daemon.log",
+        rotation="10 MB",
+        retention=5,
+        level="INFO",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+    )
+    _DAEMON_LOG_ADDED = True
 
 # MongoDB (lazy connection)
 MONGO_URI = os.environ.get("MONGODB_URI", "").strip()
@@ -392,7 +404,7 @@ def tg_post(endpoint, body):
         )
         return json.loads(result.stdout) if result.stdout.strip() else {}
     except Exception as e:
-        print(f"[Telegram] {endpoint} erreur: {e}")
+        logger.error(f"[Telegram] {endpoint} erreur: {e}")
         return {}
 
 
@@ -777,7 +789,7 @@ def handle_callback(cq):
     if cq_chat_id != CHAT_ID:
         return
     action = cq.get("data", "")
-    print(f"[Bot] Callback: {action!r}")
+    logger.info(f"[Bot] Callback: {action!r}")
 
     with open(f"{PROJECT_DIR}/state/pending_callback.json", "w") as f:
         json.dump({"action": action, "timestamp": time.time()}, f)
@@ -807,10 +819,10 @@ def main_loop():
     offset = get_offset()
 
     claude_mode = "API (pay-per-use)" if os.environ.get("ANTHROPIC_API_KEY") else "abonnement Claude Code"
-    print(f"🚀 Bot v2 démarré en mode polling (offset={offset})")
-    print(f"   Chat ID autorisé : {CHAT_ID}")
-    print(f"   Subprocess Claude : {claude_mode}")
-    print(f"   Prochain cycle auto : {fmt_next()}")
+    logger.info(f"Bot v2 demarre en mode polling (offset={offset})")
+    logger.info(f"Chat ID autorise : {CHAT_ID}")
+    logger.info(f"Subprocess Claude : {claude_mode}")
+    logger.info(f"Prochain cycle auto : {fmt_next()}")
 
     send_telegram(
         f"🤖 Bot v2 démarré\n"
@@ -823,7 +835,7 @@ def main_loop():
         try:
             # Auto-scheduler : déclenche /trade au prochain slot 4h UTC
             if NEXT_AUTO_TRADE and datetime.now(timezone.utc) >= NEXT_AUTO_TRADE and not is_locked():
-                print(f"[Scheduler] Auto-trade → prochain slot sera {next_4h_slot().strftime('%H:%M UTC')}")
+                logger.info(f"[Scheduler] Auto-trade -> prochain slot sera {next_4h_slot().strftime('%H:%M UTC')}")
                 threading.Thread(target=run_trade_workflow, kwargs={"trigger": "auto"}, daemon=True).start()
 
             data = tg_post("getUpdates", {
@@ -845,10 +857,10 @@ def main_loop():
                 chat_id = str(msg.get("chat", {}).get("id", ""))
 
                 if chat_id != CHAT_ID:
-                    print(f"[Security] Ignoré chat_id={chat_id}")
+                    logger.warning(f"[Security] Ignore chat_id={chat_id}")
                     continue
 
-                print(f"[Bot] Commande: {text!r}")
+                logger.info(f"[Bot] Commande: {text!r}")
 
                 if text.startswith("/trade"):
                     threading.Thread(target=run_trade_workflow, kwargs={"trigger": "manual"}, daemon=True).start()
@@ -865,7 +877,7 @@ def main_loop():
                     send_telegram(f"Commandes : /trade /status /perf /raisonnement /reset\n⏰ Prochain cycle : {fmt_next()}")
 
         except Exception as e:
-            print(f"[Polling] Erreur: {e}")
+            logger.error(f"[Polling] Erreur: {e}")
             time.sleep(5)
 
 
