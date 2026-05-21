@@ -8,6 +8,7 @@ Telegram polling bot for Binance trading agent v2.
 """
 
 import glob
+import hashlib
 import json
 import math
 import os
@@ -310,6 +311,7 @@ Construis un document Python `doc` représentant ce cycle :
 doc = {
   "_id": CYCLE_ID,
   "cycle_id": CYCLE_ID,
+  "prompt_version": "__PROMPT_VERSION__",
   "timestamp": "{ISO UTC du début du cycle}",
   "status": "completed",
   "trigger": "manual",
@@ -366,6 +368,9 @@ if _uri:
   tg(f"✅ Cycle {CYCLE_ID} terminé\\n{N} ordre(s) exécuté(s) | {M} skippés\\nBudget utilisé : {total:.2f} USDC\\nPositions actives : {open_positions}\\n⏰ Prochain cycle : {_next_str}\\n📊 /raisonnement pour les détails")
 
 - Écris state/agent_lock.json : {"running": false, "started_at": null}"""
+
+# Calculé sur le template BRUT, avant toute substitution — garantit la stabilité entre cycles
+PROMPT_VERSION = hashlib.sha1(_TRADE_PROMPT_TEMPLATE.encode(), usedforsecurity=False).hexdigest()[:8]
 
 TRADE_PROMPT = (
     _TRADE_PROMPT_TEMPLATE
@@ -671,8 +676,11 @@ def run_trade_workflow(trigger="manual"):
             parse_mode=None
         )
 
-    # Injecte le cycle_id + trigger dans le prompt
-    prompt = TRADE_PROMPT.replace("__CYCLE_ID__", cycle_id).replace('"trigger": "manual"', f'"trigger": "{trigger}"')
+    # Injecte le cycle_id, prompt_version + trigger dans le prompt
+    prompt = (TRADE_PROMPT
+              .replace("__CYCLE_ID__", cycle_id)
+              .replace("__PROMPT_VERSION__", PROMPT_VERSION)
+              .replace('"trigger": "manual"', f'"trigger": "{trigger}"'))
 
     stdout_path = f"{LOGS_DIR}/stdout/cycle_{cycle_id}.log"
     stderr_path = f"{LOGS_DIR}/stderr/cycle_{cycle_id}.log"
