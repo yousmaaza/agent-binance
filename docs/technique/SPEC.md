@@ -2,7 +2,7 @@
 
 > **Généré par** : `binance-doc-tech` one-shot
 > **Dernière mise à jour** : 2026-05-21
-> **Commit** : 100b75f
+> **Commit** : fc959594a693d9ca6295f29109dc7dbd6e9d7621
 
 ---
 
@@ -122,28 +122,30 @@ webhook_server.py (process principal)
 
 | Fonction | Ligne | Rôle |
 |---|---|---|
-| `_load_env()` | :23 | Charge le fichier `.env` dans `os.environ` au démarrage (parse manuel, sans dépendance python-dotenv) |
-| `get_mongo()` | :61 | Connexion lazy à MongoDB Atlas — retourne la DB ou `None` si `MONGODB_URI` absent/injoignable |
-| `next_4h_slot()` | :365 | Calcule le prochain slot 4h UTC aligné sur les clôtures TradingView (00:05, 04:05, ..., 20:05) |
-| `fmt_local()` | :375 | Convertit un datetime UTC en chaîne heure locale lisible pour les notifications Telegram |
-| `fmt_next()` | :434 | Retourne l'heure du prochain cycle auto en heure locale (via `NEXT_AUTO_TRADE` global) |
-| `tg_post()` | :384 | Appel bas niveau vers l'API Telegram via `curl` subprocess — retourne le JSON parsé |
-| `send_telegram()` | :399 | Envoie un message Telegram avec `chat_id` et `parse_mode` optionnel |
-| `is_locked()` | :406 | Vérifie si un cycle est en cours (lit `agent_lock.json`) — expire automatiquement après 2h |
-| `acquire_lock()` | :424 | Pose le mutex dans `agent_lock.json` avec timestamp UTC |
-| `release_lock()` | :429 | Libère le mutex dans `agent_lock.json` |
-| `run_status()` | :441 | Handler `/status` : appelle `binance-cli` pour solde + ordres ouverts, format HTML Telegram |
-| `run_perf()` | :493 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
+| `_load_env()` | :26 | Charge le fichier `.env` dans `os.environ` au démarrage (parse manuel, sans dépendance python-dotenv) |
+| `get_mongo()` | :73 | Connexion lazy à MongoDB Atlas — retourne la DB ou `None` si `MONGODB_URI` absent/injoignable |
+| `next_4h_slot()` | :420 | Calcule le prochain slot 4h UTC aligné sur les clôtures TradingView (00:05, 04:05, ..., 20:05) |
+| `fmt_local()` | :430 | Convertit un datetime UTC en chaîne heure locale lisible pour les notifications Telegram |
+| `fmt_next()` | :489 | Retourne l'heure du prochain cycle auto en heure locale (via `NEXT_AUTO_TRADE` global) |
+| `tg_post()` | :439 | Appel bas niveau vers l'API Telegram via `curl` subprocess — retourne le JSON parsé |
+| `send_telegram()` | :454 | Envoie un message Telegram avec `chat_id` et `parse_mode` optionnel |
+| `is_locked()` | :461 | Vérifie si un cycle est en cours (lit `agent_lock.json`) — expire automatiquement après 2h |
+| `acquire_lock()` | :479 | Pose le mutex dans `agent_lock.json` avec timestamp UTC |
+| `release_lock()` | :484 | Libère le mutex dans `agent_lock.json` |
+| `run_status()` | :496 | Handler `/status` : appelle `binance-cli` pour solde + ordres ouverts, format HTML Telegram |
+| `run_perf()` | :548 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
 | `_hb_start(phase)` | TRADE_PROMPT:111 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
 | `hb(phase, status, summary)` | TRADE_PROMPT:114 | Clôture une phase (dans le sous-processus Claude) — calcule la durée, écrit une ligne JSON dans `logs/cycle_<id>_phases.jsonl`, flush immédiat |
-| `_format_stream_event()` | :588 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
-| `PROMPT_VERSION` _(constante module)_ | :373 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
-| `run_trade_workflow()` | :653 | Orchestre un cycle complet : lock → subprocess Claude stream-json → capture logs → fallback Mongo en cas d'erreur → unlock ; injecte `__CYCLE_ID__`, `__PROMPT_VERSION__` et `trigger` dans le prompt |
-| `run_raisonnement()` | :726 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
-| `handle_callback()` | :774 | Gère les réponses aux inline keyboards Telegram (CONFIRM/CANCEL → `pending_callback.json`) |
-| `get_offset()` | :789 | Lit le dernier offset Telegram depuis `telegram_offset.json` (persistance entre redémarrages) |
-| `save_offset()` | :796 | Persiste le nouvel offset Telegram dans `telegram_offset.json` |
-| `main_loop()` | :802 | Boucle principale : supprime le webhook Telegram, initialise l'offset, poll en continu, déclenche l'auto-scheduler |
+| `_format_stream_event()` | :643 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
+| `_read_last_jsonl_phase()` | :690 | Lit la dernière ligne valide du fichier `cycle_<id>_phases.jsonl` — utilisé par le watchdog pour connaître la dernière phase complétée |
+| `_watchdog_thread()` | :710 | Thread daemon qui surveille le cycle actif via le JSONL des heartbeats : alerte Telegram si aucune phase ne progresse pendant > 15 min |
+| `PROMPT_VERSION` _(constante module)_ | :410 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
+| `run_trade_workflow()` | :752 | Orchestre un cycle complet : lock → subprocess Claude stream-json → capture logs → fallback Mongo en cas d'erreur → unlock ; injecte `__CYCLE_ID__`, `__PROMPT_VERSION__` et `trigger` dans le prompt |
+| `run_raisonnement()` | :864 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
+| `handle_callback()` | :912 | Gère les réponses aux inline keyboards Telegram (CONFIRM/CANCEL → `pending_callback.json`) |
+| `get_offset()` | :927 | Lit le dernier offset Telegram depuis `telegram_offset.json` (persistance entre redémarrages) |
+| `save_offset()` | :935 | Persiste le nouvel offset Telegram dans `telegram_offset.json` |
+| `main_loop()` | :940 | Boucle principale : supprime le webhook Telegram, initialise l'offset, poll en continu, déclenche l'auto-scheduler |
 
 ---
 
@@ -252,4 +254,5 @@ webhook_server.py (process principal)
 | [#21](pr-21-differencer-notif-telegram-manual-vs-auto.md) | 2026-05-21 | Notification de démarrage de cycle différenciée : `🤖 Cycle auto 4h démarré (heure locale)` vs `🔧 Cycle manuel {cycle_id} démarré` ; suppression de `parse_mode="HTML"` sur ces messages |
 | [#22](pr-22-ajout-prompt-version-sha1-mongo.md) | 2026-05-21 | Ajout de `PROMPT_VERSION` (SHA-1 8 chars sur le template brut) injecté dans chaque document Mongo `cycles` sous le champ `prompt_version` |
 | [#23](pr-23-heartbeats-par-phase-jsonl.md) | 2026-05-21 | Injection de `_hb_start()`/`hb()` dans le TRADE_PROMPT : écrit `logs/cycle_<id>_phases.jsonl` avec timestamp, durée et résumé à la fin de chaque phase 0–7 |
+| [#28](pr-28-supprimer-double-handler-loguru-daemon.md) | 2026-05-21 | `logger.remove(0)` déplacé avant tout `logger.add()` (ligne :23, juste après l'import) ; suppression du guard `_DAEMON_LOG_ADDED` devenu inutile — corrige la double écriture résiduelle dans `daemon.log` |
 | [#36](pr-36-uniformiser-accents-logger-boot.md) | 2026-05-21 | Correction orthographique de 3 messages `logger.*()` dans `main_loop()` : `demarre` → `démarre`, `autorise` → `autorisé`, `Ignore` → `Ignoré` — aucun impact fonctionnel |
