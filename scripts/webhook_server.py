@@ -1106,7 +1106,7 @@ def main_loop():
 
             data = tg_post("getUpdates", {
                 "offset": offset,
-                "timeout": 30,
+                "timeout": 10,
                 "allowed_updates": ["message", "callback_query"]
             })
             for update in data.get("result", []):
