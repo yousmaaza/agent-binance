@@ -658,11 +658,18 @@ def run_trade_workflow(trigger="manual"):
     started_at = datetime.now(timezone.utc)
     logger.info(f"[Cycle {cycle_id}] Démarrage (trigger={trigger})")
 
-    send_telegram(
-        f"🔄 <b>Cycle {cycle_id}</b> — analyse en cours...\n"
-        f"⏰ Prochain cycle auto : {fmt_next()}",
-        parse_mode="HTML"
-    )
+    if trigger == "auto":
+        send_telegram(
+            f"🤖 Cycle auto 4h démarré ({fmt_local(started_at)})\n"
+            f"⏰ Prochain cycle auto : {fmt_next()}",
+            parse_mode=None
+        )
+    else:
+        send_telegram(
+            f"🔧 Cycle manuel {cycle_id} démarré\n"
+            f"⏰ Prochain cycle auto : {fmt_next()}",
+            parse_mode=None
+        )
 
     # Injecte le cycle_id + trigger dans le prompt
     prompt = TRADE_PROMPT.replace("__CYCLE_ID__", cycle_id).replace('"trigger": "manual"', f'"trigger": "{trigger}"')
