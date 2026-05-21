@@ -1,0 +1,26 @@
+{
+  "id": "71db4a94-3638-4e86-8a47-aceb5c97d2da",
+  "status": "completed",
+  "request": {
+    "format": "svg",
+    "transparent_background": false,
+    "color_mode": "light",
+    "number_of_visuals": 1,
+    "orientation": "auto",
+    "text_extraction_mode": "auto",
+    "sort_strategy": "relevance"
+  },
+  "generated_files": [
+    {
+      "url": "https://api.napkin.ai/v1/visual/71db4a94-3638-4e86-8a47-aceb5c97d2da/file/866e09f3-79db-4024-aa11-2539688c3bb8",
+      "visual_id": "ZS23TTJ6QA4AAG2SMUOEWIEZ742CAOHE",
+      "style_id": "CDQPRVVJCSTPRBB7E9GP8TB5DST0",
+      "width": 863,
+      "height": 1212,
+      "color_mode": "light"
+    }
+  ],
+  "credits": {
+    "consumed": 166
+  }
+}
