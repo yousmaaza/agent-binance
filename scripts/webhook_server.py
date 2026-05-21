@@ -55,6 +55,7 @@ logger.add(
 # Handler daemon.log avec rotation 10 MB, rétention 5 fichiers — idempotent
 _DAEMON_LOG_ADDED = False
 if not _DAEMON_LOG_ADDED:
+    logger.remove(0)  # Supprime le handler stderr par défaut (id=0) pour éviter la double écriture dans daemon.log via nohup 2>&1
     logger.add(
         f"{PROJECT_DIR}/state/daemon.log",
         rotation="10 MB",
