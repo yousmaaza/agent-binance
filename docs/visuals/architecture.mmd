@@ -1,0 +1,44 @@
+%%{init: {'theme': 'neutral'}}%%
+flowchart TD
+    USER([Utilisateur Telegram]) -->|commandes| TG[Telegram Bot API]
+
+    subgraph DAEMON["webhook_server.py — process principal"]
+        POLL[Poll getUpdates 30s] -->|update recu| FILTER{Filtre chat_id}
+        FILTER -->|inconnu| DROP[Ignorer]
+        FILTER -->|autorise| DISPATCH{Dispatch commande}
+
+        DISPATCH -->|trade| WF[run_trade_workflow]
+        DISPATCH -->|status| ST[run_status]
+        DISPATCH -->|perf| PF[run_perf]
+        DISPATCH -->|raisonnement| RS[run_raisonnement]
+        DISPATCH -->|reset| RL[release_lock]
+
+        SCHED[Auto-scheduler] -->|slot 4h UTC| WF
+        WF --> LOCK[acquire_lock]
+        LOCK --> PROC[Sous-processus Claude CLI]
+        PROC --> UNLOCK[release_lock]
+        UNLOCK --> POLL
+    end
+
+    subgraph CLAUDE["Claude CLI — sous-processus"]
+        P0[Phase 0 - Verifications] --> P1[Phase 1 - Scan marche]
+        P1 --> P2[Phase 2 - Analyse multi-TF]
+        P2 --> P3[Phase 3 - Scoring]
+        P3 --> P4[Phase 4 - Sizing ordres]
+        P4 --> P5[Phase 5 - Execution OTOCO]
+        P5 --> P6[Phase 6 - Rapport MD]
+        P6 --> P7[Phase 7 - Persistance]
+    end
+
+    TG -->|long-poll| POLL
+    ST -->|binance-cli| BN[(Binance API)]
+    P0 -->|get-account| BN
+    P5 -->|order-list-otoco| BN
+    P1 -->|MCP tools| TV[(TradingView MCP)]
+    P2 -->|coin_analysis| TV
+    P7 -->|upsert cycles| MG[(MongoDB Atlas)]
+    RS -->|find_one cycles| MG
+    PF -->|lecture| HJ[(trade_history.json)]
+    P5 -->|ecriture| HJ
+    P7 -->|notification| TG
+    WF -->|logs stdout-stderr| LG[(logs - cycle_id)]
