@@ -1,0 +1,6 @@
+# Outils de qualité de code utilisés par l'agent tech-lead-reviewer
+# (commande /review). Installer avec : pip install -r requirements-dev.txt
+ruff>=0.6.0
+radon>=6.0.0
+bandit>=1.7.0
+mypy>=1.11.0
