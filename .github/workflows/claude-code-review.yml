@@ -1,44 +1,51 @@
-name: Claude Code Review
+name: Claude Tech Lead Review
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
 
 jobs:
-  claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
+  tech-lead-review:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-      id-token: write
-
+    timeout-minutes: 20
     steps:
-      - name: Checkout repository
+      - name: Checkout PR
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Run Claude Code Review
-        id: claude-review
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install review tooling
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          else
+            pip install ruff radon bandit mypy
+          fi
+
+      - name: Run tech-lead-reviewer agent
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
-
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Invoque l'agent `tech-lead-reviewer` (défini dans `.claude/agents/tech-lead-reviewer.md`)
+            sur le diff de cette PR vs `main`. Il doit :
+              1. lancer ruff/radon/bandit/mypy sur les fichiers Python modifiés,
+              2. lire chaque fichier modifié en entier,
+              3. produire le rapport markdown structuré,
+              4. poster le commentaire de review sur la PR via `gh pr comment`.
+            Respecte strictement les garde-fous décrits dans l'agent : pas d'édition de fichier
+            source, pas de commit, pas de merge.
+          allowed_tools: "Bash,Read,Grep,Glob,Write"
