@@ -102,11 +102,33 @@ def tg(text):
          "-d", payload, "--max-time", "20"],
         capture_output=True)
 
+import json as _hb_json, datetime as _hb_dt, os as _hb_os
+_HB_PATH = "__PROJECT_DIR__/logs/cycle___CYCLE_ID___phases.jsonl"
+_hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
+_hb_phase_start = {}
+
+def _hb_start(phase):
+    _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
+
+def hb(phase, status="ok", summary=""):
+    t0 = _hb_phase_start.pop(phase, None)
+    duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
+    with open(_HB_PATH, "a") as _f:
+        _f.write(_hb_json.dumps({
+            "ts": _hb_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "phase": phase,
+            "status": status,
+            "duration_s": duration_s,
+            "summary": summary
+        }) + "\n")
+        _f.flush()
+
 Envoie une notification à la FIN de chaque phase avant de passer à la suivante.
 
 ---
 
 PHASE 0 — VÉRIFICATIONS PRÉALABLES
+_hb_start(0)
 Lis config.json pour récupérer TOUS les paramètres.
 Exécute : binance-cli spot get-account --profile agent-profile
 Calcule : portfolio_total = USDC_free + sum(locked USDC de tous les assets)
@@ -132,8 +154,10 @@ Pour chaque trade open dans l'historique :
 
 Compte open_positions = nombre de trades status="open" dans trade_history.json
 → tg("📋 Phase 0 — Vérifications\\nPortfolio : {portfolio_total:.2f} USDC\\nBudget dispo : {budget_disponible:.2f} USDC\\nPositions ouvertes : {open_positions}/{max_open_positions}\\nPnL du jour : {daily_pnl:+.2f} USDC")
+hb(0, summary=f"Portfolio {portfolio_total:.2f} USDC, {open_positions} positions, PnL jour {daily_pnl:+.2f} USDC")
 
 PHASE 1 — SCAN MARCHÉ (tout en parallèle)
+_hb_start(1)
 Lance simultanément :
 - mcp__tradingview__top_gainers (exchange: BINANCE) → top gainers
 - mcp__tradingview__volume_breakout_scanner (exchange: BINANCE) → breakouts volume
@@ -148,15 +172,19 @@ Construis l'univers de candidats :
 5. Exclure les stablecoins (USDT, BUSD, FDUSD, etc.)
 
 → tg("📡 Phase 1 — Scan marché\\nSentiment : {sentiment}\\n{N} candidats identifiés : {liste}")
+hb(1, summary=f"Sentiment {sentiment}, {N} candidats")
 
 PHASE 2 — ANALYSE MULTI-TIMEFRAME (tout en parallèle)
+_hb_start(2)
 Pour chaque coin de l'univers, lance en parallèle :
 - mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 4h)
 - mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d)
 
 → tg("📊 Phase 2 — Analyse terminée\\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d}")
+hb(2, summary=f"{len(univers)} coins analysés multi-timeframe")
 
 PHASE 3 — SCORING ET SÉLECTION
+_hb_start(3)
 Pour chaque coin, calcule un score sur 10 :
 
 | Critère | Points |
@@ -185,8 +213,10 @@ FILTRES OBLIGATOIRES :
 - Liquidité : ne pas trader des coins avec volume 24h < 5M USDC (estimé depuis les screeners)
 
 → tg("🧠 Phase 3 — Stratégie\\nScores : {coin: score pour les top 5}\\n{N_buy} BUY candidates : {liste}\\nFiltres appliqués : {résumé}")
+hb(3, summary=f"{N_buy} BUY candidates, filtres appliqués")
 
 PHASE 4 — SIZING ET PRÉPARATION DES ORDRES
+_hb_start(4)
 Pour chaque BUY candidate :
 
 # Sizing basé sur le risque fixe
@@ -219,8 +249,10 @@ Vérifications :
 - Re-vérifier budget total de tous les ordres ≤ budget_disponible
 
 → tg("💰 Phase 4 — Ordres préparés\\n{pour chaque ordre : COIN qty @ entry | Stop: stop | TP: tp | Risque: risk_usdc USDC}")
+hb(4, summary=f"{len(ordres_prepares)} ordres dimensionnés")
 
 PHASE 5 — EXÉCUTION AUTOMATIQUE
+_hb_start(5)
 Pour chaque ordre préparé, dans l'ordre de score décroissant :
 
 1. Re-fetch prix actuel :
@@ -285,7 +317,11 @@ with open("state/trade_history.json", "w") as f:
 5. Notification immédiate :
    tg("⚡ BUY {COIN}\\n{quantite} @ {prix_entry:.4g} USDC\\n🛑 Stop : {prix_stop:.4g} (-{risk_usdc:.2f} USDC)\\n🎯 TP : {prix_tp:.4g} (+{risk_usdc*reward_risk_ratio:.2f} USDC)\\nScore : {score}/10")
 
+Après avoir traité tous les ordres :
+hb(5, summary=f"{len(ordres_executes)} ordres exécutés, {orders_skipped_count} skippés")
+
 PHASE 6 — RAPPORT FINAL
+_hb_start(6)
 - Génère reports/YYYY-MM-DD_HH-MM_trade.md avec :
   * Univers scanné (N coins), filtres appliqués, scores top 10
   * Ordres exécutés avec IDs et paramètres
@@ -300,8 +336,10 @@ _next = _now.replace(hour=_slot_h, minute=5, second=0, microsecond=0)
 if _next <= _now:
     _next += _dt.timedelta(hours=4)
 _next_str = _next.astimezone().strftime("%d/%m %H:%M") + " (heure locale)"
+hb(6, summary=f"Rapport généré, prochain cycle {_next_str}")
 
 PHASE 7 — PERSISTANCE EN BASE (MongoDB)
+_hb_start(7)
 
 CYCLE_ID = "__CYCLE_ID__"   # déjà substitué par Python avant l'appel
 
@@ -365,7 +403,8 @@ if _uri:
 - Notification de synthèse (DOIT inclure le cycle_id) :
   tg(f"✅ Cycle {CYCLE_ID} terminé\\n{N} ordre(s) exécuté(s) | {M} skippés\\nBudget utilisé : {total:.2f} USDC\\nPositions actives : {open_positions}\\n⏰ Prochain cycle : {_next_str}\\n📊 /raisonnement pour les détails")
 
-- Écris state/agent_lock.json : {"running": false, "started_at": null}"""
+- Écris state/agent_lock.json : {"running": false, "started_at": null}
+hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, {N} ordre(s)")"""
 
 TRADE_PROMPT = (
     _TRADE_PROMPT_TEMPLATE
