@@ -36,16 +36,30 @@ jobs:
 
       - name: Run tech-lead-reviewer agent
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          track_progress: true
           prompt: |
-            Invoque l'agent `tech-lead-reviewer` (défini dans `.claude/agents/tech-lead-reviewer.md`)
-            sur le diff de cette PR vs `main`. Il doit :
-              1. lancer ruff/radon/bandit/mypy sur les fichiers Python modifiés,
-              2. lire chaque fichier modifié en entier,
-              3. produire le rapport markdown structuré,
-              4. poster le commentaire de review sur la PR via `gh pr comment`.
-            Respecte strictement les garde-fous décrits dans l'agent : pas d'édition de fichier
-            source, pas de commit, pas de merge.
-          allowed_tools: "Bash,Read,Grep,Glob,Write"
+            Tu es l'agent `tech-lead-reviewer` (sa définition complète est dans
+            `.claude/agents/tech-lead-reviewer.md` — lis-la et applique-la
+            intégralement). Contexte : PR #${{ github.event.pull_request.number }}
+            sur la branche `${{ github.event.pull_request.head.ref }}` vs `main`.
+
+            Étapes obligatoires :
+              1. `git diff --name-only origin/main...HEAD -- '*.py'` pour la liste des fichiers
+              2. lance ruff / radon cc / radon mi / bandit / mypy sur ces fichiers
+              3. lis chaque fichier modifié en entier
+              4. calcule la note maintenabilité (0-10) selon le barème de l'agent
+              5. compose le commentaire markdown au template strict de l'agent
+              6. poste-le sur la PR :
+                 `gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file <fichier>`
+
+            Pas d'édition de fichier source, pas de commit, pas de merge.
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools "Bash,Read,Grep,Glob,Write"
+            --max-turns 40
