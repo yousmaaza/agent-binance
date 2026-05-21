@@ -12,7 +12,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | PR | Titre | Date |
 |---|---|---|
-| _(vide — sera complété automatiquement)_ | | |
+| [#17](pr-17-rotation-loguru-daemon-log.md) | [M1] Activer rotation loguru sur state/daemon.log (10 MB, retention 5) | 2026-05-21 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*

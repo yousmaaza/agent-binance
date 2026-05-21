@@ -146,7 +146,7 @@ webhook_server.py (process principal)
 | `pending_callback.json` | JSON object | Dernière réponse inline keyboard : `{"action": "CONFIRM"/"CANCEL", "timestamp": float}` — lu par le sous-processus Claude pour les confirmations |
 | `pending_trades.json` | JSON array | Trades en attente de confirmation utilisateur (pré-exécution) |
 | `webhook_pids.json` | JSON object | PIDs du processus webhook (usage legacy v1 / monitoring externe) |
-| `daemon.log` | Log texte | Journal loguru du process principal (rotation quotidienne, rétention 30j) — premier fichier à consulter en cas d'anomalie |
+| `daemon.log` | Log texte | Journal loguru du process principal (rotation à 10 MB, rétention 5 fichiers rotatifs) — premier fichier à consulter en cas d'anomalie |
 
 ---
 
@@ -216,3 +216,4 @@ webhook_server.py (process principal)
 | v2 — 790b83a | 2025-xx-xx | Ajout capture raisonnement : loguru + MongoDB + commande `/raisonnement` |
 | v2 — 2bf48c0 | 2025-xx-xx | Mise à jour README et ajout CLAUDE.md (contraintes non négociables) |
 | Spec initiale | 2026-05-21 | Génération initiale de SPEC.md via `binance-doc-tech` one-shot |
+| [#17](pr-17-rotation-loguru-daemon-log.md) | 2026-05-21 | Rotation loguru activée sur `state/daemon.log` (10 MB, 5 fichiers) ; remplacement des `print()` par loguru ; suppression du handler stderr par défaut (id=0) |
