@@ -1,0 +1,68 @@
+name: Claude Doc Tech (PR mergée)
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: read
+  id-token: write
+
+jobs:
+  doc-tech:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run binance-doc-tech agent
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Tu es l'agent `binance-doc-tech` (lis sa définition complète dans
+            `.claude/agents/binance-doc-tech.md`). Mode : **PR mergée**.
+
+            PR mergée : #${{ github.event.pull_request.number }} — "${{ github.event.pull_request.title }}"
+            Branche : `${{ github.event.pull_request.head.ref }}`
+            Mergée le : ${{ github.event.pull_request.merged_at }}
+
+            Étapes obligatoires :
+            1. Lis `.claude/agents/binance-doc-tech.md` en entier.
+            2. Récupère les infos de la PR :
+               `gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json title,body,files`
+            3. Lis le diff de la PR sur main :
+               `git diff HEAD~1..HEAD -- '*.py' '*.json'`
+            4. Lis chaque fichier Python modifié en entier.
+            5. Crée `docs/technique/pr-${{ github.event.pull_request.number }}-<slug>.md`
+               selon le template de l'agent.
+            6. Met à jour `docs/technique/SPEC.md` (fonctions clés + changelog).
+            7. Met à jour `docs/technique/README.md` (tableau historique).
+            8. En CI : configure git avec
+               `git config user.email "claude-bot@github.com"`
+               `git config user.name "claude[bot]"`
+               (Ne pas appeler git-perso — c'est un alias local non disponible en CI)
+            9. Commit sur main et push.
+            10. Tente le miroir GitHub Wiki (best-effort, pas bloquant).
+
+            Contraintes : jamais de code applicatif, jamais de modification de scripts/
+            ou CLAUDE.md, wiki est best-effort.
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
+            --max-turns 40
