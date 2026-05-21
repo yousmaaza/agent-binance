@@ -689,6 +689,68 @@ def _format_stream_event(line: str):
     return None
 
 
+def _read_last_jsonl_phase(jsonl_path):
+    """Retourne le dernier objet JSON valide du fichier JSONL, ou None."""
+    try:
+        with open(jsonl_path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            if size == 0:
+                return None
+            # Remonte depuis la fin pour trouver la dernière ligne non vide
+            buf_size = min(4096, size)
+            f.seek(-buf_size, 2)
+            tail = f.read().decode("utf-8", errors="replace")
+        lines = [l.strip() for l in tail.splitlines() if l.strip()]
+        if not lines:
+            return None
+        return json.loads(lines[-1])
+    except Exception:
+        return None
+
+
+def _watchdog_thread(cycle_id, jsonl_path, stop_event):
+    """Thread daemon : alerte Telegram si la mtime du JSONL de phases stalle > 15 min."""
+    STALL_THRESHOLD = 900  # secondes
+    POLL_INTERVAL = 60     # secondes
+    already_warned = False
+    last_mtime = None
+
+    while not stop_event.is_set():
+        stop_event.wait(timeout=POLL_INTERVAL)
+        if stop_event.is_set():
+            break
+
+        try:
+            mtime = os.path.getmtime(jsonl_path)
+        except FileNotFoundError:
+            # Le fichier n'existe pas encore — pas d'alerte, on attend
+            continue
+        except Exception:
+            continue
+
+        # Si la mtime a progressé depuis la dernière itération, reset le flag d'alerte
+        if last_mtime is not None and mtime > last_mtime:
+            already_warned = False
+        last_mtime = mtime
+
+        if already_warned:
+            continue
+
+        delta = time.time() - mtime
+        if delta > STALL_THRESHOLD:
+            last_phase = _read_last_jsonl_phase(jsonl_path)
+            if last_phase is not None:
+                phase_num = last_phase.get("phase", "?")
+                elapsed_min = int(delta // 60)
+                msg = f"⚠️ Cycle {cycle_id} bloqué en Phase {phase_num} depuis {elapsed_min} min"
+            else:
+                elapsed_min = int(delta // 60)
+                msg = f"⚠️ Cycle {cycle_id} bloqué depuis {elapsed_min} min (aucune phase enregistrée)"
+            send_telegram(msg)
+            already_warned = True
+
+
 def run_trade_workflow(trigger="manual"):
     global NEXT_AUTO_TRADE
     if is_locked():
@@ -723,7 +785,16 @@ def run_trade_workflow(trigger="manual"):
 
     stdout_path = f"{LOGS_DIR}/stdout/cycle_{cycle_id}.log"
     stderr_path = f"{LOGS_DIR}/stderr/cycle_{cycle_id}.log"
+    phases_jsonl = f"{LOGS_DIR}/cycle_{cycle_id}_phases.jsonl"
     exit_code = -1
+
+    stop_watchdog = threading.Event()
+    watchdog = threading.Thread(
+        target=_watchdog_thread,
+        args=(cycle_id, phases_jsonl, stop_watchdog),
+        daemon=True,
+    )
+    watchdog.start()
 
     try:
         # Streaming : Claude écrit en stream-json (1 event JSON par ligne) sur stdout. On parse
@@ -746,6 +817,7 @@ def run_trade_workflow(trigger="manual"):
                 exit_code = process.wait()
             finally:
                 timer.cancel()
+                stop_watchdog.set()
 
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         logger.info(f"[Cycle {cycle_id}] Terminé exit={exit_code} en {duration:.0f}s")
@@ -787,6 +859,7 @@ def run_trade_workflow(trigger="manual"):
         send_telegram(f"❌ Cycle {cycle_id} — erreur inattendue : {e}")
         logger.exception(f"[Cycle {cycle_id}] Exception")
     finally:
+        stop_watchdog.set()
         release_lock()
 
 
