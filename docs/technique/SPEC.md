@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot
-> **Dernière mise à jour** : 2026-05-21
-> **Commit** : fc959594a693d9ca6295f29109dc7dbd6e9d7621
+> **Dernière mise à jour** : 2026-05-22
+> **Commit** : 37d406fdc3c6669f4e2683de2a3755775d61151c
 
 ---
 
@@ -37,7 +37,7 @@ main_loop()
         │   ├── Phase 2 — Analyse multi-timeframe (coin_analysis 4h + 1d)
         │   ├── Phase 3 — Scoring 0-10 et sélection des candidats
         │   ├── Phase 4 — Sizing et préparation des ordres (ATR, risk fixe 1%)
-        │   ├── Phase 5 — Exécution OTOCO sur Binance Spot
+        │   ├── Phase 5 — Exécution BUY MARKET + OCO SELL standalone
         │   ├── Phase 6 — Rapport fichier (reports/YYYY-MM-DD_HH-MM_trade.md)
         │   └── Phase 7 — Persistance MongoDB + notification Telegram de synthèse
         ├── stdout streamé → logs/stdout/cycle_{cycle_id}.log  (toujours)
@@ -77,7 +77,7 @@ webhook_server.py (process principal)
                 │
                 ├──► binance-cli spot (Phases 0, 4, 5)
                 │     get-account, get-open-orders, get-exchange-info,
-                │     get-symbol-price-ticker, order-list-otoco
+                │     get-symbol-price-ticker, order-market, order-list-oco
                 │
                 ├──► state/trade_history.json  (lecture Phase 0, écriture Phase 5)
                 ├──► state/agent_lock.json     (release Phase 7)
@@ -111,7 +111,7 @@ webhook_server.py (process principal)
 | Composant | Rôle | Config |
 |---|---|---|
 | Telegram Bot API | Interface utilisateur (commandes + notifications) | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` dans `.env` |
-| Binance CLI | Consultation portefeuille, passage ordres OTOCO spot | profil `agent-profile` dans `~/.binance-cli/` |
+| Binance CLI | Consultation portefeuille, passage ordres BUY MARKET + OCO spot | profil `agent-profile` dans `~/.binance-cli/` |
 | MongoDB Atlas | Persistance des cycles de trading (collection `cycles`) | `MONGODB_URI`, `MONGODB_DB` dans `.env` |
 | TradingView MCP | Données marché : gainers, breakouts, sentiment, analyse coin | `.mcp.json` (MCP server `mcp__tradingview__*`) |
 | Claude CLI | Orchestration du cycle de trading (sous-processus) | `ANTHROPIC_API_KEY` (pay-per-use) ou abonnement Claude Code |
@@ -166,7 +166,7 @@ webhook_server.py (process principal)
 
 | Fichier | Type | Rôle |
 |---|---|---|
-| `trade_history.json` | JSON array | Source de vérité des trades : chaque entrée contient `trade_id`, `coin`, `side`, `signal_score`, `entry_price`, `stop_price`, `tp_price`, `quantity`, `risk_usdc`, IDs des ordres OTOCO, `status` (open/closed), `pnl_usdc`, `pnl_pct`, dates |
+| `trade_history.json` | JSON array | Source de vérité des trades : chaque entrée contient `trade_id`, `coin`, `side`, `signal_score`, `entry_price` (prix de fill réel), `stop_price`, `tp_price`, `quantity`, `risk_usdc`, `entry_order_id` (BUY MARKET), `tp_order_id`, `stop_order_id`, `order_list_id`, `protection_failed`, `status` (open/closed), `pnl_usdc`, `pnl_pct`, `close_reason`, dates |
 | `agent_lock.json` | JSON object | Mutex de cycle : `{"running": bool, "started_at": ISO-UTC}` — expire automatiquement après 2h |
 | `telegram_offset.json` | JSON object | Dernier `update_id + 1` des updates Telegram — permet de reprendre sans re-traiter les anciens messages après redémarrage |
 | `pending_callback.json` | JSON object | Dernière réponse inline keyboard : `{"action": "CONFIRM"/"CANCEL", "timestamp": float}` — lu par le sous-processus Claude pour les confirmations |
@@ -256,3 +256,4 @@ webhook_server.py (process principal)
 | [#23](pr-23-heartbeats-par-phase-jsonl.md) | 2026-05-21 | Injection de `_hb_start()`/`hb()` dans le TRADE_PROMPT : écrit `logs/cycle_<id>_phases.jsonl` avec timestamp, durée et résumé à la fin de chaque phase 0–7 |
 | [#28](pr-28-supprimer-double-handler-loguru-daemon.md) | 2026-05-21 | `logger.remove(0)` déplacé avant tout `logger.add()` (ligne :23, juste après l'import) ; suppression du guard `_DAEMON_LOG_ADDED` devenu inutile — corrige la double écriture résiduelle dans `daemon.log` |
 | [#36](pr-36-uniformiser-accents-logger-boot.md) | 2026-05-21 | Correction orthographique de 3 messages `logger.*()` dans `main_loop()` : `demarre` → `démarre`, `autorise` → `autorisé`, `Ignore` → `Ignoré` — aucun impact fonctionnel |
+| [#39](pr-39-phase5-buy-market-oco-protection.md) | 2026-05-22 | Phase 5 : suppression `order-list-otoco`, remplacement par `order-market` BUY + `order-list-oco` SELL calculé sur le prix de fill réel (`cummulativeQuoteQty/executedQty`) ; Phase 0 : routine idempotente de rattrapage `protection_failed` (fermeture market ou OCO selon position du prix vs TP) |

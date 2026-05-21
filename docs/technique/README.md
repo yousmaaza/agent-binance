@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique globale du projet | 2026-05-21 |
+| [SPEC.md](SPEC.md) | Spécification technique globale du projet | 2026-05-22 |
 
 ## Diagrammes
 
@@ -31,6 +31,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#23](pr-23-heartbeats-par-phase-jsonl.md) | [M2] Heartbeats par phase en JSONL (logs/cycle_<id>_phases.jsonl) | 2026-05-21 |
 | [#28](pr-28-supprimer-double-handler-loguru-daemon.md) | [REC] Supprimer le double handler loguru sur state/daemon.log | 2026-05-21 |
 | [#36](pr-36-uniformiser-accents-logger-boot.md) | [REC] Uniformiser les accents dans les messages logger de boot | 2026-05-21 |
+| [#39](pr-39-phase5-buy-market-oco-protection.md) | [BUG] Phase 5 — Remplacer OTOCO par BUY MARKET + OCO immédiat | 2026-05-22 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
