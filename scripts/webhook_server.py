@@ -158,7 +158,8 @@ Pour chaque coin, calcule un score sur 10 :
 | Coin dans top_gainers avec momentum positif | +1 |
 
 DÉCISION par coin :
-- Score >= min_signal_score (6) ET signal_4h haussier ET signal_1d haussier → BUY CANDIDATE
+- Score >= min_signal_score (6) ET signal_4h = BUY ou STRONG_BUY → BUY CANDIDATE
+  * Le signal 1d haussier contribue déjà +2 pts au score (non bloqueur) — un 1d bearish réduit le score mais n'empêche pas le trade si le score total ≥ 6 et le 4h est haussier
   * Si coin déjà en portfolio → RENFORCER (si pas déjà une position open dans trade_history)
   * Si coin nouveau → NOUVELLE POSITION
 - Score <= 3 ET coin en portfolio → évaluer si sortie est pertinente (SELL)
@@ -217,23 +218,29 @@ Pour chaque ordre préparé, dans l'ordre de score décroissant :
    binance-cli spot get-account --profile agent-profile
    Si USDC_free < montant_ordre → SKIP + tg("⚠️ Solde insuffisant pour {COIN}")
 
-3. Placer l'ordre BUY LIMIT :
-   binance-cli spot post-order --symbol {COIN}USDC --side BUY --type LIMIT \\
-     --quantity {quantite} --price {prix_entry} --timeInForce GTC --profile agent-profile
-   → Récupère entry_order_id
+3. Placer l'ordre OTOCO (BUY LIMIT qui arme automatiquement TP+SL une fois rempli).
+   Binance Spot interdit de poser un SELL avant de détenir l'actif : OTOCO résout ça en un seul
+   appel atomique, le TP et le SL s'activent dès que le BUY est FILLED.
 
-4. Placer le STOP-LOSS :
-   binance-cli spot post-order --symbol {COIN}USDC --side SELL --type STOP_LOSS_LIMIT \\
-     --quantity {quantite} --price {prix_stop} --stopPrice {prix_stop * 1.002} \\
-     --timeInForce GTC --profile agent-profile
-   → Récupère stop_order_id
+   binance-cli spot order-list-otoco --symbol {COIN}USDC \\
+     --working-type LIMIT --working-side BUY --working-quantity {quantite} \\
+     --working-price {prix_entry} --working-time-in-force GTC \\
+     --pending-side SELL --pending-quantity {quantite} \\
+     --pending-above-type LIMIT_MAKER --pending-above-price {prix_tp} \\
+     --pending-below-type STOP_LOSS_LIMIT --pending-below-price {prix_stop} \\
+       --pending-below-stop-price {prix_stop * 1.002} --pending-below-time-in-force GTC \\
+     --profile agent-profile
 
-5. Placer le TAKE-PROFIT :
-   binance-cli spot post-order --symbol {COIN}USDC --side SELL --type LIMIT_MAKER \\
-     --quantity {quantite} --price {prix_tp} --profile agent-profile
-   → Récupère tp_order_id
+   La réponse contient un `orderListId` et 3 `orderReports`. Récupère depuis ces reports :
+     entry_order_id = orderReports[type=LIMIT].orderId         # le BUY working
+     tp_order_id    = orderReports[type=LIMIT_MAKER].orderId   # le take-profit pending above
+     stop_order_id  = orderReports[type=STOP_LOSS_LIMIT].orderId  # le stop-loss pending below
+   Conserve aussi `order_list_id = orderListId` pour pouvoir annuler les 3 d'un coup si besoin
+   via `binance-cli spot delete-order-list --symbol {COIN}USDC --orderListId {order_list_id}`.
 
-6. Enregistre dans state/trade_history.json (APPEND, ne pas écraser) :
+   Si l'appel échoue (erreur Binance) → SKIP ce coin + tg("⚠️ OTOCO échec {COIN} : {err_msg}")
+
+4. Enregistre dans state/trade_history.json (APPEND, ne pas écraser) :
 import json, uuid
 from datetime import datetime, timezone
 with open("state/trade_history.json") as f:
@@ -252,6 +259,7 @@ history.append({
     "entry_order_id": {entry_order_id},
     "stop_order_id": {stop_order_id},
     "tp_order_id": {tp_order_id},
+    "order_list_id": {order_list_id},
     "status": "open",
     "exit_price": None,
     "exit_date": None,
@@ -261,7 +269,7 @@ history.append({
 with open("state/trade_history.json", "w") as f:
     json.dump(history, f, indent=2)
 
-7. Notification immédiate :
+5. Notification immédiate :
    tg("⚡ BUY {COIN}\\n{quantite} @ {prix_entry:.4g} USDC\\n🛑 Stop : {prix_stop:.4g} (-{risk_usdc:.2f} USDC)\\n🎯 TP : {prix_tp:.4g} (+{risk_usdc*reward_risk_ratio:.2f} USDC)\\nScore : {score}/10")
 
 PHASE 6 — RAPPORT FINAL
@@ -577,6 +585,53 @@ def run_perf():
     send_telegram("\n".join(lines), parse_mode="HTML")
 
 
+def _format_stream_event(line: str):
+    """Transforme une ligne stream-json de Claude Code en log humain (ou None à ignorer)."""
+    try:
+        e = json.loads(line)
+    except Exception:
+        return None
+    ts = datetime.now().strftime("%H:%M:%S")
+    etype = e.get("type")
+
+    if etype == "system" and e.get("subtype") == "init":
+        return f"[{ts}] 🚀 init | model={e.get('model', '?')} | session={e.get('session_id', '?')[:8]}"
+
+    if etype == "assistant":
+        out = []
+        for block in e.get("message", {}).get("content", []):
+            btype = block.get("type")
+            if btype == "text":
+                text = (block.get("text") or "").strip().replace("\n", " ")
+                if text:
+                    out.append(f"[{ts}] 💬 {text[:500]}")
+            elif btype == "tool_use":
+                name = block.get("name", "?")
+                inp = json.dumps(block.get("input") or {}, ensure_ascii=False)
+                out.append(f"[{ts}] 🔧 {name} {inp[:300]}")
+        return "\n".join(out) if out else None
+
+    if etype == "user":
+        out = []
+        for block in e.get("message", {}).get("content", []):
+            if block.get("type") == "tool_result":
+                content = block.get("content")
+                if isinstance(content, list):
+                    content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+                txt = str(content or "").replace("\n", " ")
+                out.append(f"[{ts}] ✅ tool_result → {txt[:300]}")
+        return "\n".join(out) if out else None
+
+    if etype == "result":
+        dur = e.get("duration_ms", 0) / 1000.0
+        cost = e.get("total_cost_usd")
+        final = (e.get("result") or "").replace("\n", " ")[:500]
+        cost_str = f" | cost=${cost:.4f}" if isinstance(cost, (int, float)) else ""
+        return f"[{ts}] 🏁 done | {dur:.1f}s{cost_str}\n{final}"
+
+    return None
+
+
 def run_trade_workflow(trigger="manual"):
     global NEXT_AUTO_TRADE
     if is_locked():
@@ -604,23 +659,33 @@ def run_trade_workflow(trigger="manual"):
     exit_code = -1
 
     try:
-        result = subprocess.run(
-            ["claude", "--print", "--dangerously-skip-permissions", prompt],
-            capture_output=True, text=True, timeout=3600, cwd=PROJECT_DIR
-        )
-        exit_code = result.returncode
+        # Streaming : Claude écrit en stream-json (1 event JSON par ligne) sur stdout. On parse
+        # chaque ligne à la volée et on écrit une version humaine dans stdout_path → `tail -f`
+        # montre les tool calls et résultats au fur et à mesure. Timer kill-after-3600s pour
+        # protéger d'un cycle bloqué.
+        with open(stdout_path, "w", buffering=1) as out_f, open(stderr_path, "w", buffering=1) as err_f:
+            process = subprocess.Popen(
+                ["claude", "--print", "--verbose", "--output-format", "stream-json",
+                 "--dangerously-skip-permissions", prompt],
+                stdout=subprocess.PIPE, stderr=err_f, text=True, cwd=PROJECT_DIR, bufsize=1
+            )
+            timer = threading.Timer(3600, process.kill)
+            timer.start()
+            try:
+                for raw_line in process.stdout:
+                    formatted = _format_stream_event(raw_line.rstrip("\n"))
+                    if formatted:
+                        out_f.write(formatted + "\n")
+                exit_code = process.wait()
+            finally:
+                timer.cancel()
+
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
-
-        # Toujours sauvegarder stdout et stderr séparément (succès OU erreur)
-        with open(stdout_path, "w") as f:
-            f.write(result.stdout or "(vide)")
-        with open(stderr_path, "w") as f:
-            f.write(result.stderr or "(vide)")
-
         logger.info(f"[Cycle {cycle_id}] Terminé exit={exit_code} en {duration:.0f}s")
 
         if exit_code != 0:
-            err_extract = (result.stderr or "")[:400]
+            with open(stderr_path) as f:
+                err_extract = (f.read()[:400] or "(vide)")
             send_telegram(
                 f"❌ <b>Cycle {cycle_id}</b> — erreur (code {exit_code})\n"
                 f"<code>{err_extract}</code>\n\n"
@@ -741,8 +806,10 @@ def main_loop():
     NEXT_AUTO_TRADE = next_4h_slot()
     offset = get_offset()
 
+    claude_mode = "API (pay-per-use)" if os.environ.get("ANTHROPIC_API_KEY") else "abonnement Claude Code"
     print(f"🚀 Bot v2 démarré en mode polling (offset={offset})")
     print(f"   Chat ID autorisé : {CHAT_ID}")
+    print(f"   Subprocess Claude : {claude_mode}")
     print(f"   Prochain cycle auto : {fmt_next()}")
 
     send_telegram(
