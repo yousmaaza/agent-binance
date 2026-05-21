@@ -370,7 +370,7 @@ if _uri:
 - Écris state/agent_lock.json : {"running": false, "started_at": null}"""
 
 # Calculé sur le template BRUT, avant toute substitution — garantit la stabilité entre cycles
-PROMPT_VERSION = hashlib.sha1(_TRADE_PROMPT_TEMPLATE.encode()).hexdigest()[:8]
+PROMPT_VERSION = hashlib.sha1(_TRADE_PROMPT_TEMPLATE.encode(), usedforsecurity=False).hexdigest()[:8]
 
 TRADE_PROMPT = (
     _TRADE_PROMPT_TEMPLATE
