@@ -19,6 +19,8 @@ logs/
 __pycache__/
 *.pyc
 *.pyo
+.venv/
+venv/
 
 # IDE
 .idea/

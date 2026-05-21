@@ -48,14 +48,42 @@ Même en cas d'exit code non-zéro. Ne supprime jamais cette capture — c'est l
 
 L'auto-scheduler vit dans `main_loop()` de `webhook_server.py` — il déclenche `run_trade_workflow(trigger="auto")` au prochain slot 4h. Ne le déplace pas vers cron : la loop de polling Telegram est déjà toujours active, donc autant en profiter pour scheduler.
 
+### 7. Python via venv `.venv` (3.11) et profil shell `git-perso` obligatoires
+
+**Tout** appel à `python`, `pip`, ou installation de package se fait depuis le venv local du projet en Python 3.11. **Tout** appel à `git` ou `gh` qui touche au remote se fait après avoir chargé le profil perso via `git-perso`.
+
+**Création initiale du venv** (si `.venv/` absent) :
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+**Activation à chaque session de travail** :
+```bash
+source .venv/bin/activate
+git-perso   # alias shell : charge l'identité git perso + index pip
+python --version   # doit afficher Python 3.11.x
+```
+
+- Le venv `.venv/` est **gitignoré** — chaque machine recrée le sien.
+- `git-perso` est un alias/script perso installé globalement sur le shell de l'utilisateur (zsh). Il configure `user.email`, `user.name`, le `signingkey` et l'index pip pour que les `git commit`, `git push`, `pip install` partent avec la bonne identité et les bons repos. Sans lui, les commits peuvent être attribués au mauvais compte ou un `pip install` peut résoudre des packages depuis un index pro.
+- Toute commande dans la doc qui dit `python3 -c "..."` doit en pratique être lancée **après** `source .venv/bin/activate` (le binaire `python` du venv pointe alors vers le 3.11 attendu).
+- Le `nohup python3 -u scripts/webhook_server.py ...` du daemon doit pointer vers `.venv/bin/python` (chemin absolu) si lancé en dehors d'un shell où le venv est activé.
+
 ## Workflow type d'une modification
 
+0. **Activer le venv + profil perso** (une fois par session shell) :
+   ```bash
+   source .venv/bin/activate && git-perso
+   ```
 1. **Modifier `scripts/webhook_server.py`** ou `config.json`
-2. **Test syntaxe Python** : `python3 -c "import ast; ast.parse(open('scripts/webhook_server.py').read())"`
+2. **Test syntaxe Python** : `python -c "import ast; ast.parse(open('scripts/webhook_server.py').read())"` (le `python` du venv = 3.11)
 3. **Redémarrer le bot** :
    ```bash
    pkill -f webhook_server.py
-   nohup python3 -u scripts/webhook_server.py >> state/daemon.log 2>&1 &
+   nohup .venv/bin/python -u scripts/webhook_server.py >> state/daemon.log 2>&1 &
    ```
 4. **Vérifier le startup** : `tail -10 state/daemon.log` doit montrer "🚀 Bot v2 démarré" et la ligne "Prochain cycle auto"
 5. **Test fonctionnel** : envoyer `/status` depuis Telegram → réponse en < 5s
@@ -94,4 +122,4 @@ Le prompt demande à Claude d'exécuter du code Python qui appelle `binance-cli`
 
 - L'utilisateur est francophone. Toutes les notifications Telegram et les `explanation_fr` doivent être en français vulgarisé (sans jargon crypto).
 - Le bot est destiné à tourner sur le Mac de l'utilisateur. Un plan de déploiement VPS Hetzner existait précédemment mais n'est pas implémenté — ne pas y revenir sans demande explicite.
-- L'environnement Python du Mac est `anaconda3` (Python 3.11). `pymongo` et `loguru` sont déjà installés globalement.
+- L'environnement Python du projet est un venv `.venv/` (Python 3.11) à la racine. Les dépendances viennent de `requirements.txt` (runtime) et `requirements-dev.txt` (review). Ne plus utiliser le Python global `anaconda3` — il peut diverger en version.

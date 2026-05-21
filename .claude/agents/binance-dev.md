@@ -31,10 +31,29 @@ Tu travailles dans `/Users/yousrimaazaoui/Documents/projets/test-debile/agent-bi
 ### Phase 0 — Sanity checks
 
 1. `pwd` confirme le working dir.
-2. `git status --porcelain` → **doit être vide**. Si non vide → ABORT immédiat avec message « WIP utilisateur détecté, je ne touche à rien — commit/stash d'abord ». Ne PAS toucher aux fichiers existants.
-3. `git branch --show-current` → si différent de `main` → `git checkout main` (uniquement si la branche actuelle n'a pas de WIP, ce qui a été vérifié en 2).
-4. `git fetch origin main && git pull --ff-only origin main` (fast-forward only — jamais de rebase/merge automatique).
-5. `gh auth status` → doit montrer le compte `yousmaaza` authentifié.
+2. **Venv Python 3.11 + profil git perso** (obligatoire avant toute commande Python ou git remote) :
+   ```bash
+   # Crée le venv s'il n'existe pas encore
+   if [ ! -d .venv ]; then
+     python3.11 -m venv .venv
+     source .venv/bin/activate
+     pip install -r requirements.txt
+     [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt
+   else
+     source .venv/bin/activate
+   fi
+   # Profil git perso (alias zsh global)
+   git-perso
+   # Vérifications
+   python --version   # doit afficher Python 3.11.x — sinon ABORT
+   which python       # doit pointer vers .venv/bin/python — sinon ABORT
+   git config user.email   # doit afficher l'email perso — sinon ABORT « git-perso ne semble pas avoir tourné »
+   ```
+   Si `python3.11` n'existe pas sur la machine, ou si `git-perso` n'est pas dans le PATH → ABORT avec le message exact du problème, ne pas tenter de contournement (pas de `pip install` global, pas de `git config --global` à la main).
+3. `git status --porcelain` → **doit être vide**. Si non vide → ABORT immédiat avec message « WIP utilisateur détecté, je ne touche à rien — commit/stash d'abord ». Ne PAS toucher aux fichiers existants.
+4. `git branch --show-current` → si différent de `main` → `git checkout main` (uniquement si la branche actuelle n'a pas de WIP, ce qui a été vérifié en 3).
+5. `git fetch origin main && git pull --ff-only origin main` (fast-forward only — jamais de rebase/merge automatique).
+6. `gh auth status` → doit montrer le compte `yousmaaza` authentifié.
 
 Si une seule de ces étapes échoue → ABORT avec message clair, ne pas continuer.
 
@@ -113,11 +132,12 @@ Si le skill échoue (indisponible, erreur) → ne bloque pas, continue avec les 
 
 ### Phase 5 — Vérification syntaxe
 
+Toujours via le `python` du venv (activé en Phase 0) — **jamais** `python3` global :
 ```bash
-python3 -c "import ast; ast.parse(open('scripts/webhook_server.py').read())"
+python -c "import ast; ast.parse(open('scripts/webhook_server.py').read())"
 ```
 
-Et pour tout autre fichier `.py` modifié.
+Et pour tout autre fichier `.py` modifié. Si `which python` ne pointe pas vers `.venv/bin/python` → reviens en Phase 0, le venv n'est plus activé.
 
 Si échec → retour Phase 4, fix, re-check. Boucle jusqu'à succès. Si après 3 tentatives le code ne parse toujours pas → ABORT, commente sur l'issue avec l'erreur, ne push rien.
 
@@ -235,6 +255,8 @@ Affiche un récap markdown :
 8. **Jamais traiter plusieurs tickets** dans une invocation. UN seul. Si l'utilisateur veut chaîner, il te relance.
 9. **Si erreur réseau / `gh` qui plante** : signaler clairement avec la commande pour rejouer. Ne pas tenter de contourner destructivement.
 10. **`git add` ciblé** : toujours `git add <fichier>` nominal, jamais `git add -A` / `git add .` (risque de capturer `state/`, `logs/`, `.env`).
+11. **Venv obligatoire** : aucun `pip install`, `python …`, `python3 …` n'est lancé sans avoir activé `.venv` au préalable. Aucune installation globale (pas de `pip install --user`, pas de `pip install` sans venv activé).
+12. **`git-perso` obligatoire** : aucun `git commit`, `git push`, `gh pr create`, `gh issue create` n'est lancé avant que `git-perso` ait été appelé dans la session shell courante. Si l'alias n'existe pas → ABORT, ne pas configurer `git config --global` à la main.
 
 ---
 
