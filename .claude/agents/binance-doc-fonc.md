@@ -193,10 +193,17 @@ cp "$PROJET/docs/fonctionnel/<slug>.md" \
 cp "$PROJET/docs/fonctionnel/README.md" \
    /tmp/agent-binance.wiki/Fonctionnel/Home.md
 
+# IMPORTANT : remplacer les chemins relatifs ../visuals/ par des URLs absolus raw.githubusercontent.com
+# GitHub Wiki ne sert pas les fichiers binaires du wiki repo via des chemins relatifs
+RAW_BASE="https://raw.githubusercontent.com/yousmaaza/agent-binance/main/docs/visuals"
+find /tmp/agent-binance.wiki -name "*.md" -not -path '*/.git/*' | while read f; do
+  sed -i '' "s|](../visuals/|]($RAW_BASE/|g" "$f" 2>/dev/null || \
+  sed -i    "s|](../visuals/|]($RAW_BASE/|g" "$f"
+done
+
 cd /tmp/agent-binance.wiki
 git config user.email "claude-bot@github.com"
 git config user.name "claude[bot]"
-git add Fonctionnel/
 git add Fonctionnel/ visuals/
 git diff --cached --quiet || git commit -m "docs(fonc): mirror <slug> depuis docs/ + visuels D2"
 git push origin master 2>/dev/null || git push origin main 2>/dev/null || echo "Push wiki échoué (ignorer)"

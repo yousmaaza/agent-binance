@@ -317,7 +317,7 @@ git clone https://github.com/yousmaaza/agent-binance.wiki.git agent-binance.wiki
 mkdir -p /tmp/agent-binance.wiki/Technique
 mkdir -p /tmp/agent-binance.wiki/visuals
 
-# Copie les SVG et les sources D2 (pour que les chemins ../visuals/ fonctionnent dans le wiki)
+# Copie les SVG et les sources D2
 cp "$PROJET"/docs/visuals/*.svg /tmp/agent-binance.wiki/visuals/ 2>/dev/null || true
 cp "$PROJET"/docs/visuals/*.d2  /tmp/agent-binance.wiki/visuals/ 2>/dev/null || true
 
@@ -328,6 +328,14 @@ cp "$PROJET/docs/technique/SPEC.md" /tmp/agent-binance.wiki/Technique/SPEC.md
 
 # Met à jour la Home wiki avec l'index
 cp "$PROJET/docs/technique/README.md" /tmp/agent-binance.wiki/Technique/Home.md
+
+# IMPORTANT : remplacer les chemins relatifs par des URLs absolus raw.githubusercontent.com
+# GitHub Wiki ne sert pas les fichiers binaires du wiki repo via des chemins relatifs
+RAW_BASE="https://raw.githubusercontent.com/yousmaaza/agent-binance/main/docs/visuals"
+find /tmp/agent-binance.wiki -name "*.md" -not -path '*/.git/*' | while read f; do
+  sed -i '' "s|](../visuals/|]($RAW_BASE/|g" "$f" 2>/dev/null || \
+  sed -i    "s|](../visuals/|]($RAW_BASE/|g" "$f"
+done
 
 cd /tmp/agent-binance.wiki
 git config user.email "claude-bot@github.com"
