@@ -1057,9 +1057,6 @@ def handle_callback(cq):
     action = cq.get("data", "")
     logger.info(f"[Bot] Callback: {action!r}")
 
-    with open(f"{PROJECT_DIR}/state/pending_callback.json", "w") as f:
-        json.dump({"action": action, "timestamp": time.time()}, f)
-
     answer_text = "✅ Confirmé" if action == "CONFIRM" else "❌ Annulé."
     tg_post("answerCallbackQuery", {"callback_query_id": cq["id"], "text": answer_text})
 
