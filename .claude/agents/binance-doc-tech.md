@@ -307,10 +307,18 @@ git push origin main
 ### Miroir GitHub Wiki (best-effort)
 
 ```bash
-PROJET=/Users/yousrimaazaoui/Documents/projets/test-debile/agent-binance
+# PROJET : chemin dynamique (CI ou local)
+PROJET=$(git rev-parse --show-toplevel 2>/dev/null || echo "/Users/yousrimaazaoui/Documents/projets/test-debile/agent-binance")
+
+# Authentification : GH_PAT (CI) ou credentials locaux (local)
+if [ -n "$GH_PAT" ]; then
+  WIKI_URL="https://x-access-token:${GH_PAT}@github.com/yousmaaza/agent-binance.wiki.git"
+else
+  WIKI_URL="https://github.com/yousmaaza/agent-binance.wiki.git"
+fi
 
 cd /tmp && rm -rf agent-binance.wiki
-git clone https://github.com/yousmaaza/agent-binance.wiki.git agent-binance.wiki 2>/dev/null || {
+git clone "$WIKI_URL" agent-binance.wiki 2>/dev/null || {
   echo "Wiki non initialisé — skip miroir"
   exit 0
 }

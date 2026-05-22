@@ -155,7 +155,7 @@ jobs:
         if: steps.review.outputs.has_review == 'true'
         uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           PR_NUMBER: ${{ steps.review.outputs.pr_number }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -175,6 +175,10 @@ jobs:
 
             Si les deux sections contiennent "RAS" ou sont vides → poste un commentaire
             "✅ Aucune recommandation à tickétiser." sur la PR et STOP.
+
+            IMPORTANT : `GH_TOKEN` est déjà initialisé avec un PAT qui a le scope `project`.
+            Toutes les commandes `gh` (issue create, project item-add, project item-edit)
+            utilisent ce token automatiquement — pas besoin de le préfixer.
 
             Pour chaque item :
             1. Anti-doublon obligatoire (`gh issue list --search "<mot-clé>"`)
@@ -198,5 +202,5 @@ jobs:
             ```
           claude_args: |
             --model claude-sonnet-4-6
-            --allowedTools "Bash,Read,Grep"
-            --max-turns 30
+            --allowedTools "Bash,Read,Grep,Write"
+            --max-turns 40

@@ -13,7 +13,7 @@ jobs:
   doc-tech:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout main
@@ -27,6 +27,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
@@ -58,11 +59,16 @@ jobs:
                `git config user.name "claude[bot]"`
                (Ne pas appeler git-perso — c'est un alias local non disponible en CI)
             9. Commit sur main et push.
-            10. Tente le miroir GitHub Wiki (best-effort, pas bloquant).
+            10. Miroir GitHub Wiki via GH_PAT :
+                La variable `$GH_PAT` est disponible dans l'environnement.
+                Utilise-la pour authentifier le clone et le push wiki :
+                `git clone https://x-access-token:${GH_PAT}@github.com/yousmaaza/agent-binance.wiki.git`
+                Pour `PROJET`, utilise `$(git rev-parse --show-toplevel)` (chemin CI dynamique).
+                Suit le bloc "Miroir GitHub Wiki" de l'agent, mais best-effort : ne bloque pas si échec.
 
             Contraintes : jamais de code applicatif, jamais de modification de scripts/
             ou CLAUDE.md, wiki est best-effort.
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
-            --max-turns 40
+            --max-turns 60
