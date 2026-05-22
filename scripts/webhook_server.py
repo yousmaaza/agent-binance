@@ -980,6 +980,7 @@ def run_trade_workflow(trigger="manual"):
                             "timestamp": started_at.isoformat(),
                             "status": "error",
                             "trigger": trigger,
+                            "prompt_version": PROMPT_VERSION,
                             "exit_code": exit_code,
                             "duration_seconds": duration,
                             "log_files": {"stdout": stdout_path, "stderr": stderr_path},
