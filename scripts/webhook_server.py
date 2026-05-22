@@ -261,6 +261,109 @@ try:
 except Exception as _pf_err:
     tg(f"⚠️ Erreur routine rattrapage protection_failed : {_pf_err}")
 
+# --- TRAILING STOP ---
+# Pour chaque position ouverte avec OCO actif, vérifier si le prix a progressé
+# et remonter le stop-loss en conséquence.
+
+_ts_updates = []
+for _t in _history:
+    if _t.get("status") != "open" or not _t.get("order_list_id"):
+        continue
+    _coin = _t["coin"]
+    _entry = float(_t["entry_price"])
+    _cur_stop = float(_t["stop_price"])
+    _cur_tp = float(_t["tp_price"])
+    _trail_dist = _entry - _cur_stop  # distance originale
+
+    # Prix actuel
+    try:
+        _ticker = json.loads(subprocess.check_output(
+            ["binance-cli", "ticker", "--symbol", f"{_coin}USDC"], text=True))
+        _price = float(_ticker["price"])
+    except Exception as _e:
+        tg(f"⚠️ Trailing stop {_coin} : impossible de récupérer le prix ({_e})")
+        continue
+
+    # Nouveau stop candidat
+    _new_stop = round(_price - _trail_dist, 8)
+
+    # Conditions de mise à jour
+    if _new_stop <= _cur_stop + _trail_dist * 0.20:
+        continue  # pas assez de progression
+    if _new_stop >= _price * 0.98:
+        continue  # trop proche du prix actuel
+
+    # Nouveau TP : max(original_tp, current_price + 3 * trail_dist)
+    _new_tp = max(_cur_tp, round(_price + _trail_dist * 3, 8))
+
+    # Annuler l'OCO existant
+    try:
+        subprocess.check_output(
+            ["binance-cli", "cancel-order", "--symbol", f"{_coin}USDC",
+             "--order-list-id", str(_t["order_list_id"])], text=True)
+    except Exception as _e:
+        tg(f"⚠️ Trailing stop {_coin} : échec annulation OCO ({_e}), skip")
+        continue
+
+    # Récupérer lot_size et tick_size pour arrondir
+    try:
+        _info = json.loads(subprocess.check_output(
+            ["binance-cli", "exchange-info", "--symbol", f"{_coin}USDC"], text=True))
+        _filters = {f["filterType"]: f for f in _info.get("filters", [])}
+        _tick = float(_filters.get("PRICE_FILTER", {}).get("tickSize", "0.00000001"))
+        _lot = float(_filters.get("LOT_SIZE", {}).get("stepSize", "0.00000001"))
+        import math
+        def _round_price(p, tick):
+            return round(round(p / tick) * tick, 8)
+        def _round_qty(q, step):
+            return round(math.floor(q / step) * step, 8)
+        _qty = _round_qty(float(_t["quantity"]), _lot)
+        _new_stop_r = _round_price(_new_stop, _tick)
+        _new_tp_r = _round_price(_new_tp, _tick)
+        _stop_limit_r = _round_price(_new_stop * 1.002, _tick)
+    except Exception:
+        _qty = float(_t["quantity"])
+        _new_stop_r, _new_tp_r, _stop_limit_r = _new_stop, _new_tp, round(_new_stop * 1.002, 8)
+
+    # Placer le nouvel OCO
+    try:
+        _oco_raw = subprocess.check_output([
+            "binance-cli", "oco-sell",
+            "--symbol", f"{_coin}USDC",
+            "--quantity", str(_qty),
+            "--above-type", "LIMIT_MAKER",
+            "--above-price", str(_new_tp_r),
+            "--below-type", "STOP_LOSS_LIMIT",
+            "--below-price", str(_new_stop_r),
+            "--below-stop-price", str(_stop_limit_r),
+            "--below-time-in-force", "GTC"
+        ], text=True)
+        _oco = json.loads(_oco_raw)
+        _new_list_id = _oco.get("orderListId")
+        _new_tp_id = next((o["orderId"] for o in _oco.get("orderReports", [])
+                           if o.get("type") == "LIMIT_MAKER"), None)
+        _new_sl_id = next((o["orderId"] for o in _oco.get("orderReports", [])
+                           if o.get("type") == "STOP_LOSS_LIMIT"), None)
+    except Exception as _e:
+        tg(f"⚠️ Trailing stop {_coin} : échec placement nouvel OCO ({_e})")
+        continue
+
+    # Mettre à jour trade_history.json
+    _t["stop_price"] = _new_stop_r
+    _t["tp_price"] = _new_tp_r
+    _t["order_list_id"] = _new_list_id
+    _t["stop_order_id"] = _new_sl_id
+    _t["tp_order_id"] = _new_tp_id
+    with open(f"{PROJECT_DIR}/state/trade_history.json", "w") as _f:
+        json.dump(_history, _f, indent=2)
+
+    _ts_updates.append(f"{_coin}: stop {_cur_stop:.4g}→{_new_stop_r:.4g} | TP {_cur_tp:.4g}→{_new_tp_r:.4g}")
+    tg(f"📈 {_coin} trailing stop remonté\nStop : {_cur_stop:.4g} → {_new_stop_r:.4g}\nTP : {_cur_tp:.4g} → {_new_tp_r:.4g}\nPrix actuel : {_price:.4g}")
+
+if _ts_updates:
+    tg("🔄 Trailing stops mis à jour ce cycle :\n" + "\n".join(_ts_updates))
+# --- FIN TRAILING STOP ---
+
 Compte open_positions = nombre de trades status="open" dans trade_history.json
 → tg("📋 Phase 0 — Vérifications\\nPortfolio : {portfolio_total:.2f} USDC\\nBudget dispo : {budget_disponible:.2f} USDC\\nPositions ouvertes : {open_positions}/{max_open_positions}\\nPnL du jour : {daily_pnl:+.2f} USDC")
 hb(0, summary=f"Portfolio {portfolio_total:.2f} USDC, {open_positions} positions, PnL jour {daily_pnl:+.2f} USDC")
