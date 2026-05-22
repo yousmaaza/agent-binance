@@ -938,6 +938,8 @@ _RESOURCE_ERROR_PATTERNS = [
     "Your account has hit",
     "quota exceeded",
     "This model is currently overloaded",
+    "You've hit your session limit",
+    "session limit",
 ]
 
 
