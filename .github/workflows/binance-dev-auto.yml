@@ -1,0 +1,112 @@
+name: Auto-implement ticket (binance-dev)
+
+on:
+  projects_v2_item:
+    types: [edited]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  implement:
+    # Déclenche uniquement si le champ Status passe à "In progress" (option-id 47fc9ee4)
+    if: |
+      github.event.changes.field_value.field_node_id == 'PVTSSF_lAHOC0Dy0s4BYYhTzhTexN4' &&
+      github.event.changes.field_value.to.single_select_option_id == '47fc9ee4'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve issue number from project item
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          CONTENT_NODE="${{ github.event.projects_v2_item.content_node_id }}"
+
+          # Récupère le numéro et le titre de l'issue via GraphQL
+          RESULT=$(gh api graphql -f query='
+            query($nodeId: ID!) {
+              node(id: $nodeId) {
+                ... on Issue {
+                  number
+                  title
+                  url
+                }
+              }
+            }' -F nodeId="$CONTENT_NODE")
+
+          ISSUE_NUMBER=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['node']['number'])")
+          ISSUE_TITLE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['node']['title'])")
+
+          if [ -z "$ISSUE_NUMBER" ] || [ "$ISSUE_NUMBER" = "None" ]; then
+            echo "❌ Impossible de résoudre l'issue depuis le node $CONTENT_NODE"
+            exit 1
+          fi
+
+          echo "number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+          echo "title=$ISSUE_TITLE" >> $GITHUB_OUTPUT
+          echo "Issue résolue : #$ISSUE_NUMBER — $ISSUE_TITLE"
+
+      - name: Run binance-dev agent
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          ISSUE_TITLE: ${{ steps.issue.outputs.title }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GH_PAT }}
+          prompt: |
+            Tu es l'agent `binance-dev` (lis sa définition complète dans
+            `.claude/agents/binance-dev.md`). Implémente le ticket
+            #${{ steps.issue.outputs.number }} — "${{ steps.issue.outputs.title }}".
+
+            Contexte CI (différences par rapport à l'exécution locale) :
+            - Pas d'alias `git-perso` — utilise directement :
+              `git config user.email "claude-bot@github.com"`
+              `git config user.name "claude[bot]"`
+            - `GH_TOKEN` est déjà exporté avec un PAT ayant les scopes repo+project
+            - Python 3.11 est disponible via `python3` ou `python`
+            - Pas de venv `.venv` à créer — utilise directement le Python système
+            - Pas de `binance-cli` en CI — pour le syntax check, utilise uniquement :
+              `python3 -c "import ast; ast.parse(open('scripts/webhook_server.py').read())"`
+
+            Étapes :
+            1. Lis `.claude/agents/binance-dev.md` en entier.
+            2. Lis l'issue : `gh issue view ${{ steps.issue.outputs.number }} --repo ${{ github.repository }}`
+            3. Lis `CLAUDE.md` et `scripts/webhook_server.py` en entier.
+            4. Crée la branche `feat/issue-${{ steps.issue.outputs.number }}-<slug>` depuis main.
+            5. Implémente le ticket (uniquement `scripts/webhook_server.py` et/ou `config.json`).
+            6. Vérifie la syntaxe Python.
+            7. Commit + push + ouvre une PR liée à l'issue #${{ steps.issue.outputs.number }}.
+            8. Bascule le ticket en "In review" via GraphQL (GH_TOKEN est disponible) :
+               ```bash
+               ITEM_ID="${{ github.event.projects_v2_item.node_id }}"
+               curl -s -X POST https://api.github.com/graphql \
+                 -H "Authorization: Bearer $GH_TOKEN" \
+                 -H "Content-Type: application/json" \
+                 -d "{\"query\":\"mutation { updateProjectV2ItemFieldValue(input: { projectId: \\\"PVT_kwHOC0Dy0s4BYYhT\\\", itemId: \\\"$ITEM_ID\\\", fieldId: \\\"PVTSSF_lAHOC0Dy0s4BYYhTzhTexN4\\\", value: { singleSelectOptionId: \\\"df73e18b\\\" } }) { projectV2Item { id } } }\"}"
+               ```
+
+            Garde-fous inchangés : jamais git add -A, jamais force-push, jamais merger la PR,
+            jamais modifier .env/CLAUDE.md/state/trade_history.json.
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools "Bash,Read,Edit,Write,Grep,Glob"
+            --max-turns 60
