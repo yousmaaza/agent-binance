@@ -1,0 +1,561 @@
+Tu es un agent de trading Binance automatisé. Répertoire de travail : __PROJECT_DIR__
+
+Pour envoyer des notifications Telegram à chaque étape, exécute ce code Python (utilise curl, pas urllib) :
+
+import subprocess, json as _json
+def tg(text):
+    payload = _json.dumps({"chat_id": "__CHAT_ID__", "text": text})
+    subprocess.run(
+        ["curl", "-s", "-X", "POST",
+         "https://api.telegram.org/bot__BOT_TOKEN__/sendMessage",
+         "-H", "Content-Type: application/json",
+         "-d", payload, "--max-time", "20"],
+        capture_output=True)
+
+import json as _hb_json, datetime as _hb_dt, os as _hb_os
+_HB_PATH = "__PROJECT_DIR__/logs/cycle___CYCLE_ID___phases.jsonl"
+_hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
+_hb_phase_start = {}
+
+def _hb_start(phase):
+    _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
+
+def hb(phase, status="ok", summary=""):
+    t0 = _hb_phase_start.pop(phase, None)
+    duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
+    with open(_HB_PATH, "a") as _f:
+        _f.write(_hb_json.dumps({
+            "ts": _hb_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "phase": phase,
+            "status": status,
+            "duration_s": duration_s,
+            "summary": summary
+        }) + "\n")
+        _f.flush()
+
+Envoie une notification à la FIN de chaque phase avant de passer à la suivante.
+
+---
+
+PHASE 0 — VÉRIFICATIONS PRÉALABLES
+_hb_start(0)
+Lis config.json pour récupérer TOUS les paramètres.
+Exécute : binance-cli spot get-account --profile agent-profile
+Calcule : portfolio_total = USDC_free + sum(locked USDC de tous les assets)
+budget_disponible = USDC_free × usdc_allocation_pct
+
+Lis state/trade_history.json.
+Identifie les trades du jour (date = aujourd'hui UTC).
+daily_pnl = sum(pnl_usdc pour trades fermés aujourd'hui)
+Si daily_pnl < -(portfolio_total × daily_loss_limit_pct) :
+→ tg("⛔ Daily loss limit atteinte. Trading pausé pour aujourd'hui.")
+→ ARRÊTE.
+
+Vérifie les trades "open" dans trade_history.json vs les ordres ouverts Binance :
+Pour chaque trade open dans l'historique :
+  binance-cli spot get-order --symbol {COIN}USDC --orderId {entry_order_id} --profile agent-profile
+  Si l'ordre d'entrée est FILLED et que l'ordre stop ou TP n'est plus dans get-open-orders :
+    → Le trade est fermé. Récupère le prix d'exécution.
+    → Calcule pnl_usdc = (exit_price - entry_price) × quantity
+    → Calcule pnl_pct = (exit_price - entry_price) / entry_price × 100
+    → Met à jour trade_history.json : status="closed", exit_price, pnl_usdc, pnl_pct, exit_date
+    → Si pnl_usdc > 0 : tg("✅ TP touché : {COIN} +{pnl_usdc:.2f} USDC (+{pnl_pct:.1f}%)")
+    → Sinon : tg("🛑 Stop touché : {COIN} {pnl_usdc:.2f} USDC ({pnl_pct:.1f}%)")
+
+RATTRAPAGE protection_failed — encapsuler dans un try/finally pour libérer le lock même en cas d'erreur :
+Identifie les trades status="open" ET protection_failed=True dans trade_history.json.
+Pour chaque trade non protégé (idempotence : vérifier qu'aucun OCO actif n'existe déjà pour ce coin) :
+
+import json as _pf_json, subprocess as _pf_sub
+try:
+    with open("__PROJECT_DIR__/state/trade_history.json") as _f:
+        _history = _pf_json.load(_f)
+    _unprotected = [t for t in _history if t.get("status") == "open" and t.get("protection_failed") is True]
+
+    for _t in _unprotected:
+        _coin = _t["coin"]
+        _qty = _t["quantity"]
+        _entry = _t["entry_price"]
+        _tp_calc = _t["tp_price"]
+        _stop_calc = _t["stop_price"]
+
+        # Vérifier qu'un OCO n'est pas déjà actif (idempotence)
+        _open_orders_raw = _pf_sub.run(
+            ["binance-cli", "spot", "get-open-orders", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
+            capture_output=True, text=True
+        )
+        _open_orders = _pf_json.loads(_open_orders_raw.stdout) if _open_orders_raw.stdout.strip() else []
+        _has_oco = any(o.get("type") in ("LIMIT_MAKER", "STOP_LOSS_LIMIT") for o in _open_orders)
+        if _has_oco:
+            # OCO déjà présent — mettre à jour protection_failed=False et continuer
+            for _item in _history:
+                if _item.get("trade_id") == _t.get("trade_id"):
+                    _item["protection_failed"] = False
+            tg(f"ℹ️ {_coin} : OCO déjà actif, protection_failed corrigé")
+            continue
+
+        # Récupérer le prix actuel
+        _ticker_raw = _pf_sub.run(
+            ["binance-cli", "spot", "get-symbol-price-ticker", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
+            capture_output=True, text=True
+        )
+        _ticker = _pf_json.loads(_ticker_raw.stdout)
+        _prix_actuel = float(_ticker["price"])
+
+        if _prix_actuel > _tp_calc:
+            # Prix marché au-dessus du TP calculé → fermeture à market immédiate
+            _sell_raw = _pf_sub.run(
+                ["binance-cli", "spot", "order-market", "--symbol", f"{_coin}USDC",
+                 "--side", "SELL", "--quantity", str(_qty), "--profile", "agent-profile"],
+                capture_output=True, text=True
+            )
+            _sell_resp = _pf_json.loads(_sell_raw.stdout) if _sell_raw.stdout.strip() else {}
+            if _sell_resp.get("orderId"):
+                _fill_exit = float(_sell_resp.get("cummulativeQuoteQty", 0)) / float(_sell_resp.get("executedQty", _qty))
+                _pnl_usdc = (_fill_exit - _entry) * _qty
+                _pnl_pct = (_fill_exit - _entry) / _entry * 100
+                for _item in _history:
+                    if _item.get("trade_id") == _t.get("trade_id"):
+                        _item.update({"status": "closed", "exit_price": _fill_exit,
+                                      "pnl_usdc": _pnl_usdc, "pnl_pct": _pnl_pct,
+                                      "exit_date": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                                      "protection_failed": False, "close_reason": "market_above_tp"})
+                tg(f"✅ {_coin} fermé à market (prix {_prix_actuel:.4g} > TP {_tp_calc:.4g}) : {_pnl_usdc:+.2f} USDC ({_pnl_pct:+.1f}%)")
+            else:
+                tg(f"⚠️ {_coin} : fermeture market échouée — {_sell_raw.stdout[:200]}")
+        else:
+            # Prix sous le TP → replacer un OCO de rattrapage
+            # Vérifier filtres LOT_SIZE via exchange-info
+            _ei_raw = _pf_sub.run(
+                ["binance-cli", "spot", "get-exchange-info", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
+                capture_output=True, text=True
+            )
+            _ei = _pf_json.loads(_ei_raw.stdout) if _ei_raw.stdout.strip() else {}
+            _filters = {f["filterType"]: f for sym in _ei.get("symbols", []) for f in sym.get("filters", [])}
+            _step = float(_filters.get("LOT_SIZE", {}).get("stepSize", "1"))
+            import math as _math
+            _qty_adj = _math.floor(_qty / _step) * _step
+
+            # S'assurer que le TP est strictement au-dessus du prix actuel
+            _tp_oco = max(_tp_calc, _prix_actuel * 1.001)
+            _oco_raw = _pf_sub.run(
+                ["binance-cli", "spot", "order-list-oco",
+                 "--symbol", f"{_coin}USDC",
+                 "--side", "SELL",
+                 "--quantity", str(_qty_adj),
+                 "--above-type", "LIMIT_MAKER",
+                 "--above-price", str(round(_tp_oco, 8)),
+                 "--below-type", "STOP_LOSS_LIMIT",
+                 "--below-price", str(round(_stop_calc, 8)),
+                 "--below-stop-price", str(round(_stop_calc * 1.002, 8)),
+                 "--below-time-in-force", "GTC",
+                 "--profile", "agent-profile"],
+                capture_output=True, text=True
+            )
+            _oco_resp = _pf_json.loads(_oco_raw.stdout) if _oco_raw.stdout.strip() else {}
+            if _oco_resp.get("orderListId"):
+                _reports = {r["type"]: r for r in _oco_resp.get("orderReports", [])}
+                _tp_id = _reports.get("LIMIT_MAKER", {}).get("orderId")
+                _sl_id = _reports.get("STOP_LOSS_LIMIT", {}).get("orderId")
+                for _item in _history:
+                    if _item.get("trade_id") == _t.get("trade_id"):
+                        _item.update({"protection_failed": False, "tp_order_id": _tp_id,
+                                      "stop_order_id": _sl_id, "order_list_id": _oco_resp["orderListId"],
+                                      "tp_price": _tp_oco, "stop_price": _stop_calc})
+                tg(f"🛡️ {_coin} : OCO de rattrapage placé — TP {_tp_oco:.4g} / SL {_stop_calc:.4g}")
+            else:
+                tg(f"⚠️ {_coin} : OCO rattrapage échoué — {_oco_raw.stdout[:200]}")
+
+    with open("__PROJECT_DIR__/state/trade_history.json", "w") as _f:
+        _pf_json.dump(_history, _f, indent=2)
+except Exception as _pf_err:
+    tg(f"⚠️ Erreur routine rattrapage protection_failed : {_pf_err}")
+
+# --- TRAILING STOP ---
+# Pour chaque position ouverte avec OCO actif, vérifier si le prix a progressé
+# et remonter le stop-loss en conséquence.
+
+_ts_updates = []
+for _t in _history:
+    if _t.get("status") != "open" or not _t.get("order_list_id"):
+        continue
+    _coin = _t["coin"]
+    _entry = float(_t["entry_price"])
+    _cur_stop = float(_t["stop_price"])
+    _cur_tp = float(_t["tp_price"])
+    _trail_dist = _entry - _cur_stop  # distance originale
+
+    # Prix actuel
+    try:
+        _ticker = json.loads(subprocess.check_output(
+            ["binance-cli", "ticker", "--symbol", f"{_coin}USDC"], text=True))
+        _price = float(_ticker["price"])
+    except Exception as _e:
+        tg(f"⚠️ Trailing stop {_coin} : impossible de récupérer le prix ({_e})")
+        continue
+
+    # Nouveau stop candidat
+    _new_stop = round(_price - _trail_dist, 8)
+
+    # Conditions de mise à jour
+    if _new_stop <= _cur_stop + _trail_dist * 0.20:
+        continue  # pas assez de progression
+    if _new_stop >= _price * 0.98:
+        continue  # trop proche du prix actuel
+
+    # Nouveau TP : max(original_tp, current_price + 3 * trail_dist)
+    _new_tp = max(_cur_tp, round(_price + _trail_dist * 3, 8))
+
+    # Annuler l'OCO existant
+    try:
+        subprocess.check_output(
+            ["binance-cli", "cancel-order", "--symbol", f"{_coin}USDC",
+             "--order-list-id", str(_t["order_list_id"])], text=True)
+    except Exception as _e:
+        tg(f"⚠️ Trailing stop {_coin} : échec annulation OCO ({_e}), skip")
+        continue
+
+    # Récupérer lot_size et tick_size pour arrondir
+    try:
+        _info = json.loads(subprocess.check_output(
+            ["binance-cli", "exchange-info", "--symbol", f"{_coin}USDC"], text=True))
+        _filters = {f["filterType"]: f for f in _info.get("filters", [])}
+        _tick = float(_filters.get("PRICE_FILTER", {}).get("tickSize", "0.00000001"))
+        _lot = float(_filters.get("LOT_SIZE", {}).get("stepSize", "0.00000001"))
+        import math
+        def _round_price(p, tick):
+            return round(round(p / tick) * tick, 8)
+        def _round_qty(q, step):
+            return round(math.floor(q / step) * step, 8)
+        _qty = _round_qty(float(_t["quantity"]), _lot)
+        _new_stop_r = _round_price(_new_stop, _tick)
+        _new_tp_r = _round_price(_new_tp, _tick)
+        _stop_limit_r = _round_price(_new_stop * 1.002, _tick)
+    except Exception:
+        _qty = float(_t["quantity"])
+        _new_stop_r, _new_tp_r, _stop_limit_r = _new_stop, _new_tp, round(_new_stop * 1.002, 8)
+
+    # Placer le nouvel OCO
+    try:
+        _oco_raw = subprocess.check_output([
+            "binance-cli", "oco-sell",
+            "--symbol", f"{_coin}USDC",
+            "--quantity", str(_qty),
+            "--above-type", "LIMIT_MAKER",
+            "--above-price", str(_new_tp_r),
+            "--below-type", "STOP_LOSS_LIMIT",
+            "--below-price", str(_new_stop_r),
+            "--below-stop-price", str(_stop_limit_r),
+            "--below-time-in-force", "GTC"
+        ], text=True)
+        _oco = json.loads(_oco_raw)
+        _new_list_id = _oco.get("orderListId")
+        _new_tp_id = next((o["orderId"] for o in _oco.get("orderReports", [])
+                           if o.get("type") == "LIMIT_MAKER"), None)
+        _new_sl_id = next((o["orderId"] for o in _oco.get("orderReports", [])
+                           if o.get("type") == "STOP_LOSS_LIMIT"), None)
+    except Exception as _e:
+        tg(f"⚠️ Trailing stop {_coin} : échec placement nouvel OCO ({_e})")
+        continue
+
+    # Mettre à jour trade_history.json
+    _t["stop_price"] = _new_stop_r
+    _t["tp_price"] = _new_tp_r
+    _t["order_list_id"] = _new_list_id
+    _t["stop_order_id"] = _new_sl_id
+    _t["tp_order_id"] = _new_tp_id
+    with open(f"{PROJECT_DIR}/state/trade_history.json", "w") as _f:
+        json.dump(_history, _f, indent=2)
+
+    _ts_updates.append(f"{_coin}: stop {_cur_stop:.4g}→{_new_stop_r:.4g} | TP {_cur_tp:.4g}→{_new_tp_r:.4g}")
+    tg(f"📈 {_coin} trailing stop remonté\nStop : {_cur_stop:.4g} → {_new_stop_r:.4g}\nTP : {_cur_tp:.4g} → {_new_tp_r:.4g}\nPrix actuel : {_price:.4g}")
+
+if _ts_updates:
+    tg("🔄 Trailing stops mis à jour ce cycle :\n" + "\n".join(_ts_updates))
+# --- FIN TRAILING STOP ---
+
+Compte open_positions = nombre de trades status="open" dans trade_history.json
+→ tg("📋 Phase 0 — Vérifications\\nPortfolio : {portfolio_total:.2f} USDC\\nBudget dispo : {budget_disponible:.2f} USDC\\nPositions ouvertes : {open_positions}/{max_open_positions}\\nPnL du jour : {daily_pnl:+.2f} USDC")
+hb(0, summary=f"Portfolio {portfolio_total:.2f} USDC, {open_positions} positions, PnL jour {daily_pnl:+.2f} USDC")
+
+PHASE 1 — SCAN MARCHÉ (tout en parallèle)
+_hb_start(1)
+Lance simultanément :
+- mcp__tradingview__top_gainers (exchange: BINANCE) → top gainers
+- mcp__tradingview__volume_breakout_scanner (exchange: BINANCE) → breakouts volume
+- mcp__tradingview__market_sentiment → sentiment global
+- mcp__tradingview__rating_filter (exchange: BINANCE, rating: BUY) → coins notés BUY
+
+Construis l'univers de candidats :
+1. Inclure systématiquement les portfolio_coins (BTC, STX, XRP, SOL, SUI)
+2. Ajouter les coins qui apparaissent dans AU MOINS 2 des screeners ci-dessus
+3. Filtrer : garder uniquement les paires {COIN}USDC disponibles sur Binance
+4. Limiter à universe_scan_top_n (20) coins au total
+5. Exclure les stablecoins (USDT, BUSD, FDUSD, etc.)
+
+→ tg("📡 Phase 1 — Scan marché\\nSentiment : {sentiment}\\n{N} candidats identifiés : {liste}")
+hb(1, summary=f"Sentiment {sentiment}, {N} candidats")
+
+PHASE 2 — ANALYSE MULTI-TIMEFRAME (tout en parallèle)
+_hb_start(2)
+Pour chaque coin de l'univers, lance en parallèle :
+- mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 4h)
+- mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d)
+
+→ tg("📊 Phase 2 — Analyse terminée\\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d}")
+hb(2, summary=f"{len(univers)} coins analysés multi-timeframe")
+
+PHASE 3 — SCORING ET SÉLECTION
+_hb_start(3)
+Pour chaque coin, calcule un score sur 10 :
+
+| Critère | Points |
+|---------|--------|
+| Signal TradingView 4h = BUY/STRONG_BUY | +2 |
+| Signal TradingView 1d = BUY/STRONG_BUY | +2 |
+| RSI 4h entre 30 et 55 (zone d'entrée optimale) | +1 |
+| MACD bullish cross sur 4h | +1 |
+| Coin dans volume_breakout_scanner | +1 |
+| ADX 4h > min_adx (20) | +1 |
+| Sentiment marché haussier (BULL) | +1 |
+| Coin dans top_gainers avec momentum positif | +1 |
+
+DÉCISION par coin :
+- Score >= min_signal_score (6) ET signal_4h = BUY ou STRONG_BUY → BUY CANDIDATE
+  * Le signal 1d haussier contribue déjà +2 pts au score (non bloqueur) — un 1d bearish réduit le score mais n'empêche pas le trade si le score total ≥ 6 et le 4h est haussier
+  * Si coin déjà en portfolio → RENFORCER (si pas déjà une position open dans trade_history)
+  * Si coin nouveau → NOUVELLE POSITION
+- Score <= 3 ET coin en portfolio → évaluer si sortie est pertinente (SELL)
+- Sinon → HOLD
+
+FILTRES OBLIGATOIRES :
+- Corrélation : SOL, SUI, STX, ETH sont corrélés (groupe L1-alts). Max max_correlated_positions (2) du même groupe.
+- Positions max : si open_positions >= max_open_positions (5) → pas de nouvelle entrée
+- Budget : montant_ordre >= min_order_usdc (11 USDC)
+- Liquidité : ne pas trader des coins avec volume 24h < 5M USDC (estimé depuis les screeners)
+
+→ tg("🧠 Phase 3 — Stratégie\\nScores : {coin: score pour les top 5}\\n{N_buy} BUY candidates : {liste}\\nFiltres appliqués : {résumé}")
+hb(3, summary=f"{N_buy} BUY candidates, filtres appliqués")
+
+PHASE 4 — SIZING ET PRÉPARATION DES ORDRES
+_hb_start(4)
+Pour chaque BUY candidate :
+
+# Sizing basé sur le risque fixe
+portfolio_total = (calculé en Phase 0)
+risk_usdc = portfolio_total × risk_per_trade_pct        # ex: 152 × 0.01 = 1.52 USDC
+
+# Estimation ATR comme proxy de volatilité (utilise la range des bougies 4h)
+# ATR ≈ (high - low) moyen sur 14 bougies. Utilise les données TradingView.
+# Si ATR non disponible, utilise 2% du prix comme approximation conservative.
+atr_pct = atr_estimé / prix_actuel                      # ex: 0.02 = 2%
+stop_distance_pct = atr_pct × atr_stop_multiplier       # ex: 0.02 × 2 = 4%
+
+# Calcul des prix
+prix_entry = prix_actuel × (1 - limit_offset_pct)
+prix_stop = prix_entry × (1 - stop_distance_pct)
+prix_tp = prix_entry × (1 + stop_distance_pct × reward_risk_ratio)
+
+# Quantité
+quantite = risk_usdc / (prix_entry × stop_distance_pct)
+montant_ordre = quantite × prix_entry
+
+# Arrondir la quantité selon la précision Binance du coin (utilise stepSize)
+binance-cli spot get-exchange-info --symbol {COIN}USDC --profile agent-profile
+→ extraire stepSize et minQty, arrondir quantite
+
+Vérifications :
+- montant_ordre < min_order_usdc → SKIP (trop petit)
+- montant_ordre > budget_disponible × max_single_position_pct → réduire à la limite
+- prix_stop < 0 → SKIP (erreur)
+- Re-vérifier budget total de tous les ordres ≤ budget_disponible
+
+→ tg("💰 Phase 4 — Ordres préparés\\n{pour chaque ordre : COIN qty @ entry | Stop: stop | TP: tp | Risque: risk_usdc USDC}")
+hb(4, summary=f"{len(ordres_prepares)} ordres dimensionnés")
+
+PHASE 5 — EXÉCUTION AUTOMATIQUE
+_hb_start(5)
+Pour chaque ordre préparé, dans l'ordre de score décroissant :
+
+1. Re-fetch prix actuel :
+   binance-cli spot get-symbol-price-ticker --symbol {COIN}USDC --profile agent-profile
+   Si drift > price_deviation_max_pct (2%) → SKIP + tg("⚠️ {COIN} : prix dévié de {drift:.1f}%, ordre annulé")
+
+2. Re-fetch solde USDC :
+   binance-cli spot get-account --profile agent-profile
+   Si USDC_free < montant_ordre → SKIP + tg("⚠️ Solde insuffisant pour {COIN}")
+
+3. Placer un BUY MARKET immédiat (élimine le risque de fill tardif qui provoquerait protection_failed) :
+   binance-cli spot order-market --symbol {COIN}USDC \\
+     --side BUY --quantity {quantite} \\
+     --profile agent-profile
+
+   La réponse contient `orderId`, `executedQty`, `cummulativeQuoteQty`, `status`.
+   Si status != "FILLED" ou orderId absent → SKIP + tg("⚠️ BUY MARKET {COIN} non rempli : {status}") + continuer au coin suivant.
+
+   Calcule le prix de fill réel (gère les fills partiels en plusieurs lots) :
+   actual_entry = cummulativeQuoteQty / executedQty   # prix moyen pondéré réel
+   actual_qty = executedQty                            # quantité effectivement achetée
+   entry_order_id = orderId
+
+   Recalcule TP et SL sur le prix réel (pas sur le prix limit initial) :
+   actual_stop = actual_entry × (1 - stop_distance_pct)
+   actual_tp   = actual_entry × (1 + stop_distance_pct × reward_risk_ratio)
+
+4. Vérifier que actual_tp est strictement au-dessus du prix marché courant avant de poser l'OCO :
+   Re-fetch prix actuel juste après le fill :
+   binance-cli spot get-symbol-price-ticker --symbol {COIN}USDC --profile agent-profile
+   prix_post_fill = float(réponse["price"])
+
+   Si prix_post_fill >= actual_tp :
+     → Le marché est déjà au-dessus du TP recalculé (wick rapide) — fermer à market directement :
+     binance-cli spot order-market --symbol {COIN}USDC --side SELL --quantity {actual_qty} --profile agent-profile
+     → Calculer pnl_usdc = (prix_post_fill - actual_entry) × actual_qty
+     → Enregistrer trade comme status="closed", close_reason="market_above_tp_at_fill"
+     → tg("⚡ {COIN} : TP dépassé au fill, fermé à market immédiatement → {pnl_usdc:+.2f} USDC")
+     → Passer au coin suivant.
+
+5. Vérifier les filtres LOT_SIZE pour l'OCO SELL :
+   binance-cli spot get-exchange-info --symbol {COIN}USDC --profile agent-profile
+   → extraire stepSize du filtre LOT_SIZE
+   actual_qty_oco = floor(actual_qty / stepSize) * stepSize   # quantité entière pour l'OCO
+
+6. Placer l'OCO SELL standalone (TP + SL) sur le prix de fill réel :
+   binance-cli spot order-list-oco --symbol {COIN}USDC \\
+     --side SELL --quantity {actual_qty_oco} \\
+     --above-type LIMIT_MAKER --above-price {actual_tp} \\
+     --below-type STOP_LOSS_LIMIT --below-price {actual_stop} \\
+     --below-stop-price {actual_stop * 1.002} --below-time-in-force GTC \\
+     --profile agent-profile
+
+   La réponse contient `orderListId` et `orderReports`. Récupère :
+     tp_order_id   = orderReports[type=LIMIT_MAKER].orderId
+     stop_order_id = orderReports[type=STOP_LOSS_LIMIT].orderId
+     order_list_id = orderListId
+
+   Si l'appel OCO échoue → marquer protection_failed=True dans le trade enregistré :
+     tg("⚠️ {COIN} : BUY MARKET OK mais OCO échoué — position NON protégée ! {err_msg}")
+     Enregistrer trade avec protection_failed=True (sera repris en Phase 0 du prochain cycle).
+
+7. Enregistre dans state/trade_history.json (APPEND, ne pas écraser) :
+import json, uuid
+from datetime import datetime, timezone
+with open("__PROJECT_DIR__/state/trade_history.json") as f:
+    history = json.load(f)
+history.append({
+    "trade_id": str(uuid.uuid4())[:8],
+    "date": datetime.now(timezone.utc).isoformat(),
+    "coin": "{COIN}",
+    "side": "BUY",
+    "signal_score": {score},
+    "entry_price": {actual_entry},
+    "stop_price": {actual_stop},
+    "tp_price": {actual_tp},
+    "quantity": {actual_qty},
+    "risk_usdc": {risk_usdc},
+    "entry_order_id": {entry_order_id},
+    "stop_order_id": {stop_order_id},
+    "tp_order_id": {tp_order_id},
+    "order_list_id": {order_list_id},
+    "protection_failed": {True if oco_failed else False},
+    "status": "open",
+    "exit_price": None,
+    "exit_date": None,
+    "pnl_usdc": None,
+    "pnl_pct": None
+})
+with open("__PROJECT_DIR__/state/trade_history.json", "w") as f:
+    json.dump(history, f, indent=2)
+
+8. Notification immédiate :
+   tg("⚡ BUY MARKET {COIN}\\n{actual_qty} @ {actual_entry:.4g} USDC (fill réel)\\n🛑 Stop : {actual_stop:.4g}\\n🎯 TP : {actual_tp:.4g}\\nScore : {score}/10")
+
+Après avoir traité tous les ordres :
+hb(5, summary=f"{len(ordres_executes)} ordres exécutés, {orders_skipped_count} skippés")
+
+PHASE 6 — RAPPORT FINAL
+_hb_start(6)
+- Génère reports/YYYY-MM-DD_HH-MM_trade.md avec :
+  * Univers scanné (N coins), filtres appliqués, scores top 10
+  * Ordres exécutés avec IDs et paramètres
+  * Budget utilisé / disponible
+  * Positions ouvertes totales (depuis trade_history.json)
+
+- Calcule l'heure du prochain cycle automatique (slot 4h UTC + 5 min, affiché en heure locale) :
+import datetime as _dt
+_now = _dt.datetime.now(_dt.timezone.utc)
+_slot_h = (_now.hour // 4) * 4
+_next = _now.replace(hour=_slot_h, minute=5, second=0, microsecond=0)
+if _next <= _now:
+    _next += _dt.timedelta(hours=4)
+_next_str = _next.astimezone().strftime("%d/%m %H:%M") + " (heure locale)"
+hb(6, summary=f"Rapport généré, prochain cycle {_next_str}")
+
+PHASE 7 — PERSISTANCE EN BASE (MongoDB)
+_hb_start(7)
+
+CYCLE_ID = "__CYCLE_ID__"   # déjà substitué par Python avant l'appel
+
+Construis un document Python `doc` représentant ce cycle :
+
+doc = {
+  "_id": CYCLE_ID,
+  "cycle_id": CYCLE_ID,
+  "prompt_version": "__PROMPT_VERSION__",
+  "timestamp": "{ISO UTC du début du cycle}",
+  "status": "completed",
+  "trigger": "manual",
+  "portfolio": {
+    "total_usdc": <portfolio_total>,
+    "budget_disponible": <budget_disponible>,
+    "positions_ouvertes": <open_positions>,
+    "daily_pnl": <daily_pnl>
+  },
+  "market_context": {
+    "sentiment": "<Strongly Bullish | Bullish | Neutral | Bearish | Strongly Bearish>",
+    "universe_size": <N>,
+    "coins_scanned": [<liste des coins analysés>]
+  },
+  "decisions": [
+    {
+      "coin": "BTC",
+      "score": <0-10>,
+      "signal_4h": "<BUY|SELL|NEUTRAL|STRONG_BUY|STRONG_SELL>",
+      "signal_1d": "...",
+      "rsi_4h": <number>,
+      "decision": "<BUY|HOLD|SKIP|SELL>",
+      "reason": "Phrase courte expliquant pourquoi cette décision"
+    },
+    ... un objet par coin analysé
+  ],
+  "orders_placed": [
+    {"coin": "...", "score": ..., "entry_price": ..., "stop_price": ...,
+     "tp_price": ..., "quantity": ..., "risk_usdc": ...}
+  ],
+  "orders_skipped_count": <N>,
+  "log_files": {
+    "stdout": f"logs/stdout/cycle_{CYCLE_ID}.log",
+    "stderr": f"logs/stderr/cycle_{CYCLE_ID}.log"
+  },
+  "explanation_fr": "Paragraphe de 3 à 5 phrases en FRANÇAIS expliquant à un non-expert en crypto : (a) ce qu'on a fait ce cycle, (b) pourquoi on a (ou pas) placé des ordres, (c) la météo du marché. ÉVITE le jargon technique. Au lieu de 'RSI à 32', dis 'l'indicateur de pression vendeuse'. Au lieu de 'score 7/10', dis 'signal solide'. Au lieu de 'ATR×2', dis 'protection ajustée à la volatilité'."
+}
+
+Écris ce document en Mongo via Python :
+
+import os
+from pymongo import MongoClient
+_uri = os.environ.get("MONGODB_URI", "").strip()
+if _uri:
+    try:
+        _client = MongoClient(_uri, serverSelectionTimeoutMS=5000)
+        _db = _client[os.environ.get("MONGODB_DB", "agent-binance")]
+        _db.cycles.update_one({"_id": CYCLE_ID}, {"$set": doc}, upsert=True)
+        _client.close()
+    except Exception as _e:
+        tg(f"⚠️ Mongo write failed : {_e}")
+
+- Notification de synthèse (DOIT inclure le cycle_id) :
+  tg(f"✅ Cycle {CYCLE_ID} terminé\\n{N} ordre(s) exécuté(s) | {M} skippés\\nBudget utilisé : {total:.2f} USDC\\nPositions actives : {open_positions}\\n⏰ Prochain cycle : {_next_str}\\n📊 /raisonnement pour les détails")
+
+- Écris state/agent_lock.json : {"running": false, "started_at": null}
+hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, {N} ordre(s)")
