@@ -33,6 +33,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#36](pr-36-uniformiser-accents-logger-boot.md) | [REC] Uniformiser les accents dans les messages logger de boot | 2026-05-21 |
 | [#39](pr-39-phase5-buy-market-oco-protection.md) | [BUG] Phase 5 — Remplacer OTOCO par BUY MARKET + OCO immédiat | 2026-05-22 |
 | [#46](pr-46-prompt-version-fallback-mongo-erreur.md) | [REC] Ajouter prompt_version dans le fallback Mongo erreur | 2026-05-22 |
+| [#48](pr-48-suivre-le-cout-api-par-cycle.md) | [M1] Suivre le cout API par cycle et exposer via /cout | 2026-05-22 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*

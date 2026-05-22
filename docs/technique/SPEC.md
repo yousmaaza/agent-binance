@@ -26,6 +26,7 @@ main_loop()
 │       ├── /status   → run_status()
 │       ├── /perf     → run_perf()
 │       ├── /raisonnement → run_raisonnement()
+│       ├── /cout     → handle_cout()
 │       └── /reset    → release_lock()
 └── Auto-scheduler (slots 4h UTC : 00:05, 04:05, 08:05, 12:05, 16:05, 20:05)
     └── run_trade_workflow(trigger="auto")   [threading.Thread daemon]
@@ -140,8 +141,9 @@ webhook_server.py (process principal)
 | `_read_last_jsonl_phase()` | :690 | Lit la dernière ligne valide du fichier `cycle_<id>_phases.jsonl` — utilisé par le watchdog pour connaître la dernière phase complétée |
 | `_watchdog_thread()` | :710 | Thread daemon qui surveille le cycle actif via le JSONL des heartbeats : alerte Telegram si aucune phase ne progresse pendant > 15 min |
 | `PROMPT_VERSION` _(constante module)_ | :410 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
-| `run_trade_workflow()` | :752 | Orchestre un cycle complet : lock → subprocess Claude stream-json → capture logs → fallback Mongo en cas d'erreur → unlock ; injecte `__CYCLE_ID__`, `__PROMPT_VERSION__` et `trigger` dans le prompt |
+| `run_trade_workflow()` | :893 | Orchestre un cycle complet : lock → subprocess Claude stream-json → capture logs → extraction coût API via regex sur stdout → update Mongo `api_cost_usd` → fallback Mongo en cas d'erreur → unlock ; injecte `__CYCLE_ID__`, `__PROMPT_VERSION__` et `trigger` dans le prompt |
 | `run_raisonnement()` | :864 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
+| `handle_cout()` | :1078 | Handler `/cout` : pipeline d'agrégation MongoDB (total cumulé, moyenne, dernier cycle, top 5 des cycles les plus chers) — silencieux si MongoDB absent |
 | `handle_callback()` | :912 | Gère les réponses aux inline keyboards Telegram (CONFIRM/CANCEL → `pending_callback.json`) |
 | `get_offset()` | :927 | Lit le dernier offset Telegram depuis `telegram_offset.json` (persistance entre redémarrages) |
 | `save_offset()` | :935 | Persiste le nouvel offset Telegram dans `telegram_offset.json` |
@@ -157,8 +159,9 @@ webhook_server.py (process principal)
 | `/status` | `run_status()` | Affiche le portefeuille Binance actuel (soldes, positions lockées, ordres ouverts, trades agent actifs) et l'heure du prochain cycle |
 | `/perf` | `run_perf()` | Affiche les statistiques de performance sur les trades fermés : win rate, expectancy, profit factor, Sharpe annualisé, max drawdown, p-value (t-test) |
 | `/raisonnement` | `run_raisonnement()` | Affiche l'explication vulgarisée en français du dernier cycle (lue depuis MongoDB, champ `explanation_fr`) |
+| `/cout` | `handle_cout()` | Affiche les métriques de coût API Claude : total cumulé, coût moyen par cycle, dernier cycle, top 5 des cycles les plus chers — nécessite MongoDB |
 | `/reset` | `release_lock()` (inline) | Réinitialise le mutex `agent_lock.json` si un cycle est resté bloqué (`running: true`) |
-| _(toute autre commande)_ | `send_telegram()` (inline) | Renvoie la liste des commandes disponibles |
+| _(toute autre commande)_ | `send_telegram()` (inline) | Renvoie la liste des commandes disponibles (inclut `/cout`) |
 
 ---
 
@@ -258,3 +261,4 @@ webhook_server.py (process principal)
 | [#36](pr-36-uniformiser-accents-logger-boot.md) | 2026-05-21 | Correction orthographique de 3 messages `logger.*()` dans `main_loop()` : `demarre` → `démarre`, `autorise` → `autorisé`, `Ignore` → `Ignoré` — aucun impact fonctionnel |
 | [#39](pr-39-phase5-buy-market-oco-protection.md) | 2026-05-22 | Phase 5 : suppression `order-list-otoco`, remplacement par `order-market` BUY + `order-list-oco` SELL calculé sur le prix de fill réel (`cummulativeQuoteQty/executedQty`) ; Phase 0 : routine idempotente de rattrapage `protection_failed` (fermeture market ou OCO selon position du prix vs TP) |
 | [#46](pr-46-prompt-version-fallback-mongo-erreur.md) | 2026-05-22 | Ajout de `prompt_version` dans le `$set` du fallback Mongo `status: "error"` de `run_trade_workflow()` — tous les documents `cycles` sont désormais filtrables par version de prompt, y compris les cycles échoués |
+| [#48](pr-48-suivre-le-cout-api-par-cycle.md) | 2026-05-22 | Extraction du coût API Claude par cycle (regex sur stdout) → champ `api_cost_usd` dans Mongo ; nouvelle commande `/cout` (total, moyenne, top 5) |
