@@ -137,6 +137,7 @@ webhook_server.py (process principal)
 | `run_perf()` | :548 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
 | `_hb_start(phase)` | TRADE_PROMPT:111 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
 | `hb(phase, status, summary)` | TRADE_PROMPT:114 | Clôture une phase (dans le sous-processus Claude) — calcule la durée, écrit une ligne JSON dans `logs/cycle_<id>_phases.jsonl`, flush immédiat |
+| Bloc trailing stop _(Phase 0)_ | TRADE_PROMPT:264–365 | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec OCO actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule l'OCO existant et replace un nouvel OCO avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
 | `_format_stream_event()` | :643 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
 | `_RESOURCE_ERROR_PATTERNS` _(constante module)_ | :831 | Liste des 6 patterns de chaîne indiquant une erreur de ressource Claude (credit insuffisant, rate_limit_error, overloaded_error, etc.) — utilisée par `_is_resource_error()` |
 | `_is_resource_error()` | :841 | Lit le fichier `logs/stdout/cycle_*.log` et retourne `True` si un pattern de ressource y est détecté — gère silencieusement les erreurs de lecture |
@@ -255,6 +256,7 @@ webhook_server.py (process principal)
 | v2 — 790b83a | 2025-xx-xx | Ajout capture raisonnement : loguru + MongoDB + commande `/raisonnement` |
 | v2 — 2bf48c0 | 2025-xx-xx | Mise à jour README et ajout CLAUDE.md (contraintes non négociables) |
 | Spec initiale | 2026-05-21 | Génération initiale de SPEC.md via `binance-doc-tech` one-shot |
+| [#56](pr-56-trailing-stop-remonter-stop-loss.md) | 2026-05-22 | Ajout trailing stop dans Phase 0 du TRADE_PROMPT : remonte le stop-loss et recalcule le TP si le prix a progressé de plus de 20% de la distance originale, avec annulation/replacement de l'OCO |
 | [#17](pr-17-rotation-loguru-daemon-log.md) | 2026-05-21 | Rotation loguru activée sur `state/daemon.log` (10 MB, 5 fichiers) ; remplacement des `print()` par loguru ; suppression du handler stderr par défaut (id=0) |
 | [#21](pr-21-differencer-notif-telegram-manual-vs-auto.md) | 2026-05-21 | Notification de démarrage de cycle différenciée : `🤖 Cycle auto 4h démarré (heure locale)` vs `🔧 Cycle manuel {cycle_id} démarré` ; suppression de `parse_mode="HTML"` sur ces messages |
 | [#22](pr-22-ajout-prompt-version-sha1-mongo.md) | 2026-05-21 | Ajout de `PROMPT_VERSION` (SHA-1 8 chars sur le template brut) injecté dans chaque document Mongo `cycles` sous le champ `prompt_version` |

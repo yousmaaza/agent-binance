@@ -35,6 +35,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#46](pr-46-prompt-version-fallback-mongo-erreur.md) | [REC] Ajouter prompt_version dans le fallback Mongo erreur | 2026-05-22 |
 | [#48](pr-48-suivre-le-cout-api-par-cycle.md) | [M1] Suivre le cout API par cycle et exposer via /cout | 2026-05-22 |
 | [#50](pr-50-fallback-abonnement-api-sonnet.md) | [M1] Fallback abonnement→API Sonnet si ressource insuffisante | 2026-05-22 |
+| [#56](pr-56-trailing-stop-remonter-stop-loss.md) | [M1] Phase 0 — Trailing stop : remonter le stop-loss si le prix a progressé | 2026-05-22 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
