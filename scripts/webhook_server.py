@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import threading
 import time
@@ -960,6 +961,29 @@ def run_trade_workflow(trigger="manual"):
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         logger.info(f"[Cycle {cycle_id}] Terminé exit={exit_code} en {duration:.0f}s")
 
+        # Extraction du coût API depuis le log stdout (ligne "🏁 done | Xs | cost=$X.XX")
+        _cost_usd = None
+        try:
+            with open(stdout_path) as _f:
+                for _line in _f:
+                    _m = re.search(r'cost=\$([0-9]+\.[0-9]+)', _line)
+                    if _m:
+                        _cost_usd = float(_m.group(1))
+        except Exception:
+            pass
+
+        # Mise à jour Mongo avec le coût (le document a déjà été créé par Phase 7)
+        if _cost_usd is not None:
+            try:
+                db = get_mongo()
+                if db is not None:
+                    db.cycles.update_one(
+                        {"_id": cycle_id},
+                        {"$set": {"api_cost_usd": _cost_usd}}
+                    )
+            except Exception as e:
+                logger.error(f"[Cycle {cycle_id}] Mongo cost update échec : {e}")
+
         if exit_code != 0:
             with open(stderr_path) as f:
                 err_extract = (f.read()[:400] or "(vide)")
@@ -982,6 +1006,7 @@ def run_trade_workflow(trigger="manual"):
                             "trigger": trigger,
                             "exit_code": exit_code,
                             "duration_seconds": duration,
+                            "api_cost_usd": _cost_usd,
                             "log_files": {"stdout": stdout_path, "stderr": stderr_path},
                             "explanation_fr": "Le cycle a échoué avant de produire un résultat exploitable. Voir les logs pour le détail."
                         }},
@@ -1049,6 +1074,63 @@ def run_raisonnement():
     send_telegram("\n".join(lines), parse_mode="HTML")
 
 
+def handle_cout():
+    """Affiche le coût API cumulé par cycle depuis MongoDB."""
+    db = get_mongo()
+    if db is None:
+        send_telegram("⚠️ MongoDB non configuré (MONGODB_URI absent ou invalide dans .env).")
+        return
+
+    try:
+        pipeline = [
+            {"$match": {"api_cost_usd": {"$exists": True, "$ne": None}}},
+            {"$group": {
+                "_id": None,
+                "total": {"$sum": "$api_cost_usd"},
+                "count": {"$sum": 1},
+                "avg": {"$avg": "$api_cost_usd"}
+            }}
+        ]
+        agg = list(db.cycles.aggregate(pipeline))
+        if not agg:
+            send_telegram("📭 Aucun cycle avec coût API enregistré pour l'instant. Lance /trade pour commencer.")
+            return
+
+        total = agg[0]["total"]
+        count = agg[0]["count"]
+        avg = agg[0]["avg"]
+
+        # 5 cycles les plus chers
+        top5 = list(db.cycles.find(
+            {"api_cost_usd": {"$exists": True, "$ne": None}},
+            {"cycle_id": 1, "api_cost_usd": 1, "orders_placed": 1}
+        ).sort("api_cost_usd", -1).limit(5))
+
+        # Dernier cycle avec coût
+        last = db.cycles.find_one(
+            {"api_cost_usd": {"$exists": True, "$ne": None}},
+            sort=[("timestamp", -1)]
+        )
+
+        lines = [f"💸 Cout API Claude — {count} cycle(s)\n"]
+        lines.append(f"Total cumule  : ${total:.4f}")
+        lines.append(f"Cout moyen    : ${avg:.4f} / cycle")
+
+        if last:
+            last_cost = last.get("api_cost_usd", 0)
+            lines.append(f"Dernier cycle : ${last_cost:.4f} ({last.get('cycle_id', '?')})")
+
+        if top5:
+            lines.append("\nTop 5 cycles les plus chers :")
+            for doc in top5:
+                nb_ordres = len(doc.get("orders_placed") or [])
+                lines.append(f"  {doc.get('cycle_id', '?')} — ${doc.get('api_cost_usd', 0):.4f} ({nb_ordres} ordre(s))")
+
+        send_telegram("\n".join(lines))
+    except Exception as e:
+        send_telegram(f"❌ Erreur /cout : {e}")
+
+
 def handle_callback(cq):
     cq_chat_id = str(cq.get("from", {}).get("id", "") or
                      cq.get("message", {}).get("chat", {}).get("id", ""))
@@ -1089,7 +1171,7 @@ def main_loop():
 
     send_telegram(
         f"🤖 Bot v2 démarré\n"
-        f"Commandes : /trade /status /perf /raisonnement /reset\n"
+        f"Commandes : /trade /status /perf /raisonnement /cout /reset\n"
         f"⏰ Prochain cycle auto : {fmt_next()}",
         parse_mode=None
     )
@@ -1133,11 +1215,13 @@ def main_loop():
                     threading.Thread(target=run_perf, daemon=True).start()
                 elif text.startswith("/raisonnement"):
                     threading.Thread(target=run_raisonnement, daemon=True).start()
+                elif text.startswith("/cout"):
+                    threading.Thread(target=handle_cout, daemon=True).start()
                 elif text.startswith("/reset"):
                     release_lock()
                     send_telegram(f"🔓 Lock réinitialisé.\n⏰ Prochain cycle auto : {fmt_next()}")
                 elif text:
-                    send_telegram(f"Commandes : /trade /status /perf /raisonnement /reset\n⏰ Prochain cycle : {fmt_next()}")
+                    send_telegram(f"Commandes : /trade /status /perf /raisonnement /cout /reset\n⏰ Prochain cycle : {fmt_next()}")
 
         except Exception as e:
             logger.error(f"[Polling] Erreur: {e}")
