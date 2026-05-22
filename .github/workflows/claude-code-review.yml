@@ -60,6 +60,6 @@ jobs:
 
             Pas d'édition de fichier source, pas de commit, pas de merge.
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-haiku-4-5-20251001
             --allowedTools "Bash,Read,Grep,Glob,Write"
             --max-turns 40
