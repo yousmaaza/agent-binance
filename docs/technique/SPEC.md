@@ -2,7 +2,7 @@
 
 > **Généré par** : `binance-doc-tech` one-shot
 > **Dernière mise à jour** : 2026-05-22
-> **Commit** : 37d406fdc3c6669f4e2683de2a3755775d61151c
+> **Commit** : f878226
 
 ---
 
@@ -115,7 +115,7 @@ webhook_server.py (process principal)
 | Binance CLI | Consultation portefeuille, passage ordres BUY MARKET + OCO spot | profil `agent-profile` dans `~/.binance-cli/` |
 | MongoDB Atlas | Persistance des cycles de trading (collection `cycles`) | `MONGODB_URI`, `MONGODB_DB` dans `.env` |
 | TradingView MCP | Données marché : gainers, breakouts, sentiment, analyse coin | `.mcp.json` (MCP server `mcp__tradingview__*`) |
-| Claude CLI | Orchestration du cycle de trading (sous-processus) | `ANTHROPIC_API_KEY` (pay-per-use) ou abonnement Claude Code |
+| Claude CLI | Orchestration du cycle de trading (sous-processus) — mode primaire : abonnement Claude Code (sans API key) ; fallback automatique sur `claude-sonnet-4-6` via API si erreur de ressource et `ANTHROPIC_API_KEY` présent | `ANTHROPIC_API_KEY` optionnel dans `.env` (fallback uniquement) |
 
 ---
 
@@ -138,10 +138,12 @@ webhook_server.py (process principal)
 | `_hb_start(phase)` | TRADE_PROMPT:111 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
 | `hb(phase, status, summary)` | TRADE_PROMPT:114 | Clôture une phase (dans le sous-processus Claude) — calcule la durée, écrit une ligne JSON dans `logs/cycle_<id>_phases.jsonl`, flush immédiat |
 | `_format_stream_event()` | :643 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
+| `_RESOURCE_ERROR_PATTERNS` _(constante module)_ | :831 | Liste des 6 patterns de chaîne indiquant une erreur de ressource Claude (credit insuffisant, rate_limit_error, overloaded_error, etc.) — utilisée par `_is_resource_error()` |
+| `_is_resource_error()` | :841 | Lit le fichier `logs/stdout/cycle_*.log` et retourne `True` si un pattern de ressource y est détecté — gère silencieusement les erreurs de lecture |
 | `_read_last_jsonl_phase()` | :690 | Lit la dernière ligne valide du fichier `cycle_<id>_phases.jsonl` — utilisé par le watchdog pour connaître la dernière phase complétée |
 | `_watchdog_thread()` | :710 | Thread daemon qui surveille le cycle actif via le JSONL des heartbeats : alerte Telegram si aucune phase ne progresse pendant > 15 min |
 | `PROMPT_VERSION` _(constante module)_ | :410 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
-| `run_trade_workflow()` | :893 | Orchestre un cycle complet : lock → subprocess Claude stream-json → capture logs → extraction coût API via regex sur stdout → update Mongo `api_cost_usd` → fallback Mongo en cas d'erreur → unlock ; injecte `__CYCLE_ID__`, `__PROMPT_VERSION__` et `trigger` dans le prompt |
+| `run_trade_workflow()` | :912 | Orchestre un cycle complet : lock → subprocess Claude primaire (sans `ANTHROPIC_API_KEY` dans l'env) → si erreur ressource ET clé présente, retry via `claude-sonnet-4-6` avec API key → capture logs → extraction coût API → update Mongo `api_cost_usd` → fallback Mongo en cas d'erreur → unlock |
 | `run_raisonnement()` | :864 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
 | `handle_cout()` | :1078 | Handler `/cout` : pipeline d'agrégation MongoDB (total cumulé, moyenne, dernier cycle, top 5 des cycles les plus chers) — silencieux si MongoDB absent |
 | `handle_callback()` | :912 | Gère les réponses aux inline keyboards Telegram (CONFIRM/CANCEL → `pending_callback.json`) |
@@ -262,3 +264,4 @@ webhook_server.py (process principal)
 | [#39](pr-39-phase5-buy-market-oco-protection.md) | 2026-05-22 | Phase 5 : suppression `order-list-otoco`, remplacement par `order-market` BUY + `order-list-oco` SELL calculé sur le prix de fill réel (`cummulativeQuoteQty/executedQty`) ; Phase 0 : routine idempotente de rattrapage `protection_failed` (fermeture market ou OCO selon position du prix vs TP) |
 | [#46](pr-46-prompt-version-fallback-mongo-erreur.md) | 2026-05-22 | Ajout de `prompt_version` dans le `$set` du fallback Mongo `status: "error"` de `run_trade_workflow()` — tous les documents `cycles` sont désormais filtrables par version de prompt, y compris les cycles échoués |
 | [#48](pr-48-suivre-le-cout-api-par-cycle.md) | 2026-05-22 | Extraction du coût API Claude par cycle (regex sur stdout) → champ `api_cost_usd` dans Mongo ; nouvelle commande `/cout` (total, moyenne, top 5) |
+| [#50](pr-50-fallback-abonnement-api-sonnet.md) | 2026-05-22 | Subprocess primaire lancé sans `ANTHROPIC_API_KEY` (mode abonnement) ; fallback automatique sur `claude-sonnet-4-6` via API si erreur de ressource (credit/rate_limit/overloaded) et clé disponible dans `.env` ; nouvelle fonction `_is_resource_error()` |
