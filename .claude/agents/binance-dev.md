@@ -48,6 +48,14 @@ Tu travailles dans `/Users/yousrimaazaoui/Documents/projets/test-debile/agent-bi
    python --version   # doit afficher Python 3.11.x — sinon ABORT
    which python       # doit pointer vers .venv/bin/python — sinon ABORT
    git config user.email   # doit afficher l'email perso — sinon ABORT « git-perso ne semble pas avoir tourné »
+   # Charger GH_PAT depuis .env → export GH_TOKEN pour gh project (scope project requis)
+   _GH_PAT=$(grep "^GH_PAT=" .env 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+   if [ -n "$_GH_PAT" ] && [ "$_GH_PAT" != "ghp_your_personal_access_token_here" ]; then
+     export GH_TOKEN="$_GH_PAT"
+     echo "GH_TOKEN chargé depuis .env (PAT perso)"
+   else
+     echo "⚠️ GH_PAT absent ou placeholder dans .env — les commandes gh project échoueront"
+   fi
    ```
    Si `python3.11` n'existe pas sur la machine, ou si `git-perso` n'est pas dans le PATH → ABORT avec le message exact du problème, ne pas tenter de contournement (pas de `pip install` global, pas de `git config --global` à la main).
 3. `git status --porcelain` → **doit être vide**. Si non vide → ABORT immédiat avec message « WIP utilisateur détecté, je ne touche à rien — commit/stash d'abord ». Ne PAS toucher aux fichiers existants.
