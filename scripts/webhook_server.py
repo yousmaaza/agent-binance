@@ -828,6 +828,25 @@ def _format_stream_event(line: str):
     return None
 
 
+_RESOURCE_ERROR_PATTERNS = [
+    "Credit balance is too low",
+    "rate_limit_error",
+    "overloaded_error",
+    "Your account has hit",
+    "quota exceeded",
+    "This model is currently overloaded",
+]
+
+
+def _is_resource_error(stdout_path):
+    try:
+        with open(stdout_path) as f:
+            content = f.read()
+        return any(p in content for p in _RESOURCE_ERROR_PATTERNS)
+    except Exception:
+        return False
+
+
 def _read_last_jsonl_phase(jsonl_path):
     """Retourne le dernier objet JSON valide du fichier JSONL, ou None."""
     try:
@@ -940,11 +959,15 @@ def run_trade_workflow(trigger="manual"):
         # chaque ligne à la volée et on écrit une version humaine dans stdout_path → `tail -f`
         # montre les tool calls et résultats au fur et à mesure. Timer kill-after-3600s pour
         # protéger d'un cycle bloqué.
+        sub_env = os.environ.copy()
+        sub_env.pop("ANTHROPIC_API_KEY", None)
+
         with open(stdout_path, "w", buffering=1) as out_f, open(stderr_path, "w", buffering=1) as err_f:
             process = subprocess.Popen(
                 ["claude", "--print", "--verbose", "--output-format", "stream-json",
                  "--dangerously-skip-permissions", prompt],
-                stdout=subprocess.PIPE, stderr=err_f, text=True, cwd=PROJECT_DIR, bufsize=1
+                stdout=subprocess.PIPE, stderr=err_f, text=True, cwd=PROJECT_DIR, bufsize=1,
+                env=sub_env
             )
             timer = threading.Timer(3600, process.kill)
             timer.start()
@@ -957,6 +980,30 @@ def run_trade_workflow(trigger="manual"):
             finally:
                 timer.cancel()
                 stop_watchdog.set()
+
+        if exit_code != 0 and _is_resource_error(stdout_path) and os.environ.get("ANTHROPIC_API_KEY"):
+            logger.info(f"[Cycle {cycle_id}] Ressource insuffisante — retry API Sonnet")
+            send_telegram(f"⚠️ Abonnement insuffisant — retry via API Sonnet (cycle {cycle_id})...")
+            with open(stdout_path, "w", buffering=1) as out_f, open(stderr_path, "w", buffering=1) as err_f:
+                retry_process = subprocess.Popen(
+                    ["claude", "--print", "--verbose", "--output-format", "stream-json",
+                     "--dangerously-skip-permissions", "--model", "claude-sonnet-4-6", prompt],
+                    stdout=subprocess.PIPE, stderr=err_f, text=True, cwd=PROJECT_DIR, bufsize=1,
+                    env=os.environ.copy()
+                )
+                retry_timer = threading.Timer(3600, retry_process.kill)
+                retry_timer.start()
+                try:
+                    for raw_line in retry_process.stdout:
+                        formatted = _format_stream_event(raw_line.rstrip("\n"))
+                        if formatted:
+                            out_f.write(formatted + "\n")
+                    exit_code = retry_process.wait()
+                finally:
+                    retry_timer.cancel()
+            logger.info(f"[Cycle {cycle_id}] Mode fallback API Sonnet — exit={exit_code}")
+        elif exit_code != 0 and _is_resource_error(stdout_path) and not os.environ.get("ANTHROPIC_API_KEY"):
+            logger.warning(f"[Cycle {cycle_id}] Ressource insuffisante — pas de fallback possible (ANTHROPIC_API_KEY absent)")
 
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         logger.info(f"[Cycle {cycle_id}] Terminé exit={exit_code} en {duration:.0f}s")
@@ -1164,7 +1211,10 @@ def main_loop():
     NEXT_AUTO_TRADE = next_4h_slot()
     offset = get_offset()
 
-    claude_mode = "API (pay-per-use)" if os.environ.get("ANTHROPIC_API_KEY") else "abonnement Claude Code"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        claude_mode = "abonnement (fallback API Sonnet si ressource insuffisante)"
+    else:
+        claude_mode = "abonnement Claude Code"
     logger.info(f"Bot v2 démarre en mode polling (offset={offset})")
     logger.info(f"Chat ID autorisé : {CHAT_ID}")
     logger.info(f"Subprocess Claude : {claude_mode}")
