@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot
-> **Dernière mise à jour** : 2026-05-22
-> **Commit** : dbb1847
+> **Dernière mise à jour** : 2026-05-23
+> **Commit** : 640af44
 
 ---
 
@@ -32,7 +32,7 @@ main_loop()
     └── run_trade_workflow(trigger="auto")   [threading.Thread daemon]
         ├── acquire_lock()   [agent_lock.json]
         ├── sous-processus : claude --print --verbose --output-format stream-json
-        │   --dangerously-skip-permissions <TRADE_PROMPT>
+        │   --dangerously-skip-permissions --model claude-sonnet-4-6 <TRADE_PROMPT>
         │   ├── Phase 0 — Vérifications préalables (solde, daily loss limit, trades ouverts)
         │   ├── Phase 1 — Scan marché (top_gainers, volume_breakout, sentiment, rating_filter)
         │   ├── Phase 2 — Analyse multi-timeframe (coin_analysis 4h + 1d)
@@ -115,7 +115,7 @@ webhook_server.py (process principal)
 | Binance CLI | Consultation portefeuille, passage ordres BUY MARKET + OCO spot | profil `agent-profile` dans `~/.binance-cli/` |
 | MongoDB Atlas | Persistance des cycles de trading (collection `cycles`) | `MONGODB_URI`, `MONGODB_DB` dans `.env` |
 | TradingView MCP | Données marché : gainers, breakouts, sentiment, analyse coin | `.mcp.json` (MCP server `mcp__tradingview__*`) |
-| Claude CLI | Orchestration du cycle de trading (sous-processus) — mode primaire : abonnement Claude Code (sans API key) ; fallback automatique sur `claude-sonnet-4-6` via API si erreur de ressource et `ANTHROPIC_API_KEY` présent | `ANTHROPIC_API_KEY` optionnel dans `.env` (fallback uniquement) |
+| Claude CLI | Orchestration du cycle de trading (sous-processus) — mode primaire : abonnement Claude Code avec `--model claude-sonnet-4-6` forcé via `CLAUDE_CLI_FLAGS` (évite qu'Opus soit sélectionné par défaut sur Max) ; fallback automatique sur `claude-sonnet-4-6` via API si erreur de ressource et `ANTHROPIC_API_KEY` présent ; les deux chemins utilisent le même modèle | `ANTHROPIC_API_KEY` optionnel dans `.env` (fallback uniquement) ; `CLAUDE_CLI_FLAGS` et `CLAUDE_MODEL_FALLBACK` dans `binance-bot/config/llm.py` |
 
 ---
 
@@ -268,3 +268,4 @@ webhook_server.py (process principal)
 | [#48](pr-48-suivre-le-cout-api-par-cycle.md) | 2026-05-22 | Extraction du coût API Claude par cycle (regex sur stdout) → champ `api_cost_usd` dans Mongo ; nouvelle commande `/cout` (total, moyenne, top 5) |
 | [#50](pr-50-fallback-abonnement-api-sonnet.md) | 2026-05-22 | Subprocess primaire lancé sans `ANTHROPIC_API_KEY` (mode abonnement) ; fallback automatique sur `claude-sonnet-4-6` via API si erreur de ressource (credit/rate_limit/overloaded) et clé disponible dans `.env` ; nouvelle fonction `_is_resource_error()` |
 | [#65](pr-65-session-limit-fallback-pattern.md) | 2026-05-22 | Ajout de `"You've hit your session limit"` et `"session limit"` dans `_RESOURCE_ERROR_PATTERNS` (hotfix cycle 20260522_140354) — le fallback Sonnet API se déclenche désormais sur les erreurs de limite de session |
+| [#80](pr-80-config-llm-sonnet-abonnement-api.md) | 2026-05-23 | Ajout de `--model claude-sonnet-4-6` dans `CLAUDE_CLI_FLAGS` (`binance-bot/config/llm.py`) — le subprocess primaire force Sonnet sur l'abonnement Max au lieu de laisser le CLI choisir Opus par défaut ; les deux chemins (abonnement et API fallback) utilisent désormais le même modèle |

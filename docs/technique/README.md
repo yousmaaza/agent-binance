@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique globale du projet | 2026-05-22 |
+| [SPEC.md](SPEC.md) | Spécification technique globale du projet | 2026-05-23 |
 
 ## Diagrammes
 
@@ -37,6 +37,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#50](pr-50-fallback-abonnement-api-sonnet.md) | [M1] Fallback abonnement→API Sonnet si ressource insuffisante | 2026-05-22 |
 | [#56](pr-56-trailing-stop-remonter-stop-loss.md) | [M1] Phase 0 — Trailing stop : remonter le stop-loss si le prix a progressé | 2026-05-22 |
 | [#65](pr-65-session-limit-fallback-pattern.md) | [hotfix] Ajouter "session limit" dans _RESOURCE_ERROR_PATTERNS | 2026-05-22 |
+| [#80](pr-80-config-llm-sonnet-abonnement-api.md) | [M79] Forcer claude-sonnet-4-6 sur abonnement et API fallback | 2026-05-23 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
