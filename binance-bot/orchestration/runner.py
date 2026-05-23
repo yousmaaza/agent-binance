@@ -35,15 +35,19 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     cycle_log.info(f"Démarrage (trigger={trigger})")
 
     fmt_next = fmt_next_fn() if fmt_next_fn else "–"
+    _model_idx = CLAUDE_CLI_FLAGS.index("--model") + 1 if "--model" in CLAUDE_CLI_FLAGS else -1
+    _model = CLAUDE_CLI_FLAGS[_model_idx] if _model_idx > 0 else "claude (défaut)"
 
     if trigger == "auto":
         send_telegram(
             f"🤖 Cycle auto 4h démarré ({fmt_local(started_at)})\n"
+            f"🧠 Modèle : {_model} (abonnement)\n"
             f"⏰ Prochain cycle auto : {fmt_next}"
         )
     else:
         send_telegram(
             f"🔧 Cycle manuel {cycle_id} démarré\n"
+            f"🧠 Modèle : {_model} (abonnement)\n"
             f"⏰ Prochain cycle auto : {fmt_next}"
         )
 
@@ -68,7 +72,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
         if exit_code != 0 and is_resource_error(stdout_path):
             if os.environ.get("ANTHROPIC_API_KEY"):
                 cycle_log.info("Ressource insuffisante — retry API Sonnet")
-                send_telegram(f"⚠️ Abonnement insuffisant — retry via API Sonnet (cycle {cycle_id})...")
+                send_telegram(f"⚠️ Abonnement insuffisant — retry via API ({CLAUDE_MODEL_FALLBACK}) (cycle {cycle_id})...")
                 exit_code = _run_claude(
                     prompt, stdout_path, stderr_path, cycle_log,
                     extra_flags=["--model", CLAUDE_MODEL_FALLBACK],
