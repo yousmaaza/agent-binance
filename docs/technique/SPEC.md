@@ -135,6 +135,12 @@ webhook_server.py (process principal)
 | `release_lock()` | :484 | Libère le mutex dans `agent_lock.json` |
 | `run_status()` | :496 | Handler `/status` : appelle `binance-cli` pour solde + ordres ouverts, format HTML Telegram |
 | `run_perf()` | :548 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
+| `run_eval()` | commands/eval.py:11 | Handler `/eval` : rapport hebdomadaire synthétique (fiabilité cycles, performance, coût abonnement vs API, risque) — accepte `period_days` optionnel (défaut 7) |
+| `_trades_section()` | commands/eval.py:32 | Analyse `trade_history.json` pour extraction win rate, PnL net, ratio gain/perte sur la période cutoff |
+| `_cycles_and_cost_section()` | commands/eval.py:73 | Interroge MongoDB `cycles` pour taux complétude + ventilation coût abonnement proratisé vs surcoût API réel |
+| `_risk_section()` | commands/eval.py:112 | Comptabilise les positions ouvertes sans stop-loss (`protection_failed`) dans `trade_history.json` |
+| `_stat_note()` | commands/eval.py:124 | Génère avertissement si < 30 trades sur la période (échantillon trop petit) |
+| `_parse_dt()` | commands/eval.py:133 | Utilitaire : parse ISO datetime string avec fallback UTC timezone |
 | `_hb_start(phase)` | TRADE_PROMPT:111 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
 | `hb(phase, status, summary)` | TRADE_PROMPT:114 | Clôture une phase (dans le sous-processus Claude) — calcule la durée, écrit une ligne JSON dans `logs/cycle_<id>_phases.jsonl`, flush immédiat |
 | Bloc trailing stop _(Phase 0)_ | TRADE_PROMPT:264–365 | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec OCO actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule l'OCO existant et replace un nouvel OCO avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
@@ -144,7 +150,8 @@ webhook_server.py (process principal)
 | `_read_last_jsonl_phase()` | :690 | Lit la dernière ligne valide du fichier `cycle_<id>_phases.jsonl` — utilisé par le watchdog pour connaître la dernière phase complétée |
 | `_watchdog_thread()` | :710 | Thread daemon qui surveille le cycle actif via le JSONL des heartbeats : alerte Telegram si aucune phase ne progresse pendant > 15 min |
 | `PROMPT_VERSION` _(constante module)_ | :410 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
-| `run_trade_workflow()` | runner.py:21 | Orchestre un cycle complet : lock → extraction du modèle depuis `CLAUDE_CLI_FLAGS` → notifications Telegram de démarrage (modèle + mode affiché) → subprocess Claude primaire (sans `ANTHROPIC_API_KEY`) → si erreur ressource ET clé présente, retry via `CLAUDE_MODEL_FALLBACK` avec API key (nom du modèle affiché dans la notif fallback) → capture logs → extraction coût API → update Mongo `api_cost_usd` → fallback Mongo en cas d'erreur → unlock |
+| `run_trade_workflow()` | runner.py:21 | Orchestre un cycle complet : lock → extraction du modèle depuis `CLAUDE_CLI_FLAGS` → notifications Telegram de démarrage (modèle + mode affiché) → subprocess Claude primaire (sans `ANTHROPIC_API_KEY`) → si erreur ressource ET clé présente, retry via `CLAUDE_MODEL_FALLBACK` avec API key (nom du modèle affiché dans la notif fallback) → capture logs → extraction coût API → update Mongo `api_cost_usd` et `billing_mode` → fallback Mongo en cas d'erreur → unlock |
+| `_update_billing_mode_in_mongo()` | runner.py:156 | Enregistre le mode de facturation (`"abonnement"` ou `"api"`) dans Mongo après chaque cycle (distinction primaire vs fallback API) |
 | `run_raisonnement()` | :864 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
 | `handle_cout()` | :1078 | Handler `/cout` : pipeline d'agrégation MongoDB (total cumulé, moyenne, dernier cycle, top 5 des cycles les plus chers) — silencieux si MongoDB absent |
 | `handle_callback()` | :912 | Gère les réponses aux inline keyboards Telegram (CONFIRM/CANCEL → `pending_callback.json`) |
@@ -163,8 +170,9 @@ webhook_server.py (process principal)
 | `/perf` | `run_perf()` | Affiche les statistiques de performance sur les trades fermés : win rate, expectancy, profit factor, Sharpe annualisé, max drawdown, p-value (t-test) |
 | `/raisonnement` | `run_raisonnement()` | Affiche l'explication vulgarisée en français du dernier cycle (lue depuis MongoDB, champ `explanation_fr`) |
 | `/cout` | `handle_cout()` | Affiche les métriques de coût API Claude : total cumulé, coût moyen par cycle, dernier cycle, top 5 des cycles les plus chers — nécessite MongoDB |
+| `/eval` | `run_eval(period_days=7)` | Affiche un rapport synthétique hebdomadaire : fiabilité des cycles (taux complétude), performance commerciale (win rate, PnL, ratio G/P), coût réel (abonnement proratisé vs surcoût API), et risque (positions sans stop-loss) — support paramètre `--days N` en CLI uniquement |
 | `/reset` | `release_lock()` (inline) | Réinitialise le mutex `agent_lock.json` si un cycle est resté bloqué (`running: true`) |
-| _(toute autre commande)_ | `send_telegram()` (inline) | Renvoie la liste des commandes disponibles (inclut `/cout`) |
+| _(toute autre commande)_ | `send_telegram()` (inline) | Renvoie la liste des commandes disponibles |
 
 ---
 
@@ -271,3 +279,4 @@ webhook_server.py (process principal)
 | [#80](pr-80-config-llm-sonnet-abonnement-api.md) | 2026-05-23 | Ajout de `--model claude-sonnet-4-6` dans `CLAUDE_CLI_FLAGS` (`binance-bot/config/llm.py`) — le subprocess primaire force Sonnet sur l'abonnement Max au lieu de laisser le CLI choisir Opus par défaut ; les deux chemins (abonnement et API fallback) utilisent désormais le même modèle |
 | [#82](pr-82-afficher-modele-mode-notif-cycle.md) | 2026-05-23 | Affichage dynamique du modèle Claude et du mode (abonnement/API) dans les notifications Telegram de démarrage de cycle et de fallback — extrait depuis `CLAUDE_CLI_FLAGS` / `CLAUDE_MODEL_FALLBACK` (`binance-bot/orchestration/runner.py`) |
 | [#87](pr-87-migrer-agents-workflows-haiku.md) | 2026-05-23 | Migration des agents CI/CD vers `claude-haiku-4-5-20251001` (binance-dev, doc-fonc, doc-tech, tech-lead-reviewer, ticket-manager) et des workflows GitHub Actions correspondants ; le bot de trading reste en Sonnet pour stratégie complexe |
+| [#91](pr-91-commande-eval.md) | 2026-05-23 | Ajout commande `/eval` : rapport hebdomadaire synthétique (fiabilité cycles, performance trades, coût réel, risque) ; nouveau champ Mongo `billing_mode` ("abonnement"\|"api") pour distinguer les coûts primaires vs fallback API |
