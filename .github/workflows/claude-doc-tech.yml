@@ -69,6 +69,6 @@ jobs:
             Contraintes : jamais de code applicatif, jamais de modification de scripts/
             ou CLAUDE.md, wiki est best-effort.
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-haiku-4-5-20251001
             --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
             --max-turns 60

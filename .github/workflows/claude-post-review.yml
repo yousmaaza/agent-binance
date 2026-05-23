@@ -117,7 +117,7 @@ jobs:
             - Jamais modifier `.env`, `state/trade_history.json`, `CLAUDE.md`
             - Jamais merger la PR
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-haiku-4-5-20251001
             --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
             --max-turns 40
 
@@ -201,6 +201,6 @@ jobs:
               --body "### 📋 Tickets créés depuis les recommandations\n<liste avec URLs>"
             ```
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-haiku-4-5-20251001
             --allowedTools "Bash,Read,Grep,Write"
             --max-turns 40

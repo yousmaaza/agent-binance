@@ -107,6 +107,6 @@ jobs:
             Garde-fous inchangés : jamais git add -A, jamais force-push, jamais merger la PR,
             jamais modifier .env/CLAUDE.md/state/trade_history.json.
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-haiku-4-5-20251001
             --allowedTools "Bash,Read,Edit,Write,Grep,Glob"
             --max-turns 60
