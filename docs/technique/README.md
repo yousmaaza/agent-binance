@@ -41,6 +41,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#82](pr-82-afficher-modele-mode-notif-cycle.md) | [M81] Afficher modèle et mode (abonnement/API) dans les notifications de cycle | 2026-05-23 |
 | [#87](pr-87-migrer-agents-workflows-haiku.md) | [M86] Migrer agents et workflows CI/CD vers claude-haiku | 2026-05-23 |
 | [#91](pr-91-commande-eval.md) | [M90] Commande /eval : rapport performance + coût abonnement vs API | 2026-05-23 |
+| [#98](pr-98-fallback-api-reprendre-session.md) | [M97] Fallback API : reprendre la session Claude via --resume | 2026-05-23 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
