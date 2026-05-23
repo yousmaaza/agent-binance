@@ -39,6 +39,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#65](pr-65-session-limit-fallback-pattern.md) | [hotfix] Ajouter "session limit" dans _RESOURCE_ERROR_PATTERNS | 2026-05-22 |
 | [#80](pr-80-config-llm-sonnet-abonnement-api.md) | [M79] Forcer claude-sonnet-4-6 sur abonnement et API fallback | 2026-05-23 |
 | [#82](pr-82-afficher-modele-mode-notif-cycle.md) | [M81] Afficher modèle et mode (abonnement/API) dans les notifications de cycle | 2026-05-23 |
+| [#87](pr-87-migrer-agents-workflows-haiku.md) | [M86] Migrer agents et workflows CI/CD vers claude-haiku | 2026-05-23 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
