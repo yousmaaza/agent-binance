@@ -66,11 +66,13 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     watchdog.start()
 
     try:
+        fallback_used = False
         exit_code = _run_claude(prompt, stdout_path, stderr_path, cycle_log)
 
         # Fallback API Sonnet si quota abonnement épuisé
         if exit_code != 0 and is_resource_error(stdout_path):
             if os.environ.get("ANTHROPIC_API_KEY"):
+                fallback_used = True
                 cycle_log.info("Ressource insuffisante — retry API Sonnet")
                 send_telegram(f"⚠️ Abonnement insuffisant — retry via API ({CLAUDE_MODEL_FALLBACK}) (cycle {cycle_id})...")
                 exit_code = _run_claude(
@@ -86,6 +88,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
         cycle_log.info(f"Terminé exit={exit_code} en {duration:.0f}s")
 
         _update_cost_in_mongo(cycle_id, stdout_path, cycle_log)
+        _update_billing_mode_in_mongo(cycle_id, "api" if fallback_used else "abonnement", cycle_log)
 
         if exit_code != 0:
             _handle_error(cycle_id, trigger, started_at, duration, stderr_path, stdout_path, cycle_log)
@@ -148,6 +151,15 @@ def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogge
                 db.cycles.update_one({"_id": cycle_id}, {"$set": {"api_cost_usd": cost_usd}})
             except Exception as e:
                 cycle_log.error(f"Mongo cost update échec : {e}")
+
+
+def _update_billing_mode_in_mongo(cycle_id: str, billing_mode: str, cycle_log: CycleLogger) -> None:
+    db = mongo_repo._db()
+    if db is not None:
+        try:
+            db.cycles.update_one({"_id": cycle_id}, {"$set": {"billing_mode": billing_mode}})
+        except Exception as e:
+            cycle_log.error(f"Mongo billing_mode update échec : {e}")
 
 
 def _handle_error(
