@@ -96,7 +96,7 @@ try:
 
         # Récupérer le prix actuel
         _ticker_raw = _pf_sub.run(
-            ["binance-cli", "spot", "get-symbol-price-ticker", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
+            ["binance-cli", "spot", "ticker-price", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
             capture_output=True, text=True
         )
         _ticker = _pf_json.loads(_ticker_raw.stdout)
@@ -105,8 +105,8 @@ try:
         if _prix_actuel > _tp_calc:
             # Prix marché au-dessus du TP calculé → fermeture à market immédiate
             _sell_raw = _pf_sub.run(
-                ["binance-cli", "spot", "order-market", "--symbol", f"{_coin}USDC",
-                 "--side", "SELL", "--quantity", str(_qty), "--profile", "agent-profile"],
+                ["binance-cli", "spot", "new-order", "--symbol", f"{_coin}USDC",
+                 "--side", "SELL", "--type", "MARKET", "--quantity", str(_qty), "--profile", "agent-profile"],
                 capture_output=True, text=True
             )
             _sell_resp = _pf_json.loads(_sell_raw.stdout) if _sell_raw.stdout.strip() else {}
@@ -127,7 +127,7 @@ try:
             # Prix sous le TP → replacer un OCO de rattrapage
             # Vérifier filtres LOT_SIZE via exchange-info
             _ei_raw = _pf_sub.run(
-                ["binance-cli", "spot", "get-exchange-info", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
+                ["binance-cli", "spot", "exchange-info", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
                 capture_output=True, text=True
             )
             _ei = _pf_json.loads(_ei_raw.stdout) if _ei_raw.stdout.strip() else {}
@@ -188,7 +188,7 @@ for _t in _history:
     # Prix actuel
     try:
         _ticker = json.loads(subprocess.check_output(
-            ["binance-cli", "ticker", "--symbol", f"{_coin}USDC"], text=True))
+            ["binance-cli", "spot", "ticker-price", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"], text=True))
         _price = float(_ticker["price"])
     except Exception as _e:
         tg(f"⚠️ Trailing stop {_coin} : impossible de récupérer le prix ({_e})")
@@ -209,8 +209,8 @@ for _t in _history:
     # Annuler l'OCO existant
     try:
         subprocess.check_output(
-            ["binance-cli", "cancel-order", "--symbol", f"{_coin}USDC",
-             "--order-list-id", str(_t["order_list_id"])], text=True)
+            ["binance-cli", "spot", "delete-order-list", "--symbol", f"{_coin}USDC",
+             "--order-list-id", str(_t["order_list_id"]), "--profile", "agent-profile"], text=True)
     except Exception as _e:
         tg(f"⚠️ Trailing stop {_coin} : échec annulation OCO ({_e}), skip")
         continue
@@ -218,7 +218,7 @@ for _t in _history:
     # Récupérer lot_size et tick_size pour arrondir
     try:
         _info = json.loads(subprocess.check_output(
-            ["binance-cli", "exchange-info", "--symbol", f"{_coin}USDC"], text=True))
+            ["binance-cli", "spot", "exchange-info", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"], text=True))
         _filters = {f["filterType"]: f for f in _info.get("filters", [])}
         _tick = float(_filters.get("PRICE_FILTER", {}).get("tickSize", "0.00000001"))
         _lot = float(_filters.get("LOT_SIZE", {}).get("stepSize", "0.00000001"))
@@ -238,15 +238,17 @@ for _t in _history:
     # Placer le nouvel OCO
     try:
         _oco_raw = subprocess.check_output([
-            "binance-cli", "oco-sell",
+            "binance-cli", "spot", "order-list-oco",
             "--symbol", f"{_coin}USDC",
+            "--side", "SELL",
             "--quantity", str(_qty),
             "--above-type", "LIMIT_MAKER",
             "--above-price", str(_new_tp_r),
             "--below-type", "STOP_LOSS_LIMIT",
             "--below-price", str(_new_stop_r),
             "--below-stop-price", str(_stop_limit_r),
-            "--below-time-in-force", "GTC"
+            "--below-time-in-force", "GTC",
+            "--profile", "agent-profile"
         ], text=True)
         _oco = json.loads(_oco_raw)
         _new_list_id = _oco.get("orderListId")
@@ -361,7 +363,7 @@ quantite = risk_usdc / (prix_entry × stop_distance_pct)
 montant_ordre = quantite × prix_entry
 
 # Arrondir la quantité selon la précision Binance du coin (utilise stepSize)
-binance-cli spot get-exchange-info --symbol {COIN}USDC --profile agent-profile
+binance-cli spot exchange-info --symbol {COIN}USDC --profile agent-profile
 → extraire stepSize et minQty, arrondir quantite
 
 Vérifications :
@@ -378,7 +380,7 @@ _hb_start(5)
 Pour chaque ordre préparé, dans l'ordre de score décroissant :
 
 1. Re-fetch prix actuel :
-   binance-cli spot get-symbol-price-ticker --symbol {COIN}USDC --profile agent-profile
+   binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
    Si drift > price_deviation_max_pct (2%) → SKIP + tg("⚠️ {COIN} : prix dévié de {drift:.1f}%, ordre annulé")
 
 2. Re-fetch solde USDC :
@@ -386,8 +388,8 @@ Pour chaque ordre préparé, dans l'ordre de score décroissant :
    Si USDC_free < montant_ordre → SKIP + tg("⚠️ Solde insuffisant pour {COIN}")
 
 3. Placer un BUY MARKET immédiat (élimine le risque de fill tardif qui provoquerait protection_failed) :
-   binance-cli spot order-market --symbol {COIN}USDC \\
-     --side BUY --quantity {quantite} \\
+   binance-cli spot new-order --symbol {COIN}USDC \\
+     --side BUY --type MARKET --quantity {quantite} \\
      --profile agent-profile
 
    La réponse contient `orderId`, `executedQty`, `cummulativeQuoteQty`, `status`.
@@ -404,19 +406,19 @@ Pour chaque ordre préparé, dans l'ordre de score décroissant :
 
 4. Vérifier que actual_tp est strictement au-dessus du prix marché courant avant de poser l'OCO :
    Re-fetch prix actuel juste après le fill :
-   binance-cli spot get-symbol-price-ticker --symbol {COIN}USDC --profile agent-profile
+   binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
    prix_post_fill = float(réponse["price"])
 
    Si prix_post_fill >= actual_tp :
      → Le marché est déjà au-dessus du TP recalculé (wick rapide) — fermer à market directement :
-     binance-cli spot order-market --symbol {COIN}USDC --side SELL --quantity {actual_qty} --profile agent-profile
+     binance-cli spot new-order --symbol {COIN}USDC --side SELL --type MARKET --quantity {actual_qty} --profile agent-profile
      → Calculer pnl_usdc = (prix_post_fill - actual_entry) × actual_qty
      → Enregistrer trade comme status="closed", close_reason="market_above_tp_at_fill"
      → tg("⚡ {COIN} : TP dépassé au fill, fermé à market immédiatement → {pnl_usdc:+.2f} USDC")
      → Passer au coin suivant.
 
 5. Vérifier les filtres LOT_SIZE pour l'OCO SELL :
-   binance-cli spot get-exchange-info --symbol {COIN}USDC --profile agent-profile
+   binance-cli spot exchange-info --symbol {COIN}USDC --profile agent-profile
    → extraire stepSize du filtre LOT_SIZE
    actual_qty_oco = floor(actual_qty / stepSize) * stepSize   # quantité entière pour l'OCO
 

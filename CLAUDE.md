@@ -110,6 +110,22 @@ Si tu ajoutes une nouvelle variable substituée, suit le même pattern : `__TOKE
 
 Le prompt demande à Claude d'exécuter du code Python qui appelle `binance-cli` via subprocess. Ne mets jamais `binance-cli` directement dans `webhook_server.py` — c'est l'agent qui orchestre, pas le serveur.
 
+### 8. Toute modification du code passe par l'agent `binance-dev` (workflow ticket → branche → PR)
+
+**Aucune modification de code ne se fait directement sur `main`.** Sans exception, même pour un hotfix d'une ligne.
+
+Workflow obligatoire :
+1. Créer (ou identifier) l'issue GitHub correspondante sur le repo `yousmaaza/agent-binance`
+2. L'ajouter au board "Binance Bot Agent" (project #4) et la basculer en "In progress"
+3. Invoquer l'agent `binance-dev` pour implémenter sur une branche `feat/issue-<N>-<slug>`
+4. `binance-dev` crée la PR et bascule le ticket en "In review" — c'est l'utilisateur qui merge
+
+Les seules exceptions autorisées à une modification directe sur `main` :
+- Mise à jour de `CLAUDE.md` lui-même (méta-règles, pas de code)
+- Fichiers de configuration non-code (`config.json`) sur instruction explicite de l'utilisateur
+
+❌ Commits directs sur `main`, `git add .`, `git push` sans branche et sans PR : **interdits**.
+
 ## Ne pas faire
 
 - ❌ Démarrer un nouveau tunnel Cloudflare ou ngrok : le réseau corporate de l'utilisateur bloque QUIC (UDP 7844), TCP 7844, et les DNS trycloudflare.com. Polling-only.
