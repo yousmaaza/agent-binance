@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import core.env  # noqa: F401  — bootstrap loguru + .env + prompt
 
 from commands.cout import run_cout
+from commands.eval import run_eval
 from commands.perf import run_perf
 from commands.raisonnement import run_raisonnement
 from commands.status import run_status
@@ -23,6 +24,8 @@ def main():
     sub.add_parser("perf", help="Statistiques de performance des trades fermés")
     sub.add_parser("raisonnement", help="Explication du dernier cycle (MongoDB)")
     sub.add_parser("cout", help="Coût API cumulé par cycle")
+    eval_p = sub.add_parser("eval", help="Rapport d'évaluation hebdomadaire (performance + coût)")
+    eval_p.add_argument("--days", type=int, default=7, help="Période d'analyse en jours (défaut : 7)")
     trade_p = sub.add_parser("trade", help="Lance un cycle de trading maintenant")
     trade_p.add_argument("--trigger", default="manual", choices=["manual", "auto"])
 
@@ -36,6 +39,8 @@ def main():
         print(run_raisonnement())
     elif args.cmd == "cout":
         print(run_cout())
+    elif args.cmd == "eval":
+        print(run_eval(period_days=args.days))
     elif args.cmd == "trade":
         run_trade_workflow(trigger=args.trigger)
 
