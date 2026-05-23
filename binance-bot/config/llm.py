@@ -10,11 +10,13 @@ PROMPT_FILE = os.path.join(PROJECT_DIR, "prompts", "trade_prompt.txt")
 CLAUDE_MODEL_FALLBACK = "claude-sonnet-4-6"
 
 # Flags passés au sous-processus claude CLI
+# --model force Sonnet sur l'abonnement (le CLI choisit Opus par défaut sur Max)
 CLAUDE_CLI_FLAGS = [
     "--print",
     "--verbose",
     "--output-format", "stream-json",
     "--dangerously-skip-permissions",
+    "--model", "claude-sonnet-4-6",
 ]
 
 # Clés de substitution dans le template (pour référence et validation)
