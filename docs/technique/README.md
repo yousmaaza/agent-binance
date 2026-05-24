@@ -43,6 +43,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#91](pr-91-commande-eval.md) | [M90] Commande /eval : rapport performance + coût abonnement vs API | 2026-05-23 |
 | [#98](pr-98-fallback-api-reprendre-session.md) | [M97] Fallback API : reprendre la session Claude via --resume | 2026-05-23 |
 | [#100](pr-100-supprimer-fallback-api.md) | [M99] Supprimer le fallback API — ne pas charger ANTHROPIC_API_KEY dans le bot | 2026-05-24 |
+| [#104](pr-104-phase2-1d-filtre-buy.md) | [M103] Optimiser Phase 2 — appel 1D filtré sur candidats 4h BUY | 2026-05-24 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*

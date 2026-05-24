@@ -35,7 +35,7 @@ main_loop()
         │   --dangerously-skip-permissions --model claude-sonnet-4-6 <TRADE_PROMPT>
         │   ├── Phase 0 — Vérifications préalables (solde, daily loss limit, trades ouverts)
         │   ├── Phase 1 — Scan marché (top_gainers, volume_breakout, sentiment, rating_filter)
-        │   ├── Phase 2 — Analyse multi-timeframe (coin_analysis 4h + 1d)
+        │   ├── Phase 2 — Analyse multi-timeframe (A: coin_analysis 4h sur tous, B: filtrage BUY 4h, C: coin_analysis 1d filtrée)
         │   ├── Phase 3 — Scoring 0-10 et sélection des candidats
         │   ├── Phase 4 — Sizing et préparation des ordres (ATR, risk fixe 1%)
         │   ├── Phase 5 — Exécution BUY MARKET + OCO SELL standalone
@@ -284,3 +284,4 @@ webhook_server.py (process principal)
 | [#91](pr-91-commande-eval.md) | 2026-05-23 | Ajout commande `/eval` : rapport hebdomadaire synthétique (fiabilité cycles, performance trades, coût réel, risque) ; nouveau champ Mongo `billing_mode` ("abonnement"\|"api") pour distinguer les coûts primaires vs fallback API |
 | [#98](pr-98-fallback-api-reprendre-session.md) | 2026-05-23 | Fallback API avec session resumption : capture du `session_id` dès l'init du subprocess Claude, puis retry fallback avec `--resume <session_id>` pour reprendre la conversation au lieu de relancer du début → coût API divisé par 5-10x, temps réduit de ~5min à ~1-2min |
 | [#100](pr-100-supprimer-fallback-api.md) | 2026-05-24 | Suppression du fallback API : mode abonnement uniquement, `ANTHROPIC_API_KEY` explicitement ignorée au chargement `.env`, message d'erreur clair en cas de quota épuisé, simplification de `run_trade_workflow()` et `_update_billing_mode_in_mongo()` |
+| [#104](pr-104-phase2-1d-filtre-buy.md) | 2026-05-24 | Phase 2 optimisée : restructuration en 3 étapes (A: analyse 4h sur tous, B: filtrage signal_4h BUY/STRONG_BUY, C: analyse 1d filtrée) ; réduction appels TradingView ~14 → ~8–10 par cycle |
