@@ -298,14 +298,26 @@ Construis l'univers de candidats :
 → tg("📡 Phase 1 — Scan marché\\nSentiment : {sentiment}\\n{N} candidats identifiés : {liste}")
 hb(1, summary=f"Sentiment {sentiment}, {N} candidats")
 
-PHASE 2 — ANALYSE MULTI-TIMEFRAME (tout en parallèle)
+PHASE 2 — ANALYSE MULTI-TIMEFRAME (séquentielle : 4h d'abord, puis 1D filtré)
 _hb_start(2)
+
+Étape A — Analyse 4h pour TOUS les candidats (en parallèle) :
 Pour chaque coin de l'univers, lance en parallèle :
 - mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 4h)
+
+Mémorise pour chaque coin : recommendation (signal_4h) et rsi.
+
+Étape B — Filtrage BUY :
+Identifie les coins dont signal_4h est BUY ou STRONG_BUY → liste coins_buy_4h.
+Les autres coins (NEUTRAL, SELL, STRONG_SELL) : leur signal_1d = "NEUTRAL" par défaut pour le scoring Phase 3. Ils ne reçoivent aucun appel 1D.
+
+Étape C — Analyse 1D uniquement pour coins_buy_4h :
+Si coins_buy_4h est vide → passer directement au scoring (0 appel 1D).
+Sinon, pour chaque coin de coins_buy_4h, lance en parallèle :
 - mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d)
 
-→ tg("📊 Phase 2 — Analyse terminée\\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d}")
-hb(2, summary=f"{len(univers)} coins analysés multi-timeframe")
+→ tg(f"📊 Phase 2 terminée — {len(univers)} coins analysés 4h, {len(coins_buy_4h)} coins analysés 1D (filtrés BUY)\\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d}")
+hb(2, summary=f"{len(univers)} coins analysés 4h, {len(coins_buy_4h)} analysés 1D")
 
 PHASE 3 — SCORING ET SÉLECTION
 _hb_start(3)
