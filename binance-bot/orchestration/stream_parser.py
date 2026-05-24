@@ -5,12 +5,8 @@ from datetime import datetime
 from config.llm import RESOURCE_ERROR_PATTERNS
 
 
-def parse_stream_event(line: str, session_cb=None) -> str | None:
-    """Transforme une ligne stream-json de Claude en log humain lisible (ou None à ignorer).
-
-    session_cb : callable(session_id: str) -> None, appelé sur l'événement init
-    pour exposer le session_id au caller (permet le --resume sur fallback).
-    """
+def parse_stream_event(line: str) -> str | None:
+    """Transforme une ligne stream-json de Claude en log humain lisible (ou None à ignorer)."""
     try:
         e = json.loads(line)
     except Exception:
@@ -20,8 +16,6 @@ def parse_stream_event(line: str, session_cb=None) -> str | None:
 
     if etype == "system" and e.get("subtype") == "init":
         sid = e.get("session_id", "")
-        if sid and session_cb:
-            session_cb(sid)
         return f"[{ts}] 🚀 init | model={e.get('model', '?')} | session={sid[:8] if sid else '?'}"
 
     if etype == "assistant":

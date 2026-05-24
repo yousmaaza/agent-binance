@@ -1,4 +1,4 @@
-"""Orchestration du cycle de trading : sous-processus Claude, streaming, fallback API."""
+"""Orchestration du cycle de trading : sous-processus Claude, streaming."""
 import os
 import re
 import subprocess
@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from config.llm import CLAUDE_CLI_FLAGS, CLAUDE_MODEL_FALLBACK
+from config.llm import CLAUDE_CLI_FLAGS
 from core.env import LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
@@ -66,35 +66,21 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     watchdog.start()
 
     try:
-        fallback_used = False
-        captured = {"session_id": None}
-        exit_code = _run_claude(prompt, stdout_path, stderr_path, cycle_log, session_capture=captured)
+        exit_code = _run_claude(prompt, stdout_path, stderr_path, cycle_log)
 
-        # Fallback API Sonnet si quota abonnement épuisé
+        # Quota abonnement épuisé — pas de fallback API (abonnement uniquement)
         if exit_code != 0 and is_resource_error(stdout_path):
-            if os.environ.get("ANTHROPIC_API_KEY"):
-                fallback_used = True
-                resume_id = captured["session_id"]
-                resume_flags = ["--resume", resume_id] if resume_id else []
-                resume_note = f" — reprise session {resume_id[:8]}" if resume_id else " — redémarrage complet (session non capturée)"
-                cycle_log.info(f"Ressource insuffisante — retry API Sonnet{resume_note}")
-                send_telegram(
-                    f"⚠️ Abonnement insuffisant — retry via API ({CLAUDE_MODEL_FALLBACK}){resume_note} (cycle {cycle_id})..."
-                )
-                exit_code = _run_claude(
-                    prompt, stdout_path, stderr_path, cycle_log,
-                    extra_flags=["--model", CLAUDE_MODEL_FALLBACK] + resume_flags,
-                    keep_api_key=True,
-                )
-                cycle_log.info(f"Mode fallback API Sonnet — exit={exit_code}")
-            else:
-                logger.warning(f"[Cycle {cycle_id}] Ressource insuffisante — ANTHROPIC_API_KEY absent")
+            send_telegram(
+                "⛔ Quota abonnement Claude épuisé — cycle annulé.\n"
+                "Réessaie dans quelques heures (reset automatique de l'abonnement)."
+            )
+            cycle_log.warning(f"[Cycle {cycle_id}] Quota abonnement épuisé — pas de fallback API configuré")
 
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         cycle_log.info(f"Terminé exit={exit_code} en {duration:.0f}s")
 
         _update_cost_in_mongo(cycle_id, stdout_path, cycle_log)
-        _update_billing_mode_in_mongo(cycle_id, "api" if fallback_used else "abonnement", cycle_log)
+        _update_billing_mode_in_mongo(cycle_id, "abonnement", cycle_log)
 
         if exit_code != 0:
             _handle_error(cycle_id, trigger, started_at, duration, stderr_path, stdout_path, cycle_log)
@@ -112,24 +98,10 @@ def _run_claude(
     stdout_path: str,
     stderr_path: str,
     cycle_log: CycleLogger,
-    extra_flags: list | None = None,
-    keep_api_key: bool = False,
-    session_capture: dict | None = None,
 ) -> int:
-    """Lance le sous-processus claude et streame stdout vers stdout_path. Retourne l'exit code.
-
-    session_capture : dict mutable optionnel. Si fourni, la clé "session_id" sera
-    remplie avec le session_id Claude dès l'événement init (permet --resume sur fallback).
-    """
-    flags = CLAUDE_CLI_FLAGS + (extra_flags or [])
+    """Lance le sous-processus claude et streame stdout vers stdout_path. Retourne l'exit code."""
+    flags = CLAUDE_CLI_FLAGS
     env = os.environ.copy()
-    if not keep_api_key:
-        env.pop("ANTHROPIC_API_KEY", None)
-
-    def _on_session(sid: str):
-        if session_capture is not None and not session_capture.get("session_id"):
-            session_capture["session_id"] = sid
-            cycle_log.info(f"Session Claude capturée : {sid[:8]}")
 
     with open(stdout_path, "w", buffering=1) as out_f, open(stderr_path, "w", buffering=1) as err_f:
         process = subprocess.Popen(
@@ -141,7 +113,7 @@ def _run_claude(
         timer.start()
         try:
             for raw_line in process.stdout:
-                formatted = parse_stream_event(raw_line.rstrip("\n"), session_cb=_on_session)
+                formatted = parse_stream_event(raw_line.rstrip("\n"))
                 if formatted:
                     out_f.write(formatted + "\n")
             return process.wait()
