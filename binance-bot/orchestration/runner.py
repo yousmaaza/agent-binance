@@ -5,8 +5,6 @@ import subprocess
 import threading
 from datetime import datetime, timezone
 
-from loguru import logger
-
 from config.llm import CLAUDE_CLI_FLAGS
 from core.env import LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT
 from core.lock import acquire_lock, is_locked, release_lock
@@ -74,7 +72,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
                 "⛔ Quota abonnement Claude épuisé — cycle annulé.\n"
                 "Réessaie dans quelques heures (reset automatique de l'abonnement)."
             )
-            cycle_log.warning(f"[Cycle {cycle_id}] Quota abonnement épuisé — pas de fallback API configuré")
+            cycle_log.error(f"[Cycle {cycle_id}] Quota abonnement épuisé — pas de fallback API configuré")
 
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         cycle_log.info(f"Terminé exit={exit_code} en {duration:.0f}s")
