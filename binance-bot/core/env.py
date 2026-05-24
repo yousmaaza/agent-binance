@@ -6,6 +6,9 @@ from loguru import logger
 
 logger.remove(0)  # évite la double écriture via nohup 2>&1
 
+# Clés qui ne doivent jamais être injectées dans le processus — on force l'abonnement Claude
+KEYS_NEVER_LOAD = {"ANTHROPIC_API_KEY"}
+
 
 def _load_env():
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
@@ -15,7 +18,10 @@ def _load_env():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     key, val = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), val.strip())
+                    key = key.strip()
+                    if key in KEYS_NEVER_LOAD:
+                        continue  # ne jamais injecter cette clé dans le processus
+                    os.environ.setdefault(key, val.strip())
 
 
 _load_env()
