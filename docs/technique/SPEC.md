@@ -2,7 +2,7 @@
 
 > **Généré par** : `binance-doc-tech` one-shot
 > **Dernière mise à jour** : 2026-05-25
-> **Commit** : 640af44
+> **Commit** : ce95996
 
 ---
 
@@ -76,8 +76,9 @@ webhook_server.py (process principal)
                 │     top_gainers, volume_breakout_scanner, market_sentiment,
                 │     rating_filter, coin_analysis (4h, 1d)
                 │
-                ├──► binance-cli spot (Phases 0, 4, 5)
+                ├──► binance-cli spot (Phases 0, 1, 4, 5)
                 │     get-account, get-open-orders, get-exchange-info,
+                │     ticker-price (filtre tradabilité USDC — Phase 1),
                 │     get-symbol-price-ticker, order-market, order-list-oco
                 │
                 ├──► state/trade_history.json  (lecture Phase 0, écriture Phase 5)
@@ -286,3 +287,5 @@ webhook_server.py (process principal)
 | [#100](pr-100-supprimer-fallback-api.md) | 2026-05-24 | Suppression du fallback API : mode abonnement uniquement, `ANTHROPIC_API_KEY` explicitement ignorée au chargement `.env`, message d'erreur clair en cas de quota épuisé, simplification de `run_trade_workflow()` et `_update_billing_mode_in_mongo()` |
 | [#104](pr-104-phase2-1d-filtre-buy.md) | 2026-05-24 | Phase 2 optimisée : restructuration en 3 étapes (A: analyse 4h sur tous, B: filtrage signal_4h BUY/STRONG_BUY, C: analyse 1d filtrée) ; réduction appels TradingView ~14 → ~8–10 par cycle |
 | [#106](pr-106-filtre-usdc-couplage-1d.md) | 2026-05-25 | Phase 1 : filtre tradabilité USDC explicite (via `binance-cli spot ticker-price`) — éliminer coins non tradables avant TradingView ; Phase 2 : couplage 1D par groupe de 4 coins (appels 1D immédiatement après résultat 4h BUY) au lieu de batch séparé global |
+| [#117](pr-117-ci-skip-doc-medium-report.md) | 2026-05-25 | CI/workflow : skip des jobs `tech-lead-review` et `doc-tech` sur la branche `doc/medium-report` (accumulation journal Medium, pas de code à reviewer) → économie quota agents |
+| [#118](pr-118-medium-articles-workflow.md) | 2026-05-25 | Infrastructure Medium : agent `medium-articles-manager` (new/publish/update-index) + slash command `/medium` + branche `docs/medium-articles` + skip CI sur article/* et docs/medium-* → organisation documentaire des articles issus du projet |

@@ -11,7 +11,12 @@ permissions:
 
 jobs:
   doc-tech:
-    if: github.event.pull_request.merged == true
+    # Skip les branches Medium : pas de code ni de spec technique à documenter.
+    if: |
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref != 'doc/medium-report' &&
+      !startsWith(github.event.pull_request.head.ref, 'article/') &&
+      !startsWith(github.event.pull_request.head.ref, 'docs/medium-')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
