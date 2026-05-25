@@ -257,7 +257,13 @@ Mentionner : pas de tunnel, pas de port ouvert, pas de webhook entrant. **Pollin
 
 ---
 
-## J'ai construit un bot de trading piloté par Claude. Voici comment il est branché.
+## J'ai un compte Binance. J'avais besoin de quelqu'un pour le surveiller.
+
+L'idée de départ n'était pas de construire un bot de trading sophistiqué. C'était beaucoup plus simple : j'avais un compte Binance avec quelques positions ouvertes, et **personne pour le surveiller**.
+
+Pas le temps de regarder les graphiques toutes les 4 heures. Pas envie de me réveiller la nuit pour vérifier si un support a tenu. Pas de service d'alertes qui place les ordres à ma place.
+
+Ce que je voulais, c'est un **bot de suivi de compte** — pas un agent de trading autonome. Quelque chose qui surveille le marché à intervalle régulier, évalue si les positions en cours tiennent la route, et passe les ordres nécessaires quand les conditions sont réunies. Avec des stop-loss et des take-profit posés automatiquement pour ne jamais laisser une position sans protection.
 
 Il est 8h54 un mercredi matin. Je reçois quatre notifications Telegram en rafale.
 
@@ -266,9 +272,9 @@ Il est 8h54 un mercredi matin. Je reçois quatre notifications Telegram en rafal
 > 📊 **Phase 2** — Analyse terminée | BTC 49.7 / BUY / SELL | ATOM 58.5 / BUY / BUY ⭐
 > ⚡ **BUY ATOM** | 12.4 USDC @ 6.82 | 🛑 Stop : 6.54 | 🎯 TP : 7.64 | Score : 7/10
 
-Le bot vient de scanner 14 cryptomonnaies, analyser les signaux techniques sur deux timeframes, calculer un sizing basé sur l'ATR, et placer un ordre sur Binance — le tout en 6 minutes, sans que j'aie touché à mon ordinateur.
+Le bot vient de scanner 14 cryptomonnaies, analyser les signaux techniques sur deux timeframes, calculer un sizing basé sur l'ATR, et placer un ordre avec stop-loss et take-profit intégrés — le tout en 6 minutes, sans que j'aie touché à mon ordinateur.
 
-Ce qui me fascine encore, c'est que **le code Python qui orchestre tout ça ne contient aucune logique de trading**. Pas de calcul de RSI, pas d'appel à TradingView, pas d'algorithme de scoring. Zéro.
+Ce qui me fascine encore, c'est que **le code Python qui orchestre tout ça ne contient aucune logique d'analyse de marché**. Pas de calcul de RSI, pas d'appel à TradingView, pas d'algorithme de scoring. Zéro.
 
 Voici comment c'est possible, et comment le brancher.
 
@@ -276,9 +282,9 @@ Voici comment c'est possible, et comment le brancher.
 
 ### L'inversion qui change tout : le code est une coquille, l'IA est le cerveau
 
-La plupart des bots de trading que j'ai croisés suivent le même schéma : du code Python qui appelle des APIs, calcule des indicateurs techniques, applique des règles `if RSI < 30 and MACD > 0 then BUY`. La logique est dans le code. Pour changer la stratégie, on refactore.
+La plupart des bots que j'ai croisés suivent le même schéma : du code Python qui appelle des APIs, calcule des indicateurs, applique des règles `if RSI < 30 and MACD > 0 then BUY`. La logique est dans le code. Pour modifier le comportement, on refactore.
 
-Mon bot fonctionne à l'envers. **La logique de trading vit dans un fichier texte — un prompt de 600 lignes** injecté à chaque cycle dans un sous-processus Claude CLI. Le code Python ne fait qu'un seul truc : lancer ce sous-processus.
+Mon bot fonctionne à l'envers. **La logique d'analyse vit dans un fichier texte — un prompt de 600 lignes** injecté à chaque cycle dans un sous-processus Claude CLI. Le code Python ne fait qu'une seule chose : lancer ce sous-processus.
 
 ```python
 # binance-bot/orchestration/cycle_runner.py
@@ -290,9 +296,9 @@ process = subprocess.Popen(
 )
 ```
 
-`prompt` est une variable de 29 Ko. Elle contient 8 phases séquentielles qui décrivent exactement ce que Claude doit faire — scanner le marché, analyser, scorer, dimensionner les positions, exécuter. Claude lit ça comme un développeur lirait une spec, et l'exécute.
+`prompt` est une variable de 29 Ko. Elle contient 8 phases séquentielles qui décrivent exactement ce que Claude doit faire — surveiller le portefeuille, scanner le marché, analyser, scorer, dimensionner les positions, exécuter. Claude lit ça comme un développeur lirait une spec, et l'exécute.
 
-Changer de stratégie, c'est éditer un fichier texte. Ajouter un indicateur, c'est rajouter une ligne dans le prompt. Pas de refactoring.
+Modifier le comportement du bot, c'est éditer un fichier texte. Ajouter un critère d'analyse, c'est rajouter une ligne dans le prompt. Pas de refactoring.
 
 ---
 
@@ -426,6 +432,88 @@ Toutes les notifications passent par Telegram. Deux éléments suffisent.
 Le bot filtre toutes les commandes entrantes sur ce chat ID. Même si quelqu'un trouve l'username du bot, il ne peut rien déclencher.
 
 Note importante sur l'architecture réseau : le bot fonctionne uniquement en **polling** — il interroge l'API Telegram toutes les 30 secondes. Pas de webhook, pas de port ouvert, pas de tunnel Cloudflare. C'est un choix délibéré : mon réseau d'entreprise bloque les connexions entrantes. Le polling passe partout.
+
+---
+
+### Les commandes disponibles aujourd'hui
+
+Une fois le bot lancé, toute l'interaction passe par Telegram. Sept commandes sont disponibles :
+
+| Commande | Ce qu'elle fait |
+|---|---|
+| `/trade` | Lance immédiatement un cycle complet d'analyse et de suivi |
+| `/status` | Affiche le portefeuille Binance en temps réel (solde, positions ouvertes, ordres en attente, heure du prochain cycle automatique) |
+| `/perf` | Statistiques sur tous les trades fermés : win rate, espérance de gain, Sharpe annualisé, drawdown max, p-value |
+| `/raisonnement` | Explication en français vulgarisé du dernier cycle (lue depuis MongoDB) — "pourquoi le bot a acheté ATOM et pas SOL ce matin" |
+| `/cout` | Historique du coût par cycle (utile pour valider que l'abonnement est bien utilisé, pas l'API pay-per-use) |
+| `/eval` | Rapport hebdomadaire : performance des trades, fiabilité des cycles, comparatif coût abonnement vs API |
+| `/reset` | Débloque le bot si un cycle précédent s'est arrêté anormalement (remet le verrou à zéro) |
+
+Le bot répond aussi automatiquement à chaque fin de phase pendant un cycle, sans qu'on envoie rien.
+
+---
+
+### Le scheduler 4h : surveiller sans être là
+
+Le vrai intérêt d'un bot de suivi, c'est qu'il tourne **sans intervention humaine**. Pas de cron système, pas de tâche planifiée externe — l'auto-scheduler est intégré directement dans la boucle principale du bot.
+
+Toutes les 30 secondes, après avoir traité les commandes Telegram, le bot calcule l'heure du prochain slot d'analyse et vérifie si c'est le moment de lancer :
+
+```python
+# binance-bot/core/timing.py
+def next_4h_slot() -> datetime:
+    """Prochain slot 4h UTC + 5 min (aligné sur clôtures TradingView)."""
+    slot_hour = (now.hour // 4) * 4
+    nxt = now.replace(hour=slot_hour, minute=5, second=0, microsecond=0)
+    if nxt <= now:
+        nxt += timedelta(hours=4)
+    return nxt
+```
+
+Les 6 slots quotidiens sont **00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC**. Le décalage de 5 minutes après la clôture exacte de la bougie laisse le temps à TradingView de consolider les indicateurs.
+
+Pourquoi ces horaires précis ? Parce que les signaux TradingView (RSI, MACD, ADX) sont calculés sur des bougies closes. Lancer l'analyse à 04:00 UTC — soit en pleine bougie ouverte — donnerait des signaux provisoires. Attendre 04:05, c'est travailler sur des données stables.
+
+Le /status le confirme à chaque fois :
+
+> ⏰ Prochain cycle auto : **aujourd'hui à 20:05 (heure locale)**
+
+---
+
+### Zéro surcoût : l'abonnement Claude Code à la place de l'API
+
+C'est un point qui mérite d'être explicite, parce qu'on suppose souvent que faire tourner un LLM en production coûte cher à l'usage.
+
+Ce bot utilise **Claude Code avec un abonnement fixe** (20 €/mois ou l'abonnement Max), pas l'API Anthropic pay-per-use. La différence est importante :
+
+- **API pay-per-use** : on paie par token. Un cycle d'analyse complet consomme entre 50 000 et 150 000 tokens. Au tarif Sonnet 4.6, ça représente ~0,10 à 0,30 $ par cycle, soit ~1,80 $ par jour pour 6 cycles. Sur un mois, ~55 $.
+- **Abonnement Claude Code** : forfait mensuel fixe. Les cycles de trading consomment du quota d'abonnement, mais aucun coût variable supplémentaire.
+
+Comment c'est implémenté ? Le code **interdit explicitement** l'injection de `ANTHROPIC_API_KEY` dans le processus :
+
+```python
+# binance-bot/webhook_server.py
+KEYS_NEVER_LOAD = {"ANTHROPIC_API_KEY"}
+
+def _load_env():
+    for key, val in env_vars:
+        if key in KEYS_NEVER_LOAD:
+            continue  # force l'abonnement, pas l'API
+        os.environ.setdefault(key, val)
+```
+
+Sans cette clé dans l'environnement, Claude CLI utilise automatiquement la session OAuth de l'abonnement connecté (`claude login`). Si le quota journalier est épuisé, le bot envoie une alerte Telegram et skip le cycle — pas de fallback API surprise.
+
+Le modèle est fixé explicitement sur Sonnet 4.6 (l'abonnement pourrait choisir Opus par défaut, beaucoup plus lent) :
+
+```python
+CLAUDE_CLI_FLAGS = [
+    "--model", "claude-sonnet-4-6",
+    "--print", "--verbose",
+    "--output-format", "stream-json",
+    "--dangerously-skip-permissions",
+]
+```
 
 ---
 
