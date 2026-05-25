@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot
-> **Dernière mise à jour** : 2026-05-23
+> **Dernière mise à jour** : 2026-05-25
 > **Commit** : 640af44
 
 ---
@@ -285,3 +285,4 @@ webhook_server.py (process principal)
 | [#98](pr-98-fallback-api-reprendre-session.md) | 2026-05-23 | Fallback API avec session resumption : capture du `session_id` dès l'init du subprocess Claude, puis retry fallback avec `--resume <session_id>` pour reprendre la conversation au lieu de relancer du début → coût API divisé par 5-10x, temps réduit de ~5min à ~1-2min |
 | [#100](pr-100-supprimer-fallback-api.md) | 2026-05-24 | Suppression du fallback API : mode abonnement uniquement, `ANTHROPIC_API_KEY` explicitement ignorée au chargement `.env`, message d'erreur clair en cas de quota épuisé, simplification de `run_trade_workflow()` et `_update_billing_mode_in_mongo()` |
 | [#104](pr-104-phase2-1d-filtre-buy.md) | 2026-05-24 | Phase 2 optimisée : restructuration en 3 étapes (A: analyse 4h sur tous, B: filtrage signal_4h BUY/STRONG_BUY, C: analyse 1d filtrée) ; réduction appels TradingView ~14 → ~8–10 par cycle |
+| [#106](pr-106-filtre-usdc-couplage-1d.md) | 2026-05-25 | Phase 1 : filtre tradabilité USDC explicite (via `binance-cli spot ticker-price`) — éliminer coins non tradables avant TradingView ; Phase 2 : couplage 1D par groupe de 4 coins (appels 1D immédiatement après résultat 4h BUY) au lieu de batch séparé global |
