@@ -574,10 +574,18 @@ Envoie `/status` sur Telegram — le bot répond en moins de 5 secondes.
 
 ### La suite
 
-Le bot tel que décrit ici a un problème qu'on découvre au premier vrai trade : Binance interdit de poser un stop-loss sur un actif qu'on ne détient pas encore. Quand on place un BUY LIMIT qui n'est pas encore rempli, le SELL de protection est rejeté.
+Ce bot de suivi est fonctionnel, mais deux problèmes se posent rapidement dès qu'on commence à le faire évoluer.
 
-Le prochain article couvre ce pivot — de 3 appels API séparés vers un ordre OTOCO atomique — et les 3 agents Claude (ticket-manager, binance-dev, tech-lead-reviewer) qui permettent de développer le bot comme si on était une petite équipe.
+**Le premier est technique.** Binance interdit de poser un stop-loss sur un actif qu'on ne détient pas encore. Quand on place un BUY LIMIT qui n'est pas encore rempli, le SELL de protection est rejeté immédiatement. La position reste ouverte sans filet. Le prochain article couvre ce pivot — de 3 appels API séparés vers un ordre OTOCO atomique (One-Triggers-OCO) qui place l'entrée, le take-profit et le stop-loss en un seul appel atomique.
+
+**Le second est organisationnel.** Dès qu'on commence à itérer sérieusement — corriger des bugs, ajouter des features, améliorer le prompt — on se retrouve à répéter les mêmes actions manuellement : créer un ticket GitHub, ouvrir une branche, écrire du code, ouvrir une PR, faire la review. La deuxième partie de la série couvre la mise en place d'une chaîne de 3 agents Claude qui automatisent ce workflow de développement :
+
+- **`ticket-manager`** — transforme n'importe quelle idée ou bug en issue GitHub structurée sur le board de projet
+- **`binance-dev`** — prend un ticket "In progress", crée la branche, implémente, ouvre la PR
+- **`tech-lead-reviewer`** — review automatique du code (ruff, radon, bandit, mypy), note de maintenabilité 0-10, commentaire structuré sur la PR
+
+Ces trois agents tournent en local dans Claude Code et en CI via GitHub Actions. Développer le bot ressemble à travailler avec une petite équipe — sans en avoir une.
 
 Le code est open source : [github.com/yousmaaza/agent-binance](https://github.com/yousmaaza/agent-binance).
 
-*Disclaimer : ce bot trade avec de l'argent réel. Il a déjà eu des cycles qui plantaient. Ne reproduisez pas cette architecture avec de l'argent que vous ne pouvez pas perdre.*
+*Disclaimer : ce bot surveille un compte réel et passe des ordres réels. Il a déjà eu des cycles qui plantaient. Ne le déployez pas avec de l'argent que vous ne pouvez pas perdre.*
