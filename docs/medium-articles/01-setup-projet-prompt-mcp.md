@@ -1,10 +1,14 @@
 ---
 status: draft
+number: 01
+slug: 01-setup-projet-prompt-mcp
+title: "Setup d'un bot de trading piloté par Claude + MCP TradingView"
 target_length: 1500-2200 mots
 target_audience: devs senior curieux des LLM en production, pas forcément traders
 tags_medium: [Python, Claude, LLM, MCP, Trading, Automation]
 created: 2026-05-25
 published_url: ""
+github_issue: "#119"
 ---
 
 # Article 01 — Setup d'un bot de trading piloté par Claude + MCP TradingView
