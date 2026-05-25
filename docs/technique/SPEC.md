@@ -2,7 +2,7 @@
 
 > **Généré par** : `binance-doc-tech` one-shot
 > **Dernière mise à jour** : 2026-05-25
-> **Commit** : 640af44
+> **Commit** : ce95996
 
 ---
 
@@ -76,8 +76,9 @@ webhook_server.py (process principal)
                 │     top_gainers, volume_breakout_scanner, market_sentiment,
                 │     rating_filter, coin_analysis (4h, 1d)
                 │
-                ├──► binance-cli spot (Phases 0, 4, 5)
+                ├──► binance-cli spot (Phases 0, 1, 4, 5)
                 │     get-account, get-open-orders, get-exchange-info,
+                │     ticker-price (filtre tradabilité USDC — Phase 1),
                 │     get-symbol-price-ticker, order-market, order-list-oco
                 │
                 ├──► state/trade_history.json  (lecture Phase 0, écriture Phase 5)
