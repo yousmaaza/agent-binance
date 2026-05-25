@@ -1,4 +1,4 @@
-# docs/articles/ — Brouillons pour articles Medium
+# docs/medium-articles/ — Articles Medium
 
 Espace de brainstorming et de rédaction pour les articles Medium tirés du projet `agent-binance`.
 
@@ -12,21 +12,46 @@ Espace de brainstorming et de rédaction pour les articles Medium tirés du proj
 
 ## Convention de nommage
 
-`NN-slug-court.md` où `NN` est l'ordre de publication souhaité.
+**Fichiers** : `NN-slug-court.md` où `NN` est l'ordre de publication souhaité.
 
 Exemples : `01-setup-projet-prompt-mcp.md`, `02-otoco-binance-spot.md`, `03-agents-claude-code.md`.
+
+**Branches Git** : `article/NN-slug-court` — une branche par article pour isoler le brainstorming et la rédaction.
+
+Exemple : `article/01-setup-projet-prompt-mcp`.
 
 Pas de date dans le nom de fichier — l'ordre de publication peut bouger pendant la rédaction.
 
 ## Workflow par article
 
-Chaque article passe par 3 états :
+```
+article/NN-slug  →  (brainstorm → rédaction → relecture)  →  merge dans docs/medium-articles
+                                                                ↑
+                                                     uniquement quand status = published
+```
 
-1. **Brouillon (`status: draft`)** : plan détaillé + bullets, pas de prose finale. Tu rédiges dessus librement.
-2. **En rédaction (`status: writing`)** : prose en cours, paragraphes complets, structure figée.
-3. **Publié (`status: published`)** : URL Medium ajoutée en tête, fichier en lecture seule.
+### Cycle de vie d'un article
 
-Le statut est dans le frontmatter YAML en haut de chaque fichier d'article. Pas de hook automatique pour le moment.
+Chaque article passe par 3 états dans le frontmatter YAML :
+
+1. **`status: draft`** — Plan détaillé + bullets, pas de prose finale. L'agent `medium-articles-manager` initialise cet état.
+2. **`status: writing`** — Prose en cours, paragraphes complets, structure figée. Tu mets à jour le statut manuellement.
+3. **`status: published`** — URL Medium renseignée, article figé. L'agent `medium-articles-manager` peut passer à cet état sur commande.
+
+### Branches et merges
+
+- Chaque article vit sur sa propre branche `article/NN-slug`.
+- La branche `docs/medium-articles` est la branche de référence : elle accumule les articles **publiés**.
+- Les branches `article/*` se créent depuis `docs/medium-articles` (pas `main`).
+- On merge dans `docs/medium-articles` uniquement quand `status: published`.
+- La CI (tech-lead-review, doc-tech) est skippée sur `article/*` et `docs/medium-*`.
+
+### Commandes de l'agent `medium-articles-manager`
+
+| Action | Ce que tu dis | Ce que fait l'agent |
+|---|---|---|
+| Nouvel article | `/medium new "Titre de l'article"` | Crée branche `article/NN-slug`, initialise le fichier brouillon, ouvre une issue de tracking |
+| Publier | `/medium publish NN https://medium.com/...` | Met `status: published` + URL, met à jour l'index README, ferme l'issue |
 
 ## Index
 
@@ -39,7 +64,7 @@ Le statut est dans le frontmatter YAML en haut de chaque fichier d'article. Pas 
 - **Français** (même langue que les notifications Telegram et le `CLAUDE.md`).
 - **Pas de jargon crypto** non explicité — vise un public dev senior pas forcément trader.
 - **Snippets de code** : 5 à 15 lignes max, toujours avec un chemin `file.py:line` en commentaire.
-- **Captures d'écran** : place les fichiers dans `docs/articles/assets/<article-slug>/` (créer le dossier si besoin).
+- **Captures d'écran** : place les fichiers dans `docs/medium-articles/assets/<article-slug>/` (créer le dossier si besoin).
 - **Liens** : interne au repo OK pour ton brouillon, mais avant publication Medium, remplacer par des liens GitHub absolus.
 
 ## Idées d'articles futurs (backlog)

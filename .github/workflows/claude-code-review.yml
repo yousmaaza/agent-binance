@@ -12,9 +12,13 @@ permissions:
 
 jobs:
   tech-lead-review:
-    # Skip la branche doc/medium-report : elle ne contient que docs/medium-journal.md
-    # alimenté par la routine daily-recap. Pas de code Python à reviewer.
-    if: github.event.pull_request.head.ref != 'doc/medium-report'
+    # Skip les branches Medium : doc/medium-report (journal daily-recap),
+    # article/* (brouillons d'articles), docs/medium-* (base publiée).
+    # Aucune ne contient du code Python à reviewer.
+    if: |
+      github.event.pull_request.head.ref != 'doc/medium-report' &&
+      !startsWith(github.event.pull_request.head.ref, 'article/') &&
+      !startsWith(github.event.pull_request.head.ref, 'docs/medium-')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
