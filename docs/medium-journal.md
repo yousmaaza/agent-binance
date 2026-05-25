@@ -12,25 +12,68 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ## 2026-05-25 — Récap quotidien
 
-### PR mergées (1)
+### PR mergées (3)
 
 #### #106 — [OPT] Phase 1 filtre USDC non tradables + Phase 2 appels 1D couplés par coin
-- **Mergée à** : matin (heure exacte n/a — snapshot rétro)
-- **Quoi** : double optimisation du scan marché. Phase 1 filtre désormais en amont les coins non tradables en USDC sur Binance (évite des appels morts vers TradingView). Phase 2 couple les analyses 4h et 1d par coin (un seul aller-retour MCP par candidat au lieu de deux).
-- **Pourquoi c'est intéressant pour Medium** : optim de latence assez classique mais qui illustre un pattern récurrent — un cycle qui prenait 5-8 min est progressivement trimé à 3-4 min sans changer la stratégie. Bon exemple de "petites optims qui s'additionnent".
+- **Branche** : `feat/issue-105-filtre-usdc-1d-sequentiel`
+- **Mergée à** : 11:48 (Europe/Paris)
+- **Volume** : +31 / -14 lignes (`prompts/trade_prompt.txt`)
+- **Quoi** : double optimisation du scan marché. Phase 1 ajoute un filtre tradabilité explicite via `binance-cli spot ticker-price` : les coins sans paire USDC valide (STEEM, PEOPLE…) sont éliminés avant tout appel TradingView. Phase 2 regroupe les candidats par groupes de 4 et couple immédiatement l'appel 1D après chaque résultat 4H BUY, plutôt que d'envoyer un second batch massif une fois tous les 4H traités.
+- **Pourquoi c'est intéressant pour Medium** : corrige un bug de rate-limit TradingView (`Expecting value: line 1 column 1`) qui n'était pas évident — la cause réelle était un batch de 9 appels 1D en rafale après 14 appels 4H parallèles. Le fix est architecturalement plus fin que le symptôme.
+- **Doc tech** : [docs/technique/pr-106-filtre-usdc-couplage-1d.md](../technique/pr-106-filtre-usdc-couplage-1d.md)
 
-### Issues fermées (1)
-- **#105** — [M104] Filtre USDC + 1D séquentiel
+#### #117 — ci: skip tech-lead-review et doc-tech sur doc/medium-report
+- **Branche** : `ci/skip-doc-medium-report`
+- **Mergée à** : 18:33 (Europe/Paris)
+- **Volume** : +7 / -1 lignes (2 fichiers YAML CI)
+- **Quoi** : ajout de filtres `if:` dans les deux workflows CI (`claude-code-review.yml`, `claude-doc-tech.yml`) pour éviter qu'ils se déclenchent sur la branche `doc/medium-report`. Cette branche accumule uniquement des commits de journal markdown — pas de code Python à reviewer, pas de PR à documenter.
+- **Pourquoi c'est intéressant pour Medium** : bonne illustration du coût invisible des workflows CI sur les branches longues. 7 lignes de YAML qui économisent N appels API à chaque commit de routine nocturne.
+- **Doc tech** : [docs/technique/pr-117-ci-skip-doc-medium-report.md](../technique/pr-117-ci-skip-doc-medium-report.md)
 
-### Nouveaux tickets (n/a)
-Snapshot rétro : non collecté en détail.
+#### #118 — feat(medium): dossier medium-articles + agent medium-articles-manager + CI skip article/*
+- **Branche** : `docs/articles-brainstorm`
+- **Mergée à** : 19:01 (Europe/Paris)
+- **Volume** : +585 / -5 lignes (6 fichiers)
+- **Quoi** : mise en place de l'infrastructure complète pour gérer les articles Medium. Nouvel agent `medium-articles-manager` (277 lignes) qui pilote 3 actions : `/medium new "Titre"` (crée une branche `article/NN-slug`, initialise le brouillon avec frontmatter YAML, ouvre une issue de tracking), `/medium publish NN https://...` (passe le statut à `published`, met à jour l'index README, ferme l'issue), `/medium update-index` (resynchronise le tableau README). Extension du skip CI aux branches `article/*` et `docs/medium-*`. Premier brouillon d'article (`01-setup-projet-prompt-mcp.md`) ajouté en mode plan détaillé.
+- **Pourquoi c'est intéressant pour Medium** : méta-sujet — utiliser un agent Claude pour gérer le cycle de vie des articles qui parlent de Claude. La plomberie (branches, frontmatter, index) est automatisée ; la rédaction reste à l'utilisateur. Pattern "agent = tâches répétitives, humain = fond".
+- **Doc tech** : [docs/technique/pr-118-medium-articles-workflow.md](../technique/pr-118-medium-articles-workflow.md)
+
+### Issues fermées (3)
+- **#105** — [OPT] Phase 1 filtre paires USDC non tradables + Phase 2 appels 1D séquentiels — fermée par PR #106 — [lien](https://github.com/yousmaaza/agent-binance/issues/105)
+- **#119** — [ARTICLE] 01 — Setup d'un bot de trading piloté par Claude + MCP TradingView — fermée à 20:56 (issue de tracking article 01, premier article publié) — [lien](https://github.com/yousmaaza/agent-binance/issues/119)
+- Aucune autre issue fermée aujourd'hui.
+
+### Nouveaux tickets (9)
+
+Tickets créés aujourd'hui — dont 8 `[REC]` auto-créés par `tech-lead-reviewer` (auteur : `github-actions[bot]`) suite à la review PR #107, et 1 ticket utilisateur :
+
+- **#108** — [REC] Clarifier la mécanique de fusion du journal (insertion vs remplacement) — `enhancement` — auteur github-actions[bot]
+- **#109** — [REC] Test extraction URL — `enhancement` — auteur github-actions[bot] *(ticket de test, à fermer)*
+- **#110** — [REC] Clarifier la mécanique de fusion du journal (insertion vs remplacement) — `enhancement` — auteur github-actions[bot] *(doublon de #108)*
+- **#111** — [REC] Clarifier détection et usage de PR_NUMBER en mode CI — `enhancement` — auteur github-actions[bot]
+- **#112** — [REC] Ajouter rappel git-perso dans le mode interactif du daily-recap — `enhancement` — auteur github-actions[bot]
+- **#113** — [REC] Ajouter structure d'articles et bullet-lists dans docs/medium-journal.md — `enhancement` — auteur github-actions[bot]
+- **#114** — [REC] Ajouter gestion d'erreur pour 'gh pr list' dans daily-recap — `enhancement` — auteur github-actions[bot]
+- **#115** — [REC] Ajouter vérification post-checkout de la branche doc/medium-report — `enhancement` — auteur github-actions[bot]
+- **#116** — [REC] Implémenter la déduplification des PR dans les récaps quotidiens — `enhancement` — auteur github-actions[bot]
+- **#119** — [ARTICLE] 01 — Setup d'un bot de trading piloté par Claude + MCP TradingView — `documentation` — auteur yousmaaza *(ticket de tracking article, fermé le soir même)*
 
 ### Matériel disponible pour l'article
-- **Diff** : `git show 92a68a2 --stat -- '*.py' '*.json'`
-- **Doc tech** : `docs/technique/pr-106-*.md` (généré par binance-doc-tech)
+- **Diff PR #106** : `git show 92a68a2 --stat -- '*.txt'` — +31/-14 sur `prompts/trade_prompt.txt`
+- **Diff PR #118** : `git show 10b37b5 --stat` — +585/-5 sur 6 fichiers (agent, commands, workflows, articles)
+- **Doc tech #106** : `docs/technique/pr-106-filtre-usdc-couplage-1d.md` — diagramme avant/après du pattern de regroupement
+- **Doc tech #118** : `docs/technique/pr-118-medium-articles-workflow.md` — architecture en tableau (4 composants)
+- **Brouillon article 01** : `docs/medium-articles/01-setup-projet-prompt-mcp.md` — plan complet du 1er article, status `published` en fin de journée
+- **Diagramme** : `docs/visuals/` (à générer si besoin avec `/generate-diagrams`)
+- **Screenshot Telegram** : "à faire" — notification Phase 2 avec le nouveau compteur `coins_1d_count`
 
 ### Idée d'angle Medium
-"L'art de tailler les latences sans changer la stratégie" — comment 4 PR d'opti étalées sur 4 jours (#100, #104, #106) ont divisé par 2 le temps de cycle, en attaquant uniquement la couche scan/analyse.
+
+**Angle 1 — "Corriger un rate-limit qu'on ne comprend pas tout de suite"**
+L'erreur `Expecting value: line 1 column 1` retournée par TradingView MCP ressemble à un bug de parsing JSON. C'est en réalité un throttle silencieux : TradingView renvoie une réponse vide quand le débit dépasse son seuil. Le fix (groupes de 4, couplage 4H+1D) est d'ordre architectural, pas d'ordre de code. Bon exemple de debugging à rebours — symptôme trompeur → cause profonde dans la stratégie d'appels parallèles.
+
+**Angle 2 — "Automatiser la plomberie pour se concentrer sur l'écriture"**
+La PR #118 pose une infrastructure complète pour publier des articles Medium : branches git, frontmatter YAML, index README, issues GitHub — le tout piloté par un agent Claude. Le paradoxe plaisant : un agent LLM gère les métadonnées des articles qui décrivent comment on utilise des agents LLM. Article court sur la limite saine entre ce qu'on délègue à l'agent (tâches répétitives sans créativité) et ce qu'on garde (fond, angle, prose).
 
 ---
 
