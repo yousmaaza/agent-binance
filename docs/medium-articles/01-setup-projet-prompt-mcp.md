@@ -1,5 +1,5 @@
 ---
-status: writing
+status: published
 number: 01
 slug: 01-setup-projet-prompt-mcp
 title: "Setup d'un bot de trading piloté par Claude + MCP TradingView"
@@ -7,9 +7,11 @@ target_length: 1500-2200 mots
 target_audience: devs senior curieux des LLM en production, pas forcément traders
 tags_medium: [Python, Claude, LLM, MCP, Trading, Automation]
 created: 2026-05-25
-published_url: ""
+published_url: "https://medium.com/@yousrimaazaoui_98610/claude-code-mcp-tradingview-binance-cli-lalliance-ultime-pour-vos-agents-autonomes-1953597730d5"
 github_issue: "#119"
 ---
+
+> ✅ Publié le 2026-05-25 sur Medium : [Lire l'article](https://medium.com/@yousrimaazaoui_98610/claude-code-mcp-tradingview-binance-cli-lalliance-ultime-pour-vos-agents-autonomes-1953597730d5)
 
 # Article 01 — Setup d'un bot de trading piloté par Claude + MCP TradingView
 
