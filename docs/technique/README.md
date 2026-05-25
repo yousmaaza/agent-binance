@@ -46,6 +46,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#104](pr-104-phase2-1d-filtre-buy.md) | [M103] Optimiser Phase 2 — appel 1D filtré sur candidats 4h BUY | 2026-05-24 |
 | [#106](pr-106-filtre-usdc-couplage-1d.md) | [OPT] Phase 1 filtre USDC non tradables + Phase 2 appels 1D couplés par coin | 2026-05-25 |
 | [#117](pr-117-ci-skip-doc-medium-report.md) | ci: skip tech-lead-review et doc-tech sur doc/medium-report | 2026-05-25 |
+| [#118](pr-118-medium-articles-workflow.md) | feat(medium): dossier medium-articles + agent + CI skip article/* | 2026-05-25 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
