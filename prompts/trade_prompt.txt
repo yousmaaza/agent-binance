@@ -295,29 +295,46 @@ Construis l'univers de candidats :
 4. Limiter à universe_scan_top_n (20) coins au total
 5. Exclure les stablecoins (USDT, BUSD, FDUSD, etc.)
 
+Vérification de tradabilité USDC — pour chaque coin candidat, exécute :
+binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
+- Si le prix est retourné ET le volume 24h >= 5M USDC → marquer ✓ (tradable)
+- Si la commande échoue ou le symbole est introuvable → marquer ✗ (non tradable)
+
+Filtre définitif : éliminer immédiatement les coins marqués ✗ (paire USDC introuvable ou volume insuffisant). Ces coins ne doivent PAS être inclus dans l'univers final transmis à la Phase 2. Seuls les coins avec ✓ passent à la suite. Cette vérification se fait ici en Phase 1, avant tout appel TradingView, pour éviter d'analyser en vain des coins non tradables sur Binance (ex : STEEM, PEOPLE, etc.).
+
 → tg("📡 Phase 1 — Scan marché\\nSentiment : {sentiment}\\n{N} candidats identifiés : {liste}")
 hb(1, summary=f"Sentiment {sentiment}, {N} candidats")
 
-PHASE 2 — ANALYSE MULTI-TIMEFRAME (séquentielle : 4h d'abord, puis 1D filtré)
+PHASE 2 — ANALYSE MULTI-TIMEFRAME (couplée par coin, groupes de 4-5 max)
 _hb_start(2)
 
-Étape A — Analyse 4h pour TOUS les candidats (en parallèle) :
-Pour chaque coin de l'univers, lance en parallèle :
-- mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 4h)
+Traite l'univers par groupes de 4 coins maximum pour respecter le rate limit TradingView.
+Ne jamais lancer plus de 5 appels coin_analysis simultanément (toutes timeframes confondues).
 
-Mémorise pour chaque coin : recommendation (signal_4h) et rsi.
+Pour chaque groupe de 4 coins (ou moins pour le dernier groupe) :
 
-Étape B — Filtrage BUY :
-Identifie les coins dont signal_4h est BUY ou STRONG_BUY → liste coins_buy_4h.
-Les autres coins (NEUTRAL, SELL, STRONG_SELL) : leur signal_1d = "NEUTRAL" par défaut pour le scoring Phase 3. Ils ne reçoivent aucun appel 1D.
+  Étape A — Analyse 4h du groupe (en parallèle dans le groupe) :
+  Pour chaque coin du groupe, lance en parallèle :
+  - mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 4h)
+  Mémorise pour chaque coin : recommendation (signal_4h) et rsi.
 
-Étape C — Analyse 1D uniquement pour coins_buy_4h :
-Si coins_buy_4h est vide → passer directement au scoring (0 appel 1D).
-Sinon, pour chaque coin de coins_buy_4h, lance en parallèle :
-- mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d)
+  Étape B — Appels 1D couplés, immédiatement après les résultats 4h du groupe :
+  Pour chaque coin du groupe dont signal_4h est BUY ou STRONG_BUY :
+  - Lance mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d) immédiatement
+  - Les appels 1D des différents coins BUY d'un même groupe peuvent se faire en parallèle entre eux
+  Pour les coins du groupe avec signal_4h NEUTRAL, SELL ou STRONG_SELL :
+  - Ne pas lancer d'appel 1D. Leur signal_1d = "NEUTRAL" pour le scoring Phase 3.
 
-→ tg(f"📊 Phase 2 terminée — {len(univers)} coins analysés 4h, {len(coins_buy_4h)} coins analysés 1D (filtrés BUY)\\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d}")
-hb(2, summary=f"{len(univers)} coins analysés 4h, {len(coins_buy_4h)} analysés 1D")
+  Si un appel 1D échoue (réponse vide, timeout) : noter signal_1d = "NEUTRAL" pour ce coin et continuer sans l'éliminer.
+
+  Attends que tous les appels 4h ET 1D du groupe soient terminés avant de passer au groupe suivant.
+
+Après tous les groupes, collecte :
+- coins_4h_count = nombre total de coins analysés en 4h (= taille de l'univers)
+- coins_1d_count = nombre total de coins ayant reçu un appel 1D (coins BUY/STRONG_BUY en 4h)
+
+→ tg(f"✓ Phase 2 — {coins_4h_count} coins analysés 4h, {coins_1d_count} coins analysés 1D (signal BUY confirmé)\\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d}")
+hb(2, summary=f"{coins_4h_count} coins analysés 4h, {coins_1d_count} analysés 1D")
 
 PHASE 3 — SCORING ET SÉLECTION
 _hb_start(3)
