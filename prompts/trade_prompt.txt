@@ -16,6 +16,7 @@ import json as _hb_json, datetime as _hb_dt, os as _hb_os
 _HB_PATH = "__PROJECT_DIR__/logs/cycle___CYCLE_ID___phases.jsonl"
 _hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
 _hb_phase_start = {}
+_trigger = "__TRIGGER__"
 
 def _hb_start(phase):
     _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
@@ -29,7 +30,8 @@ def hb(phase, status="ok", summary=""):
             "phase": phase,
             "status": status,
             "duration_s": duration_s,
-            "summary": summary
+            "summary": summary,
+            "trigger": _trigger
         }) + "\n")
         _f.flush()
 
@@ -535,7 +537,7 @@ doc = {
   "prompt_version": "__PROMPT_VERSION__",
   "timestamp": "{ISO UTC du début du cycle}",
   "status": "completed",
-  "trigger": "manual",
+  "trigger": _trigger,
   "portfolio": {
     "total_usdc": <portfolio_total>,
     "budget_disponible": <budget_disponible>,
