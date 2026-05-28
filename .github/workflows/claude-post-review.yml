@@ -151,6 +151,18 @@ jobs:
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
           echo "$REVIEW" > /tmp/review_comment.md
 
+      - name: Ensure tech-lead-review label exists
+        if: steps.review.outputs.has_review == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create "tech-lead-review" \
+            --repo "$REPO" \
+            --color "0075ca" \
+            --description "Ticket généré automatiquement depuis une review tech lead" \
+            2>/dev/null || true
+
       - name: Create recommendation tickets (ticket-manager)
         if: steps.review.outputs.has_review == 'true'
         uses: anthropics/claude-code-action@v1
@@ -185,9 +197,9 @@ jobs:
             2. Crée le ticket avec le template standard (Contexte / Objectif /
                Détails techniques / Critères d'acceptation / Pièges)
             3. Dans le body, ajoute : "Recommandation issue de la review PR #${{ steps.review.outputs.pr_number }}"
-            4. Ajoute au board (#4) : Status=Backlog, Priority=P2,
+            4. Ajoute au board (#4) : Status=In progress, Priority=P2,
                Size selon complexité apparente
-            5. Label : `enhancement`
+            5. Labels : `enhancement`, `tech-lead-review`
 
             Conventions :
             - Tag : `[REC]` (recommandation de review)
