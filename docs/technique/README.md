@@ -55,7 +55,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#140](pr-140-post-review-trigger-binance-dev-auto.md) | feat(ci): post-review déclenche binance-dev-auto sur tickets [REC] | 2026-05-28 |
 | [#141](pr-141-documenter-skip-types.md) | [M128] Documenter les TYPE_A/B/C/D de skip_type en CLAUDE.md | 2026-05-28 |
 | [#142](pr-142-clarify-date-format.md) | [M124] Clarifier le format date en Phase 8 du trade_prompt | 2026-05-28 |
-| [#143](pr-143-verifier-variables-phase-3-5-6.md) | [M125] Vérifier la définition des variables Phase 3/5/6 en trade_prompt | 2026-05-28 |
+| [#144](pr-144-verify-variable-definitions.md) | [M125] Vérifier la définition des variables Phase 3/5/6 en trade_prompt | 2026-05-28 |
 | [#122](pr-122-cycle-log-jsonl.md) | [M121] Générer state/cycle_log.jsonl après chaque cycle et le pousser | 2026-05-28 |
 
 ---
