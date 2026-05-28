@@ -40,7 +40,7 @@ def main_loop():
     logger.info(f"Prochain cycle auto : {fmt_next()}")
 
     send_telegram(
-        f"🤖 Bot v2 démarré\n"
+        f"🤖 Bot v2 démarré (workflow test 2026-05-28)\n"
         f"Commandes : /trade /status /perf /raisonnement /cout /eval /reset\n"
         f"⏰ Prochain cycle auto : {fmt_next()}",
         parse_mode=None,
