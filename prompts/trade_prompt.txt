@@ -39,6 +39,16 @@ def hb(phase, status="ok", summary=""):
         }) + "\n")
         _f.flush()
 
+# Initialisation des variables de synthèse (utilisées par Phase 8)
+top_score = 0
+executed = 0
+skipped = 0
+skip_type = None
+skip_detail = None
+sentiment = "Neutral"
+portfolio_total = 0.0
+open_positions = 0
+
 Envoie une notification à la FIN de chaque phase avant de passer à la suivante.
 
 ---
@@ -371,6 +381,17 @@ FILTRES OBLIGATOIRES :
 - Budget : montant_ordre >= min_order_usdc (11 USDC)
 - Liquidité : ne pas trader des coins avec volume 24h < 5M USDC (estimé depuis les screeners)
 
+À la fin de Phase 3, mets à jour les variables de synthèse :
+- top_score = score maximum parmi tous les coins analysés (int, 0-10)
+- skipped = nombre de coins avec decision == "SKIP" (bloqués par les filtres)
+- skip_type = determiner si skip_type basé sur la raison principale du skip :
+  * TYPE_A si max_open_positions atteint avec signal >= seuil
+  * TYPE_B si budget × max_single_position_pct < min_order_usdc
+  * TYPE_C si sentiment bearish ET aucun signal >= min_signal_score
+  * TYPE_D pour autres raisons (corrélation, ADX, RSI extrême)
+  * None si aucun skip ou au moins un trade (BUY) a été décidé
+- skip_detail = phrase courte décrivant la raison du skip principal, ou None
+
 → tg("🧠 Phase 3 — Stratégie\\nScores : {coin: score pour les top 5}\\n{N_buy} BUY candidates : {liste}\\nFiltres appliqués : {résumé}")
 hb(3, summary=f"{N_buy} BUY candidates, filtres appliqués")
 
@@ -508,6 +529,10 @@ with open("__PROJECT_DIR__/state/trade_history.json", "w") as f:
    tg("⚡ BUY MARKET {COIN}\\n{actual_qty} @ {actual_entry:.4g} USDC (fill réel)\\n🛑 Stop : {actual_stop:.4g}\\n🎯 TP : {actual_tp:.4g}\\nScore : {score}/10")
 
 Après avoir traité tous les ordres :
+Mets à jour les variables de synthèse :
+- executed = len(orders_placed) — nombre d'ordres BUY MARKET passés
+- open_positions = nombre de trades status="open" dans trade_history.json après cette phase
+
 hb(5, summary=f"{len(ordres_executes)} ordres exécutés, {orders_skipped_count} skippés")
 
 PHASE 6 — RAPPORT FINAL
@@ -596,3 +621,44 @@ if _uri:
 
 - Écris state/agent_lock.json : {"running": false, "started_at": null}
 hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, {N} ordre(s)")
+
+PHASE 8 — CYCLE LOG JSONL
+_hb_start(8)
+Écris une ligne dans state/cycle_log.jsonl et push sur GitHub.
+
+Les variables de synthèse suivantes ont été définies et mise à jour par les phases précédentes :
+- top_score : score maximum parmi tous les coins (défini en Phase 3, 0-10)
+- executed : nombre d'ordres BUY MARKET passés (défini en Phase 5)
+- skipped : nombre de coins bloqués par les filtres (défini en Phase 3)
+- skip_type : raison principale du skip (TYPE_A/B/C/D ou None, défini en Phase 3)
+- skip_detail : phrase décrivant le skip principal (défini en Phase 3, ou None)
+- sentiment : sentiment global du marché (obtenu en Phase 1)
+- portfolio_total : portefeuille total en USDC (calculé en Phase 0)
+- open_positions : nombre de trades open (calculé en Phase 5)
+
+Utilise ces variables pour écrire un document JSON dans state/cycle_log.jsonl :
+```json
+{
+    "date": "YYYY-MM-DDTHH:MMZ",
+    "cycle_id": "__CYCLE_ID__",
+    "top_score": <int 0-10>,
+    "executed": <int>,
+    "skipped": <int>,
+    "skip_type": "<TYPE_A|TYPE_B|TYPE_C|TYPE_D|None>",
+    "skip_detail": "<str or None>",
+    "portfolio": <float>,
+    "sentiment": "<Neutral|Bullish|Bearish|...>",
+    "open_positions": <int>
+}
+```
+
+Procédure :
+1. Lire state/cycle_log.jsonl s'il existe (sinon liste vide)
+2. Ajouter la nouvelle ligne JSON
+3. Tronquer à 90 lignes maximum (garder les plus récentes)
+4. Réécrire le fichier
+5. Commit et push sur main (idempotent via git diff --cached)
+
+Avec gestion d'erreur try/except et notification Telegram en cas d'échec.
+
+hb(8, summary=f"Cycle log écrit, {executed} ordres exécutés")
