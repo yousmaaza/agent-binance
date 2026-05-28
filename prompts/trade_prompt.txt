@@ -12,7 +12,23 @@ def tg(text):
          "-d", payload, "--max-time", "20"],
         capture_output=True)
 
-import json as _hb_json, datetime as _hb_dt, os as _hb_os
+import json as _hb_json, datetime as _hb_dt, os as _hb_os, tempfile as _hb_tempfile
+# Fonction atomique pour sauvegarder trade_history.json (écrit via fichier temp + os.replace())
+def _save_trade_history_atomic(data, path_override=None):
+    _th_path = path_override or "__PROJECT_DIR__/state/trade_history.json"
+    _th_parent = _hb_os.path.dirname(_th_path)
+    _hb_os.makedirs(_th_parent, exist_ok=True)
+    _fd, _th_temp = _hb_tempfile.mkstemp(dir=_th_parent, text=True, suffix=".tmp")
+    try:
+        with _hb_os.fdopen(_fd, "w") as _f:
+            _hb_json.dump(data, _f, indent=2)
+        _hb_os.replace(_th_temp, _th_path)
+    except Exception as _e:
+        try:
+            _hb_os.unlink(_th_temp)
+        except OSError:
+            pass
+        raise _e
 _HB_PATH = "__PROJECT_DIR__/logs/cycle___CYCLE_ID___phases.jsonl"
 _hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
 _hb_phase_start = {}
@@ -182,8 +198,7 @@ try:
             else:
                 tg(f"⚠️ {_coin} : OCO rattrapage échoué — {_oco_raw.stdout[:200]}")
 
-    with open("__PROJECT_DIR__/state/trade_history.json", "w") as _f:
-        _pf_json.dump(_history, _f, indent=2)
+    _save_trade_history_atomic(_history)
 except Exception as _pf_err:
     tg(f"⚠️ Erreur routine rattrapage protection_failed : {_pf_err}")
 
@@ -282,8 +297,7 @@ for _t in _history:
     _t["order_list_id"] = _new_list_id
     _t["stop_order_id"] = _new_sl_id
     _t["tp_order_id"] = _new_tp_id
-    with open(f"{PROJECT_DIR}/state/trade_history.json", "w") as _f:
-        json.dump(_history, _f, indent=2)
+    _save_trade_history_atomic(_history)
 
     _ts_updates.append(f"{_coin}: stop {_cur_stop:.4g}→{_new_stop_r:.4g} | TP {_cur_tp:.4g}→{_new_tp_r:.4g}")
     tg(f"📈 {_coin} trailing stop remonté\nStop : {_cur_stop:.4g} → {_new_stop_r:.4g}\nTP : {_cur_tp:.4g} → {_new_tp_r:.4g}\nPrix actuel : {_price:.4g}")
@@ -557,8 +571,7 @@ history.append({
     "pnl_usdc": None,
     "pnl_pct": None
 })
-with open("__PROJECT_DIR__/state/trade_history.json", "w") as f:
-    json.dump(history, f, indent=2)
+_save_trade_history_atomic(history)
 
 8. Notification immédiate :
    tg("⚡ BUY MARKET {COIN}\\n{actual_qty} @ {actual_entry:.4g} USDC (fill réel)\\n🛑 Stop : {actual_stop:.4g}\\n🎯 TP : {actual_tp:.4g}\\nScore : {score}/10")
