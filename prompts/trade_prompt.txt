@@ -51,9 +51,15 @@ open_positions = 0
 
 Envoie une notification à la FIN de chaque phase avant de passer à la suivante.
 
+⚠️ RÈGLE CRITIQUE POUR LES HEARTBEATS :
+À chaque phase, VOUS DEVEZ exécuter _hb_start(N) au DÉBUT et hb(N, ...) à la FIN.
+Sans exception. Chaque phase (0-8) DOIT figurer exactement une fois dans les logs.
+Les heartbeats sont écrits dans logs/cycle___CYCLE_ID___phases.jsonl et valident la progression.
+
 ---
 
 PHASE 0 — VÉRIFICATIONS PRÉALABLES
+⏱️ HEARTBEAT START PHASE 0
 _hb_start(0)
 Lis config.json pour récupérer TOUS les paramètres.
 Exécute : binance-cli spot get-account --profile agent-profile
@@ -294,9 +300,11 @@ if _ts_updates:
 
 Compte open_positions = nombre de trades status="open" dans trade_history.json
 → tg("📋 Phase 0 — Vérifications\\nPortfolio : {portfolio_total:.2f} USDC\\nBudget dispo : {budget_disponible:.2f} USDC\\nPositions ouvertes : {open_positions}/{max_open_positions}\\nPnL du jour : {daily_pnl:+.2f} USDC")
+⏱️ HEARTBEAT END PHASE 0 — appel hb(0) immédiatement ci-dessous
 hb(0, summary=f"Portfolio {portfolio_total:.2f} USDC, {open_positions} positions, PnL jour {daily_pnl:+.2f} USDC")
 
 PHASE 1 — SCAN MARCHÉ (tout en parallèle)
+⏱️ HEARTBEAT START PHASE 1
 _hb_start(1)
 Lance simultanément :
 - mcp__tradingview__top_gainers (exchange: BINANCE) → top gainers
@@ -319,9 +327,11 @@ binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
 Filtre définitif : éliminer immédiatement les coins marqués ✗ (paire USDC introuvable ou volume insuffisant). Ces coins ne doivent PAS être inclus dans l'univers final transmis à la Phase 2. Seuls les coins avec ✓ passent à la suite. Cette vérification se fait ici en Phase 1, avant tout appel TradingView, pour éviter d'analyser en vain des coins non tradables sur Binance (ex : STEEM, PEOPLE, etc.).
 
 → tg("📡 Phase 1 — Scan marché\\nSentiment : {sentiment}\\n{N} candidats identifiés : {liste}")
+⏱️ HEARTBEAT END PHASE 1 — appel hb(1) immédiatement ci-dessous
 hb(1, summary=f"Sentiment {sentiment}, {N} candidats")
 
 PHASE 2 — ANALYSE MULTI-TIMEFRAME (couplée par coin, groupes de 4-5 max)
+⏱️ HEARTBEAT START PHASE 2
 _hb_start(2)
 
 Traite l'univers par groupes de 4 coins maximum pour respecter le rate limit TradingView.
@@ -350,9 +360,11 @@ Après tous les groupes, collecte :
 - coins_1d_count = nombre total de coins ayant reçu un appel 1D (coins BUY/STRONG_BUY en 4h)
 
 → tg(f"✓ Phase 2 — {coins_4h_count} coins analysés 4h, {coins_1d_count} coins analysés 1D (signal BUY confirmé)\\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d}")
+⏱️ HEARTBEAT END PHASE 2 — appel hb(2) immédiatement ci-dessous
 hb(2, summary=f"{coins_4h_count} coins analysés 4h, {coins_1d_count} analysés 1D")
 
 PHASE 3 — SCORING ET SÉLECTION
+⏱️ HEARTBEAT START PHASE 3
 _hb_start(3)
 
 # Initialiser les structures de données pour Phase 3
@@ -415,9 +427,11 @@ N_buy = len(buy_candidates)
 top_score = top_score or 0  # fallback au cas où aucun score n'a été calculé
 
 → tg("🧠 Phase 3 — Stratégie\\nTop score : {top_score}/10\\nScores : {coin: score pour les top 5}\\n{N_buy} BUY candidates : {liste}\\nFiltres appliqués : {résumé}\\nSkipped : {len(skip_coins_detail)} coins")
+⏱️ HEARTBEAT END PHASE 3 — appel hb(3) immédiatement ci-dessous
 hb(3, summary=f"{N_buy} BUY candidates, {len(skip_coins_detail)} skipped, top_score {top_score}/10")
 
 PHASE 4 — SIZING ET PRÉPARATION DES ORDRES
+⏱️ HEARTBEAT START PHASE 4
 _hb_start(4)
 Pour chaque BUY candidate :
 
@@ -451,9 +465,11 @@ Vérifications :
 - Re-vérifier budget total de tous les ordres ≤ budget_disponible
 
 → tg("💰 Phase 4 — Ordres préparés\\n{pour chaque ordre : COIN qty @ entry | Stop: stop | TP: tp | Risque: risk_usdc USDC}")
+⏱️ HEARTBEAT END PHASE 4 — appel hb(4) immédiatement ci-dessous
 hb(4, summary=f"{len(ordres_prepares)} ordres dimensionnés")
 
 PHASE 5 — EXÉCUTION AUTOMATIQUE
+⏱️ HEARTBEAT START PHASE 5
 _hb_start(5)
 
 # Initialiser les structures de données pour Phase 5
@@ -570,9 +586,11 @@ Mets à jour les variables de synthèse :
 - open_positions = nombre de trades status="open" dans trade_history.json après cette phase
 
 → tg(f"📊 Phase 5 résumé\\nExécutés : {executed}\\nSkippés : {skipped}\\nDétails skip : {orders_skipped_detail}")
+⏱️ HEARTBEAT END PHASE 5 — appel hb(5) immédiatement ci-dessous
 hb(5, summary=f"{executed} ordres exécutés, {skipped} skippés")
 
 PHASE 6 — RAPPORT FINAL
+⏱️ HEARTBEAT START PHASE 6
 _hb_start(6)
 
 # Initialiser/finaliser les variables pour Phase 6
@@ -594,9 +612,11 @@ _next = _now.replace(hour=_slot_h, minute=5, second=0, microsecond=0)
 if _next <= _now:
     _next += _dt.timedelta(hours=4)
 _next_str = _next.astimezone().strftime("%d/%m %H:%M") + " (heure locale)"
+⏱️ HEARTBEAT END PHASE 6 — appel hb(6) immédiatement ci-dessous
 hb(6, summary=f"Rapport généré, top_score {top_score}/10, {executed} exec / {skipped} skip, prochain cycle {_next_str}")
 
 PHASE 7 — PERSISTANCE EN BASE (MongoDB)
+⏱️ HEARTBEAT START PHASE 7
 _hb_start(7)
 
 CYCLE_ID = "__CYCLE_ID__"   # déjà substitué par Python avant l'appel
@@ -685,6 +705,34 @@ if _uri:
 
 - Écris state/agent_lock.json : {"running": false, "started_at": null}
 
+⏱️ HEARTBEAT VERIFICATION — VÉRIFIER QUE TOUTES LES PHASES SONT PRÉSENTES
+Avant d'appeler hb(7), vérifier que logs/cycle___CYCLE_ID___phases.jsonl contient bien une ligne pour chaque phase 0-6.
+Cette vérification est CRITIQUE car elle garantit que le heartbeat JSONL est complet.
+
+import json as _hb_check_json, os as _hb_check_os
+_hb_check_path = "__PROJECT_DIR__/logs/cycle___CYCLE_ID___phases.jsonl"
+_hb_check_phases = set()
+try:
+    if _hb_check_os.path.exists(_hb_check_path):
+        with open(_hb_check_path) as _f:
+            for _line in _f:
+                if _line.strip():
+                    try:
+                        _entry = _hb_check_json.loads(_line)
+                        _hb_check_phases.add(_entry.get("phase"))
+                    except:
+                        pass
+except:
+    pass
+
+# Phases manquantes : si 0-6 ne sont pas tous présents, créer les entrées manquantes
+_hb_missing_phases = [p for p in range(0, 7) if p not in _hb_check_phases]
+if _hb_missing_phases:
+    tg(f"⚠️ Heartbeats manquants détectés : phases {_hb_missing_phases}. Complétude garantie...")
+    # Compléter les phases manquantes avec un statut "recovered" pour traçabilité
+    for _hb_missing_p in _hb_missing_phases:
+        hb(_hb_missing_p, status="recovered", summary=f"Heartbeat manquant pour phase {_hb_missing_p}, ajouté en Phase 7")
+
 # Documentation de Phase 7 — Vérification des variables critiques
 # Les variables suivantes DOIVENT être assignées avant la persistance en Mongo :
 # - top_score (int) : meilleur score trouvé en Phase 3
@@ -696,9 +744,11 @@ if _uri:
 # - open_positions (int) : nombre de positions ouvertes (calculé en Phase 0)
 # Fallbacks appliqués ci-dessus (Phase 7 début) pour éviter UnboundLocalError
 
+⏱️ HEARTBEAT END PHASE 7 — appel hb(7) immédiatement ci-dessous
 hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, top_score {top_score}/10, {executed} exec / {skipped} skip")
 
 PHASE 8 — CYCLE LOG JSONL
+⏱️ HEARTBEAT START PHASE 8
 _hb_start(8)
 Écris une ligne dans state/cycle_log.jsonl et push sur GitHub.
 
@@ -780,4 +830,5 @@ except Exception as _cl_git_err:
     tg(f"⚠️ cycle_log push exception : {_cl_git_err}")
 ```
 
+⏱️ HEARTBEAT END PHASE 8 — appel hb(8) immédiatement ci-dessous
 hb(8, summary=f"Cycle log écrit, {executed} ordres exécutés")
