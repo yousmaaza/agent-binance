@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-05-28
-> **Commit** : dffe993
+> **Dernière mise à jour** : 2026-05-28 (PR #134)
+> **Commit** : 4a2f77b
 
 ---
 
@@ -292,3 +292,4 @@ webhook_server.py (process principal)
 | [#118](pr-118-medium-articles-workflow.md) | 2026-05-25 | Infrastructure Medium : agent `medium-articles-manager` (new/publish/update-index) + slash command `/medium` + branche `docs/medium-articles` + skip CI sur article/* et docs/medium-* → organisation documentaire des articles issus du projet |
 | [#131](pr-131-post-review-auto-tag.md) | 2026-05-28 | Workflow post-review automation : nouveau `.github/workflows/claude-post-review.yml` avec job `fix-bloquants` (correction automatique issues review), job `create-recommendation-tickets` (tickétisation recommandations avec label `tech-lead-review`), step idempotent de création label avant usage |
 | [#133](pr-133-test-workflow-binance-dev.md) | 2026-05-28 | Test de recette du workflow `binance-dev-auto` : validation du pipeline entier (issue → branche → commit → PR → changement statut ticket) via `workflow_dispatch` |
+| [#134](pr-134-qualifier-les-except-generiques.md) | 2026-05-28 | Refactoring gestion d'erreurs : remplacement bare `except Exception` par types spécifiques (`OSError`, `json.JSONDecodeError`, `ValueError`) dans `core/lock.py`, `core/telegram.py`, `orchestration/runner.py` ; ajout journalisation des erreurs capturées |
