@@ -151,7 +151,7 @@ jobs:
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
           echo "$REVIEW" > /tmp/review_comment.md
 
-      - name: Ensure tech-lead-review label exists
+      - name: Ensure tech-lead-review + AUTO labels exist
         if: steps.review.outputs.has_review == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
@@ -161,6 +161,11 @@ jobs:
             --repo "$REPO" \
             --color "0075ca" \
             --description "Ticket généré automatiquement depuis une review tech lead" \
+            2>/dev/null || true
+          gh label create "AUTO" \
+            --repo "$REPO" \
+            --color "0075ca" \
+            --description "Ticket éligible au workflow binance-dev-auto" \
             2>/dev/null || true
 
       - name: Create recommendation tickets (ticket-manager)
@@ -199,19 +204,33 @@ jobs:
             3. Dans le body, ajoute : "Recommandation issue de la review PR #${{ steps.review.outputs.pr_number }}"
             4. Ajoute au board (#4) : Status=In progress, Priority=P2,
                Size selon complexité apparente
-            5. Labels : `enhancement`, `tech-lead-review`
+            5. Labels : `enhancement`, `tech-lead-review`, `AUTO`
+            6. **Conserve en mémoire** pour chaque ticket créé : `issue_number` et `item_node_id`
+               (le node_id Project V2 retourné par `addProjectV2ItemById`).
 
             Conventions :
             - Tag : `[REC]` (recommandation de review)
             - Tous les textes en français
             - Pas de ticket si la recommandation dit "optionnel" ou est triviale (<5 min)
 
-            À la fin, poste un commentaire récap sur la PR :
-            ```
-            gh pr comment ${{ steps.review.outputs.pr_number }} \
-              --repo ${{ github.repository }} \
-              --body "### 📋 Tickets créés depuis les recommandations\n<liste avec URLs>"
-            ```
+            À la fin :
+
+            A. Pour chaque ticket créé, déclenche le workflow `binance-dev-auto` :
+               ```bash
+               gh workflow run binance-dev-auto.yml \
+                 --repo ${{ github.repository }} \
+                 --ref main \
+                 -f issue_number=<ISSUE_NUMBER> \
+                 -f item_node_id=<ITEM_NODE_ID>
+               sleep 10   # éviter les races GitHub Actions
+               ```
+
+            B. Poste un commentaire récap sur la PR :
+               ```
+               gh pr comment ${{ steps.review.outputs.pr_number }} \
+                 --repo ${{ github.repository }} \
+                 --body "### 📋 Tickets créés depuis les recommandations\n<liste avec URLs>\n\n⚡ Workflow binance-dev-auto déclenché pour chaque ticket."
+               ```
           claude_args: |
             --model claude-haiku-4-5-20251001
             --allowedTools "Bash,Read,Grep,Write"
