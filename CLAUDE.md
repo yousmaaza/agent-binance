@@ -43,6 +43,7 @@ Même en cas d'exit code non-zéro. Ne supprime jamais cette capture — c'est l
 - Toute logique interne (`next_4h_slot`, comparaisons, timestamps Mongo) en UTC
 - Tout affichage utilisateur (notifications Telegram) en heure locale via `fmt_local()` / `fmt_next()`
 - Les slots auto sont alignés sur les clôtures TradingView 4h : 00:05, 04:05, ..., 20:05 **UTC**
+- **Format date pour l'unicité par cycle** : les heartbeat logs (JSONL) utilisent le format `%Y-%m-%dT%H:%M:%SZ` **avec secondes** pour garantir que chaque phase d'un même cycle ait un timestamp distinct (7 phases peuvent s'exécuter en moins de 60s). L'agrégation horaire seule (`%H:%M`) serait insuffisante.
 
 ### 6. Auto-scheduler dans la main loop, pas via cron/systemd
 
@@ -109,6 +110,35 @@ Le `_TRADE_PROMPT_TEMPLATE` (dans `webhook_server.py`) est injecté dans le sous
 Si tu ajoutes une nouvelle variable substituée, suit le même pattern : `__TOKEN_NAME__` dans le template, `.replace("__TOKEN_NAME__", value)` côté Python.
 
 Le prompt demande à Claude d'exécuter du code Python qui appelle `binance-cli` via subprocess. Ne mets jamais `binance-cli` directement dans `webhook_server.py` — c'est l'agent qui orchestre, pas le serveur.
+
+## Cycles de trading : skip_type et skip_detail
+
+À chaque cycle, le bot classe chaque coin candidat par une **décision** (BUY, HOLD, SKIP, SELL) et un **skip_type** si le coin est skippé. Ces informations sont persistées dans MongoDB (`cycles.skip_type`, `cycles.skip_detail`) et listées dans `state/cycle_log.jsonl`.
+
+### Les 4 types de skip
+
+| Type | Phase | Déclencheur | Explication |
+|------|-------|-------------|-------------|
+| **TYPE_A** | 3 (Scoring) | Score < 6/10 OU positions max OU corrélation excessive | Signal de trading insuffisant ou contraintes de portfolio bloquantes. Le coin n'a pas passé la sélection stratégique. |
+| **TYPE_B** | 4 (Sizing) | Montant < `min_order_usdc` (11 USDC) OU prix_stop < 0 | L'ordre ne respecte pas les contraintes de dimensionnement. Trop petit pour trader ou risque invalide. |
+| **TYPE_C** | 5 (Exécution) | Drift prix > 2% OU solde USDC insuffisant OU BUY MARKET non rempli | Conditions de marché dégradées ou indisponibilité de liquidité au moment du fill. |
+| **TYPE_D** | 1 (Scan) | Paire {COIN}USDC indisponible sur Binance OU volume 24h < 5M USDC | La crypto n'est pas tradable en USDC sur Binance ou manque de liquidité pour une position responsable. |
+| **null** | — | Aucun skip : BUY, HOLD ou SELL | Le coin a été évalué et inclus dans la décision stratégique (pas de skip). |
+
+### skip_detail associé
+
+Chaque `skip_type` peut inclure un `skip_detail` détaillé (texte libre) qui explique précisément le motif dans le contexte du cycle :
+- TYPE_A : "Score 4/10, déjà 3 coins BUY", "Corrélation : déjà 2 L1-alts", "Budget maxé à 50 USDC"
+- TYPE_B : "Montant 8 USDC < seuil 11", "Prix stop calculé négatif (volatilité extrême)"
+- TYPE_C : "Drift +3.5% depuis scan (slippage)", "Solde 5 USDC < besoin 12", "MARKET exécuté partiellement 0.5 qty/1.2 cmd"
+- TYPE_D : "Paire XXXUSDC introuvable", "Volume 24h 2M < 5M USDC"
+
+### Utilité pour le debug
+
+Ces classifications permettent de :
+1. **Distinguer les skips volontaires** (filtre stratégique, TYPE_A) des **skips techniques** (indisponibilité, TYPE_C/D).
+2. **Tracer les pertes d'opportunité** : si un coin prometteur est systématiquement TYPE_D, c'est un signal d'ajuster la liste USDC supportée.
+3. **Optimiser la stratégie** : si TYPE_B domine, c'est que la volatilité est trop haute et le risk_per_trade_pct est trop conservateur.
 
 ### 8. Toute modification du code passe par l'agent `binance-dev` (workflow ticket → branche → PR)
 

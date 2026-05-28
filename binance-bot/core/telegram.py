@@ -6,6 +6,8 @@ from loguru import logger
 
 from core.env import BASE_URL, CHAT_ID, PROJECT_DIR
 
+_OFFSET_FILE = f"{PROJECT_DIR}/state/telegram_offset.json"
+
 
 def tg_post(endpoint, body):
     payload = json.dumps(body)
@@ -44,9 +46,10 @@ def handle_callback(cq):
 
 def get_offset() -> int:
     try:
-        with open(f"{PROJECT_DIR}/state/telegram_offset.json") as f:
+        with open(_OFFSET_FILE) as f:
             return json.load(f).get("offset", 0)
-    except Exception:
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"[Telegram] Erreur lecture {_OFFSET_FILE}: {e}")
         return 0
 
 

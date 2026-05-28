@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
-> **Généré par** : `binance-doc-tech` one-shot
-> **Dernière mise à jour** : 2026-05-25
-> **Commit** : ce95996
+> **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
+> **Dernière mise à jour** : 2026-05-28 (PR #143)
+> **Commit** : <current>
 
 ---
 
@@ -197,7 +197,7 @@ webhook_server.py (process principal)
 |---|---|---|
 | `logs/stdout/cycle_<id>.log` | Log brut | Sortie stdout du sous-processus Claude (stream-json) — toujours écrit, même en cas d'erreur |
 | `logs/stderr/cycle_<id>.log` | Log brut | Sortie stderr du sous-processus Claude — toujours écrit, même en cas d'erreur |
-| `logs/cycle_<id>_phases.jsonl` | JSONL | Heartbeats par phase : une ligne JSON par phase terminée (0–7), avec `ts`, `phase`, `status`, `duration_s`, `summary` — base pour le watchdog ticket #7 |
+| `logs/cycle_<id>_phases.jsonl` | JSONL | Heartbeats par phase : une ligne JSON par phase terminée (0–7), avec `ts`, `phase`, `status`, `duration_s`, `summary`, `trigger` (`"manual"`\|`"auto"`) — base pour le watchdog ticket #7, qui peut filtrer par type de cycle |
 
 ---
 
@@ -267,6 +267,7 @@ webhook_server.py (process principal)
 | v2 — 790b83a | 2025-xx-xx | Ajout capture raisonnement : loguru + MongoDB + commande `/raisonnement` |
 | v2 — 2bf48c0 | 2025-xx-xx | Mise à jour README et ajout CLAUDE.md (contraintes non négociables) |
 | Spec initiale | 2026-05-21 | Génération initiale de SPEC.md via `binance-doc-tech` one-shot |
+| [#130](pr-130-workflow-dispatch.md) | 2026-05-28 | CI/infra : migrer trigger GitHub Actions de `projects_v2_item` (orga only) vers `workflow_dispatch` pour support des comptes personnels |
 | [#56](pr-56-trailing-stop-remonter-stop-loss.md) | 2026-05-22 | Ajout trailing stop dans Phase 0 du TRADE_PROMPT : remonte le stop-loss et recalcule le TP si le prix a progressé de plus de 20% de la distance originale, avec annulation/replacement de l'OCO |
 | [#17](pr-17-rotation-loguru-daemon-log.md) | 2026-05-21 | Rotation loguru activée sur `state/daemon.log` (10 MB, 5 fichiers) ; remplacement des `print()` par loguru ; suppression du handler stderr par défaut (id=0) |
 | [#21](pr-21-differencer-notif-telegram-manual-vs-auto.md) | 2026-05-21 | Notification de démarrage de cycle différenciée : `🤖 Cycle auto 4h démarré (heure locale)` vs `🔧 Cycle manuel {cycle_id} démarré` ; suppression de `parse_mode="HTML"` sur ces messages |
@@ -289,3 +290,11 @@ webhook_server.py (process principal)
 | [#106](pr-106-filtre-usdc-couplage-1d.md) | 2026-05-25 | Phase 1 : filtre tradabilité USDC explicite (via `binance-cli spot ticker-price`) — éliminer coins non tradables avant TradingView ; Phase 2 : couplage 1D par groupe de 4 coins (appels 1D immédiatement après résultat 4h BUY) au lieu de batch séparé global |
 | [#117](pr-117-ci-skip-doc-medium-report.md) | 2026-05-25 | CI/workflow : skip des jobs `tech-lead-review` et `doc-tech` sur la branche `doc/medium-report` (accumulation journal Medium, pas de code à reviewer) → économie quota agents |
 | [#118](pr-118-medium-articles-workflow.md) | 2026-05-25 | Infrastructure Medium : agent `medium-articles-manager` (new/publish/update-index) + slash command `/medium` + branche `docs/medium-articles` + skip CI sur article/* et docs/medium-* → organisation documentaire des articles issus du projet |
+| [#131](pr-131-post-review-auto-tag.md) | 2026-05-28 | Workflow post-review automation : nouveau `.github/workflows/claude-post-review.yml` avec job `fix-bloquants` (correction automatique issues review), job `create-recommendation-tickets` (tickétisation recommandations avec label `tech-lead-review`), step idempotent de création label avant usage |
+| [#133](pr-133-test-workflow-binance-dev.md) | 2026-05-28 | Test de recette du workflow `binance-dev-auto` : validation du pipeline entier (issue → branche → commit → PR → changement statut ticket) via `workflow_dispatch` |
+| [#134](pr-134-qualifier-les-except-generiques.md) | 2026-05-28 | Refactoring gestion d'erreurs : remplacement bare `except Exception` par types spécifiques (`OSError`, `json.JSONDecodeError`, `ValueError`) dans `core/lock.py`, `core/telegram.py`, `orchestration/runner.py` ; ajout journalisation des erreurs capturées |
+| [#135](pr-135-add-trigger-heartbeat.md) | 2026-05-28 | Injection du champ `trigger` dans les logs JSONL (Phase 7) et le document MongoDB : valeur `"manual"` ou `"auto"` — permet au watchdog (#7) de filtrer et distinguer les cycles manuels vs auto pour logiques de gestion différenciées |
+| [#140](pr-140-post-review-trigger-binance-dev-auto.md) | 2026-05-28 | CI/workflow automation : post-review déclenche automatiquement `binance-dev-auto` sur tickets [REC] créés (labels AUTO, tech-lead-review) ; scripts utilitaires `dispatch_rec_tickets.sh` et `label_rec_auto.sh` pour migration tickets historiques |
+| [#141](pr-141-documenter-skip-types.md) | 2026-05-28 | Documentation : nouvelle section CLAUDE.md « Cycles de trading : skip_type et skip_detail » — classement des skips par type (TYPE_A/B/C/D), déclencheurs par phase, utilité pour le debug et l'optimisation stratégique |
+| [#142](pr-142-clarify-date-format.md) | 2026-05-28 | Clarification CLAUDE.md : format date des heartbeat logs JSONL utilise `%Y-%m-%dT%H:%M:%SZ` **avec secondes** pour garantir l'unicité chronologique des 7 phases exécutées en <60s (sinon agrégation %H:%M serait insuffisante) |
+| [#143](pr-143-verifier-variables-phase-3-5-6.md) | 2026-05-28 | TRADE_PROMPT : initialisation explicite des variables de synthèse (top_score, executed, skipped, skip_type, skip_detail, sentiment, portfolio_total, open_positions) + clarification des points d'assignation en Phase 3, 5 et 8 → prévention UnboundLocalError, meilleure traçabilité des décisions de skip |

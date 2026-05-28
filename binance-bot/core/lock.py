@@ -2,6 +2,8 @@
 import json
 from datetime import datetime, timezone
 
+from loguru import logger
+
 from core.env import PROJECT_DIR
 
 _LOCK_FILE = f"{PROJECT_DIR}/state/agent_lock.json"
@@ -25,8 +27,8 @@ def is_locked() -> bool:
             # Expiration automatique
             with open(_LOCK_FILE, "w") as f:
                 json.dump({"running": False, "started_at": None}, f)
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"[Lock] Erreur lecture/écriture {_LOCK_FILE}: {e}")
     return False
 
 
