@@ -43,6 +43,7 @@ Même en cas d'exit code non-zéro. Ne supprime jamais cette capture — c'est l
 - Toute logique interne (`next_4h_slot`, comparaisons, timestamps Mongo) en UTC
 - Tout affichage utilisateur (notifications Telegram) en heure locale via `fmt_local()` / `fmt_next()`
 - Les slots auto sont alignés sur les clôtures TradingView 4h : 00:05, 04:05, ..., 20:05 **UTC**
+- **Format date pour l'unicité par cycle** : les heartbeat logs (JSONL) utilisent le format `%Y-%m-%dT%H:%M:%SZ` **avec secondes** pour garantir que chaque phase d'un même cycle ait un timestamp distinct (7 phases peuvent s'exécuter en moins de 60s). L'agrégation horaire seule (`%H:%M`) serait insuffisante.
 
 ### 6. Auto-scheduler dans la main loop, pas via cron/systemd
 
