@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-05-28 (PR #142)
-> **Commit** : 048dd17
+> **Dernière mise à jour** : 2026-05-28 (PR #143)
+> **Commit** : <current>
 
 ---
 
@@ -297,3 +297,4 @@ webhook_server.py (process principal)
 | [#140](pr-140-post-review-trigger-binance-dev-auto.md) | 2026-05-28 | CI/workflow automation : post-review déclenche automatiquement `binance-dev-auto` sur tickets [REC] créés (labels AUTO, tech-lead-review) ; scripts utilitaires `dispatch_rec_tickets.sh` et `label_rec_auto.sh` pour migration tickets historiques |
 | [#141](pr-141-documenter-skip-types.md) | 2026-05-28 | Documentation : nouvelle section CLAUDE.md « Cycles de trading : skip_type et skip_detail » — classement des skips par type (TYPE_A/B/C/D), déclencheurs par phase, utilité pour le debug et l'optimisation stratégique |
 | [#142](pr-142-clarify-date-format.md) | 2026-05-28 | Clarification CLAUDE.md : format date des heartbeat logs JSONL utilise `%Y-%m-%dT%H:%M:%SZ` **avec secondes** pour garantir l'unicité chronologique des 7 phases exécutées en <60s (sinon agrégation %H:%M serait insuffisante) |
+| [#143](pr-143-verifier-variables-phase-3-5-6.md) | 2026-05-28 | TRADE_PROMPT : initialisation explicite des variables de synthèse (top_score, executed, skipped, skip_type, skip_detail, sentiment, portfolio_total, open_positions) + clarification des points d'assignation en Phase 3, 5 et 8 → prévention UnboundLocalError, meilleure traçabilité des décisions de skip |
