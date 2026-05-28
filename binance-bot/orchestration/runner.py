@@ -53,7 +53,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
         TRADE_PROMPT
         .replace("__CYCLE_ID__", cycle_id)
         .replace("__PROMPT_VERSION__", PROMPT_VERSION)
-        .replace('"trigger": "manual"', f'"trigger": "{trigger}"')
+        .replace("__TRIGGER__", trigger)
     )
 
     stdout_path = f"{LOGS_DIR}/stdout/cycle_{cycle_id}.log"
