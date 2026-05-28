@@ -41,6 +41,11 @@ if not TOKEN or not CHAT_ID:
 os.makedirs(f"{LOGS_DIR}/stdout", exist_ok=True)
 os.makedirs(f"{LOGS_DIR}/stderr", exist_ok=True)
 
+# Initialisation du cycle log JSONL si absent
+_cycle_log_path = os.path.join(PROJECT_DIR, "state", "cycle_log.jsonl")
+if not os.path.exists(_cycle_log_path):
+    open(_cycle_log_path, "w").close()
+
 logger.add(
     f"{LOGS_DIR}/bot_{{time:YYYY-MM-DD}}.log",
     rotation="1 day",

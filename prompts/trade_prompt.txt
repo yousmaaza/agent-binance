@@ -16,11 +16,16 @@ import json as _hb_json, datetime as _hb_dt, os as _hb_os
 _HB_PATH = "__PROJECT_DIR__/logs/cycle___CYCLE_ID___phases.jsonl"
 _hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
 _hb_phase_start = {}
+_trigger = "__TRIGGER__"
 
 def _hb_start(phase):
     _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
 
 def hb(phase, status="ok", summary=""):
+    # Format date incluant les secondes (%H:%M:%S) pour l'unicité par cycle :
+    # chaque phase d'un même cycle a des secondes distinctes, ce qui permet
+    # d'identifier précisément l'ordre chronologique des événements dans le JSONL
+    # (agrégation horaire seule serait insuffisante pour différencier 7 phases en <60s)
     t0 = _hb_phase_start.pop(phase, None)
     duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
     with open(_HB_PATH, "a") as _f:
@@ -29,9 +34,20 @@ def hb(phase, status="ok", summary=""):
             "phase": phase,
             "status": status,
             "duration_s": duration_s,
-            "summary": summary
+            "summary": summary,
+            "trigger": _trigger
         }) + "\n")
         _f.flush()
+
+# Initialisation des variables de synthèse (utilisées par Phase 8)
+top_score = 0
+executed = 0
+skipped = 0
+skip_type = None
+skip_detail = None
+sentiment = "Neutral"
+portfolio_total = 0.0
+open_positions = 0
 
 Envoie une notification à la FIN de chaque phase avant de passer à la suivante.
 
@@ -338,6 +354,15 @@ hb(2, summary=f"{coins_4h_count} coins analysés 4h, {coins_1d_count} analysés 
 
 PHASE 3 — SCORING ET SÉLECTION
 _hb_start(3)
+
+# Initialiser les structures de données pour Phase 3
+buy_candidates = []
+hold_coins = []
+skip_coins_detail = {}  # {coin: {"skip_type": TYPE_X, "skip_detail": "..."}}
+sell_candidates = []
+top_score = 0
+N_buy = 0
+
 Pour chaque coin, calcule un score sur 10 :
 
 | Critère | Points |
@@ -356,17 +381,41 @@ DÉCISION par coin :
   * Le signal 1d haussier contribue déjà +2 pts au score (non bloqueur) — un 1d bearish réduit le score mais n'empêche pas le trade si le score total ≥ 6 et le 4h est haussier
   * Si coin déjà en portfolio → RENFORCER (si pas déjà une position open dans trade_history)
   * Si coin nouveau → NOUVELLE POSITION
+  * Mise à jour : top_score = max(top_score, score)
 - Score <= 3 ET coin en portfolio → évaluer si sortie est pertinente (SELL)
+  * Enregistrer dans sell_candidates avec skip_type=null (pas un skip, c'est une décision stratégique)
 - Sinon → HOLD
+  * Si rejeté par filtre de corrélation → skip_type = TYPE_A, skip_detail = "Corrélation : déjà N coins du groupe L1-alts"
+  * Si rejeté par limite positions → skip_type = TYPE_A, skip_detail = "Positions max atteintes (N/5)"
+  * Si montant < min_order → skip_type = TYPE_B, skip_detail = "Montant X USDC < seuil 11"
+  * Si volume < 5M USDC → skip_type = TYPE_D, skip_detail = "Volume 24h X USDC < 5M"
+  * Sinon → HOLD avec skip_type=null
 
-FILTRES OBLIGATOIRES :
+FILTRES OBLIGATOIRES (appliqués en Phase 3) :
 - Corrélation : SOL, SUI, STX, ETH sont corrélés (groupe L1-alts). Max max_correlated_positions (2) du même groupe.
 - Positions max : si open_positions >= max_open_positions (5) → pas de nouvelle entrée
 - Budget : montant_ordre >= min_order_usdc (11 USDC)
 - Liquidité : ne pas trader des coins avec volume 24h < 5M USDC (estimé depuis les screeners)
 
-→ tg("🧠 Phase 3 — Stratégie\\nScores : {coin: score pour les top 5}\\n{N_buy} BUY candidates : {liste}\\nFiltres appliqués : {résumé}")
-hb(3, summary=f"{N_buy} BUY candidates, filtres appliqués")
+Pour chaque coin avec skip_type défini :
+  skip_coins_detail[coin] = {"skip_type": skip_type, "skip_detail": skip_detail}
+
+À la fin de Phase 3, mets à jour les variables de synthèse :
+- top_score = score maximum parmi tous les coins analysés (int, 0-10)
+- skipped = nombre de coins avec decision == "SKIP" (len(skip_coins_detail))
+- skip_type = determiner si skip_type basé sur la raison principale du skip :
+  * TYPE_A si max_open_positions atteint avec signal >= seuil
+  * TYPE_B si budget × max_single_position_pct < min_order_usdc
+  * TYPE_C si sentiment bearish ET aucun signal >= min_signal_score
+  * TYPE_D pour autres raisons (corrélation, ADX, RSI extrême)
+  * None si aucun skip ou au moins un trade (BUY) a été décidé
+- skip_detail = phrase courte décrivant la raison du skip principal, ou None
+
+N_buy = len(buy_candidates)
+top_score = top_score or 0  # fallback au cas où aucun score n'a été calculé
+
+→ tg("🧠 Phase 3 — Stratégie\\nTop score : {top_score}/10\\nScores : {coin: score pour les top 5}\\n{N_buy} BUY candidates : {liste}\\nFiltres appliqués : {résumé}\\nSkipped : {len(skip_coins_detail)} coins")
+hb(3, summary=f"{N_buy} BUY candidates, {len(skip_coins_detail)} skipped, top_score {top_score}/10")
 
 PHASE 4 — SIZING ET PRÉPARATION DES ORDRES
 _hb_start(4)
@@ -406,15 +455,25 @@ hb(4, summary=f"{len(ordres_prepares)} ordres dimensionnés")
 
 PHASE 5 — EXÉCUTION AUTOMATIQUE
 _hb_start(5)
+
+# Initialiser les structures de données pour Phase 5
+ordres_executes = []     # fallback: liste des ordres effectivement exécutés
+orders_skipped_count = 0
+orders_skipped_detail = {}  # {coin: {"skip_type": TYPE_X, "skip_detail": "..."}}
+
 Pour chaque ordre préparé, dans l'ordre de score décroissant :
 
 1. Re-fetch prix actuel :
    binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
    Si drift > price_deviation_max_pct (2%) → SKIP + tg("⚠️ {COIN} : prix dévié de {drift:.1f}%, ordre annulé")
+   → Assigner : skip_type = TYPE_C, skip_detail = f"Drift prix > {price_deviation_max_pct*100:.1f}% ({drift:.1f}%)"
+   → Incrémenter orders_skipped_count
 
 2. Re-fetch solde USDC :
    binance-cli spot get-account --profile agent-profile
    Si USDC_free < montant_ordre → SKIP + tg("⚠️ Solde insuffisant pour {COIN}")
+   → Assigner : skip_type = TYPE_C, skip_detail = f"Solde USDC insuffisant ({USDC_free:.2f} < {montant_ordre:.2f})"
+   → Incrémenter orders_skipped_count
 
 3. Placer un BUY MARKET immédiat (élimine le risque de fill tardif qui provoquerait protection_failed) :
    binance-cli spot new-order --symbol {COIN}USDC \\
@@ -423,6 +482,9 @@ Pour chaque ordre préparé, dans l'ordre de score décroissant :
 
    La réponse contient `orderId`, `executedQty`, `cummulativeQuoteQty`, `status`.
    Si status != "FILLED" ou orderId absent → SKIP + tg("⚠️ BUY MARKET {COIN} non rempli : {status}") + continuer au coin suivant.
+   → Assigner : skip_type = TYPE_C, skip_detail = f"BUY MARKET non rempli (status: {status}, qty: {executedQty}/{quantite})"
+   → Incrémenter orders_skipped_count
+   → Enregistrer dans orders_skipped_detail[coin] = {"skip_type": skip_type, "skip_detail": skip_detail}
 
    Calcule le prix de fill réel (gère les fills partiels en plusieurs lots) :
    actual_entry = cummulativeQuoteQty / executedQty   # prix moyen pondéré réel
@@ -502,13 +564,25 @@ with open("__PROJECT_DIR__/state/trade_history.json", "w") as f:
    tg("⚡ BUY MARKET {COIN}\\n{actual_qty} @ {actual_entry:.4g} USDC (fill réel)\\n🛑 Stop : {actual_stop:.4g}\\n🎯 TP : {actual_tp:.4g}\\nScore : {score}/10")
 
 Après avoir traité tous les ordres :
-hb(5, summary=f"{len(ordres_executes)} ordres exécutés, {orders_skipped_count} skippés")
+Mets à jour les variables de synthèse :
+- executed = len(ordres_executes) if ordres_executes else 0
+- skipped = orders_skipped_count if orders_skipped_count else 0
+- open_positions = nombre de trades status="open" dans trade_history.json après cette phase
+
+→ tg(f"📊 Phase 5 résumé\\nExécutés : {executed}\\nSkippés : {skipped}\\nDétails skip : {orders_skipped_detail}")
+hb(5, summary=f"{executed} ordres exécutés, {skipped} skippés")
 
 PHASE 6 — RAPPORT FINAL
 _hb_start(6)
+
+# Initialiser/finaliser les variables pour Phase 6
+# Fallback pour top_score si pas assigné en Phase 3
+top_score = top_score if 'top_score' in locals() and top_score else 0
+
 - Génère reports/YYYY-MM-DD_HH-MM_trade.md avec :
-  * Univers scanné (N coins), filtres appliqués, scores top 10
-  * Ordres exécutés avec IDs et paramètres
+  * Univers scanné (N coins), filtres appliqués, scores top 10, meilleur score {top_score}/10
+  * Ordres exécutés ({executed} coins) avec IDs et paramètres
+  * Ordres skippés ({skipped} coins) avec skip_type et skip_detail
   * Budget utilisé / disponible
   * Positions ouvertes totales (depuis trade_history.json)
 
@@ -520,12 +594,21 @@ _next = _now.replace(hour=_slot_h, minute=5, second=0, microsecond=0)
 if _next <= _now:
     _next += _dt.timedelta(hours=4)
 _next_str = _next.astimezone().strftime("%d/%m %H:%M") + " (heure locale)"
-hb(6, summary=f"Rapport généré, prochain cycle {_next_str}")
+hb(6, summary=f"Rapport généré, top_score {top_score}/10, {executed} exec / {skipped} skip, prochain cycle {_next_str}")
 
 PHASE 7 — PERSISTANCE EN BASE (MongoDB)
 _hb_start(7)
 
 CYCLE_ID = "__CYCLE_ID__"   # déjà substitué par Python avant l'appel
+
+# Fallbacks pour toutes les variables critiques (évite UnboundLocalError)
+top_score = top_score if 'top_score' in locals() else 0
+executed = executed if 'executed' in locals() else 0
+skipped = skipped if 'skipped' in locals() else 0
+skip_type = skip_type if 'skip_type' in locals() else None
+skip_detail = skip_detail if 'skip_detail' in locals() else None
+sentiment = sentiment if 'sentiment' in locals() else "NEUTRAL"
+open_positions = open_positions if 'open_positions' in locals() else 0
 
 Construis un document Python `doc` représentant ce cycle :
 
@@ -535,17 +618,22 @@ doc = {
   "prompt_version": "__PROMPT_VERSION__",
   "timestamp": "{ISO UTC du début du cycle}",
   "status": "completed",
-  "trigger": "manual",
+  "trigger": _trigger,
   "portfolio": {
-    "total_usdc": <portfolio_total>,
-    "budget_disponible": <budget_disponible>,
-    "positions_ouvertes": <open_positions>,
-    "daily_pnl": <daily_pnl>
+    "total_usdc": portfolio_total if 'portfolio_total' in locals() else 0,
+    "budget_disponible": budget_disponible if 'budget_disponible' in locals() else 0,
+    "positions_ouvertes": open_positions,  # défini en Phase 0
+    "daily_pnl": daily_pnl if 'daily_pnl' in locals() else 0
   },
   "market_context": {
-    "sentiment": "<Strongly Bullish | Bullish | Neutral | Bearish | Strongly Bearish>",
-    "universe_size": <N>,
+    "sentiment": sentiment,  # défini en Phase 1
+    "top_score": top_score,  # défini en Phase 3
+    "universe_size": N if 'N' in locals() else 0,
     "coins_scanned": [<liste des coins analysés>]
+  },
+  "execution": {
+    "executed": executed,  # nombre d'ordres exécutés en Phase 5
+    "skipped": skipped  # nombre d'ordres skippés en Phase 5
   },
   "decisions": [
     {
@@ -555,10 +643,17 @@ doc = {
       "signal_1d": "...",
       "rsi_4h": <number>,
       "decision": "<BUY|HOLD|SKIP|SELL>",
-      "reason": "Phrase courte expliquant pourquoi cette décision"
+      "reason": "Phrase courte expliquant pourquoi cette décision",
+      "skip_type": "<TYPE_A|TYPE_B|TYPE_C|TYPE_D|null>",  # Classification du skip si decision == SKIP
+      "skip_detail": "<texte libre détaillant le motif du skip>"   # Détail spécifique du skip
     },
     ... un objet par coin analysé
   ],
+  "executed": <nombre d'ordres exécutés>,
+  "skipped": <nombre d'ordres skippés pendant Phase 5>,
+  "top_score": <meilleur score trouvé en Phase 3>,
+  "sentiment": "<Strongly Bullish | Bullish | Neutral | Bearish | Strongly Bearish>",
+  "open_positions": <nombre de positions ouvertes au début du cycle>,
   "orders_placed": [
     {"coin": "...", "score": ..., "entry_price": ..., "stop_price": ...,
      "tp_price": ..., "quantity": ..., "risk_usdc": ...}
@@ -586,7 +681,103 @@ if _uri:
         tg(f"⚠️ Mongo write failed : {_e}")
 
 - Notification de synthèse (DOIT inclure le cycle_id) :
-  tg(f"✅ Cycle {CYCLE_ID} terminé\\n{N} ordre(s) exécuté(s) | {M} skippés\\nBudget utilisé : {total:.2f} USDC\\nPositions actives : {open_positions}\\n⏰ Prochain cycle : {_next_str}\\n📊 /raisonnement pour les détails")
+  tg(f"✅ Cycle {CYCLE_ID} terminé\\nTop score : {top_score}/10\\nExécutés : {executed} | Skippés : {skipped}\\nBudget utilisé : {budget_disponible if 'budget_disponible' in locals() else '?':.2f} USDC\\nPositions actives : {open_positions}\\n⏰ Prochain cycle : {_next_str}\\n📊 /raisonnement pour les détails")
 
 - Écris state/agent_lock.json : {"running": false, "started_at": null}
-hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, {N} ordre(s)")
+
+# Documentation de Phase 7 — Vérification des variables critiques
+# Les variables suivantes DOIVENT être assignées avant la persistance en Mongo :
+# - top_score (int) : meilleur score trouvé en Phase 3
+# - executed (int) : nombre d'ordres exécutés en Phase 5
+# - skipped (int) : nombre d'ordres skippés en Phase 5
+# - skip_type (str) : TYPE_A/TYPE_B/TYPE_C/TYPE_D ou None
+# - skip_detail (str) : détail texte du motif du skip
+# - sentiment (str) : Strongly Bullish | Bullish | Neutral | Bearish | Strongly Bearish
+# - open_positions (int) : nombre de positions ouvertes (calculé en Phase 0)
+# Fallbacks appliqués ci-dessus (Phase 7 début) pour éviter UnboundLocalError
+
+hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, top_score {top_score}/10, {executed} exec / {skipped} skip")
+
+PHASE 8 — CYCLE LOG JSONL
+_hb_start(8)
+Écris une ligne dans state/cycle_log.jsonl et push sur GitHub.
+
+Les variables de synthèse suivantes ont été définies et mise à jour par les phases précédentes :
+- top_score : score maximum parmi tous les coins (défini en Phase 3, 0-10)
+- executed : nombre d'ordres BUY MARKET passés (défini en Phase 5)
+- skipped : nombre de coins bloqués par les filtres (défini en Phase 3)
+- skip_type : raison principale du skip (TYPE_A/B/C/D ou None, défini en Phase 3)
+- skip_detail : phrase décrivant le skip principal (défini en Phase 3, ou None)
+- sentiment : sentiment global du marché (obtenu en Phase 1)
+- portfolio_total : portefeuille total en USDC (calculé en Phase 0)
+- open_positions : nombre de trades open (calculé en Phase 5)
+
+Utilise ces variables pour écrire un document JSON dans state/cycle_log.jsonl :
+```json
+{
+    "date": "YYYY-MM-DDTHH:MMZ",
+    "cycle_id": "__CYCLE_ID__",
+    "top_score": <int 0-10>,
+    "executed": <int>,
+    "skipped": <int>,
+    "skip_type": "<TYPE_A|TYPE_B|TYPE_C|TYPE_D|None>",
+    "skip_detail": "<str or None>",
+    "portfolio": <float>,
+    "sentiment": "<Neutral|Bullish|Bearish|...>",
+    "open_positions": <int>
+}
+```
+
+Exécute exactement ce bloc Python (copie-le tel quel) :
+
+```python
+import json as _cl_json, datetime as _cl_dt, subprocess as _cl_sub, os as _cl_os
+
+_cl_path = "__PROJECT_DIR__/state/cycle_log.jsonl"
+_cl_entry = {
+    "date": _cl_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "cycle_id": "__CYCLE_ID__",
+    "top_score": top_score,
+    "executed": executed,
+    "skipped": skipped,
+    "skip_type": skip_type,
+    "skip_detail": skip_detail,
+    "portfolio": portfolio_total,
+    "sentiment": sentiment,
+    "open_positions": open_positions,
+}
+try:
+    _cl_lines = []
+    if _cl_os.path.exists(_cl_path):
+        with open(_cl_path) as _f:
+            _cl_lines = [l for l in _f.read().splitlines() if l.strip()]
+    _cl_lines.append(_cl_json.dumps(_cl_entry))
+    if len(_cl_lines) > 90:
+        _cl_lines = _cl_lines[-90:]
+    with open(_cl_path, "w") as _f:
+        _f.write("\n".join(_cl_lines) + "\n")
+except Exception as _cl_err:
+    tg(f"⚠️ cycle_log.jsonl write failed : {_cl_err}")
+
+# Push via script temp (bash -i échoue dans subprocess sans TTY)
+try:
+    _cl_script = (
+        "#!/bin/bash\n"
+        "source ~/.zshrc 2>/dev/null || true\n"
+        "git-perso 2>/dev/null || true\n"
+        "cd __PROJECT_DIR__\n"
+        "git add state/cycle_log.jsonl\n"
+        "git diff --cached --quiet || "
+        "(git commit -m 'chore: cycle log __CYCLE_ID__' && git push origin main)\n"
+    )
+    with open("/tmp/_cl_push.sh", "w") as _f:
+        _f.write(_cl_script)
+    _cl_os.chmod("/tmp/_cl_push.sh", 0o755)
+    _cl_git = _cl_sub.run(["/tmp/_cl_push.sh"], capture_output=True, text=True, timeout=60)
+    if _cl_git.returncode != 0:
+        tg(f"⚠️ cycle_log push échoué (rc={_cl_git.returncode}) : {(_cl_git.stderr or _cl_git.stdout)[:200]}")
+except Exception as _cl_git_err:
+    tg(f"⚠️ cycle_log push exception : {_cl_git_err}")
+```
+
+hb(8, summary=f"Cycle log écrit, {executed} ordres exécutés")

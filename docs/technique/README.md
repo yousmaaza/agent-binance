@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique globale du projet | 2026-05-25 |
+| [SPEC.md](SPEC.md) | Spécification technique globale du projet | 2026-05-28 (PR #135) |
 
 ## Diagrammes
 
@@ -47,6 +47,16 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#106](pr-106-filtre-usdc-couplage-1d.md) | [OPT] Phase 1 filtre USDC non tradables + Phase 2 appels 1D couplés par coin | 2026-05-25 |
 | [#117](pr-117-ci-skip-doc-medium-report.md) | ci: skip tech-lead-review et doc-tech sur doc/medium-report | 2026-05-25 |
 | [#118](pr-118-medium-articles-workflow.md) | feat(medium): dossier medium-articles + agent + CI skip article/* | 2026-05-25 |
+| [#130](pr-130-workflow-dispatch.md) | fix(ci): remplace projects_v2_item par workflow_dispatch dans binance-dev-auto | 2026-05-28 |
+| [#131](pr-131-post-review-auto-tag.md) | ci(post-review): auto-tag tech-lead-review + In progress sur tickets générés | 2026-05-28 |
+| [#133](pr-133-test-workflow-binance-dev.md) | [M132] Test workflow binance-dev-auto — vérification déclenchement workflow_dispatch | 2026-05-28 |
+| [#134](pr-134-qualifier-les-except-generiques.md) | [M27] Qualifier les except génériques par des types spécifiques | 2026-05-28 |
+| [#135](pr-135-add-trigger-heartbeat.md) | [M31] Add trigger field to JSONL heartbeat logs | 2026-05-28 |
+| [#140](pr-140-post-review-trigger-binance-dev-auto.md) | feat(ci): post-review déclenche binance-dev-auto sur tickets [REC] | 2026-05-28 |
+| [#141](pr-141-documenter-skip-types.md) | [M128] Documenter les TYPE_A/B/C/D de skip_type en CLAUDE.md | 2026-05-28 |
+| [#142](pr-142-clarify-date-format.md) | [M124] Clarifier le format date en Phase 8 du trade_prompt | 2026-05-28 |
+| [#144](pr-144-verify-variable-definitions.md) | [M125] Vérifier la définition des variables Phase 3/5/6 en trade_prompt | 2026-05-28 |
+| [#122](pr-122-cycle-log-jsonl.md) | [M121] Générer state/cycle_log.jsonl après chaque cycle et le pousser | 2026-05-28 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
