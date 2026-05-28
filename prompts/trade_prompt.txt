@@ -659,6 +659,8 @@ Procédure :
 4. Réécrire le fichier
 5. Commit et push sur main (idempotent via git diff --cached)
 
+Pour le push : `git-perso` est un alias zsh — utilise `bash -i -c "git-perso && cd __PROJECT_DIR__ && git add state/cycle_log.jsonl && git diff --cached --quiet || (git commit -m 'chore: cycle log __CYCLE_ID__' && git push origin main)"` via subprocess avec timeout=60.
+
 Avec gestion d'erreur try/except et notification Telegram en cas d'échec.
 
 hb(8, summary=f"Cycle log écrit, {executed} ordres exécutés")
