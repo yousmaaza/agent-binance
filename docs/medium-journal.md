@@ -10,6 +10,107 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-05-28 — Récap quotidien
+
+### PR mergées (12)
+
+#### #122 — [FEAT] Générer `state/cycle_log.jsonl` après chaque cycle
+- **Branche** : `feat/issue-121-generer-state-cycle-log-jsonl`
+- **Mergée à** : 17:43 (Europe/Paris)
+- **Quoi** : ajout d'une Phase 8 dans le `TRADE_PROMPT`. À la fin de chaque cycle, l'agent écrit une ligne JSON dans `state/cycle_log.jsonl` (append-only, rotation à 90 lignes max), puis commit + push sur le repo via `git-perso`. Champs : `cycle_id`, `top_score`, `executed`, `skipped`, `skip_type`, `skip_detail`, `portfolio`, `sentiment`, `open_positions`. `binance-bot/core/env.py` crée le fichier vide au démarrage si absent.
+- **Pourquoi c'est intéressant pour Medium** : donne au bot une trace légère et versionnée dans git, sans dépendre de MongoDB pour la santé quotidienne. On peut `grep` un cycle dans le repo sans ouvrir Atlas. Autre angle : le push git depuis un sous-processus Claude — le `bash -i -c "git-perso && ..."` pour charger l'alias zsh est le genre de détail qu'on ne trouve que dans les projets réels.
+- **Doc tech** : [docs/technique/pr-122-cycle-log-jsonl.md](../technique/pr-122-cycle-log-jsonl.md)
+
+#### #140 — feat(ci): post-review déclenche `binance-dev-auto` sur tickets [REC]
+- **Branche** : `feat/post-review-trigger-binance-dev-auto`
+- **Mergée à** : 17:22 (Europe/Paris)
+- **Quoi** : ferme la boucle d'automatisation de la CI. Avant : les tickets `[REC]` créés par le tech-lead-reviewer après une review restaient en attente d'implémentation manuelle. Après : le prompt `ticket-manager` exécute `gh workflow run binance-dev-auto.yml -f issue_number=N` pour chaque ticket `[REC] + AUTO` créé, avec un `sleep 10` entre dispatches. Deux scripts bash utilitaires ajoutés : `dispatch_rec_tickets.sh` (rejouer le dispatch sur l'existant) et `label_rec_auto.sh` (migrer les tickets historiques sans label `AUTO`).
+- **Pourquoi c'est intéressant pour Medium** : illustration directe du pattern "agent qui déclenche un agent". La review produit des tickets → les tickets déclenchent une implémentation → l'implémentation ouvre une PR. Zero clic humain entre la review et la branche de code. C'est la feature de la journée.
+- **Doc tech** : [docs/technique/pr-140-post-review-trigger-binance-dev-auto.md](../technique/pr-140-post-review-trigger-binance-dev-auto.md)
+
+#### #130 + #131 + #133 — Réparation + validation du pipeline CI automation
+- **Mergées à** : 13:11 (#130), 13:11 (#131), 13:18 (#133) (Europe/Paris)
+- **Quoi** :
+  - **#130** : corrige le trigger du workflow `binance-dev-auto`. Le webhook `projects_v2_item` ne fonctionne que sur les organisations GitHub — sur un compte personnel il retournait `Unexpected value`. Migré vers `workflow_dispatch` avec inputs explicites (`issue_number`, `item_node_id`). Ajout d'une vérification du label `AUTO` avant de lancer l'agent.
+  - **#131** : améliore `claude-post-review.yml` — création du label `tech-lead-review` (idempotent) avant l'agent, application automatique du label + passage du statut Backlog → In progress sur chaque ticket créé.
+  - **#133** : ticket de validation bout-en-bout du pipeline : déclenchement via `gh workflow run`, vérification label AUTO, création branche, PR ouverte, ticket basculé "In review". ✅ Recette passée.
+- **Pourquoi c'est intéressant pour Medium** : le détail `projects_v2_item` vs compte personnel est une vraie embûche GitHub Actions non documentée clairement. Bon exemple de débogage par contraintes de plateforme, pas par bug de code.
+- **Doc tech** : [pr-130](../technique/pr-130-workflow-dispatch.md) — [pr-131](../technique/pr-131-post-review-auto-tag.md) — [pr-133](../technique/pr-133-test-workflow-binance-dev.md)
+
+#### #134 + #135 — Qualité code : except typés et champ `trigger` dans les heartbeats
+- **Mergées à** : 15:28 (#134), 15:30 (#135) (Europe/Paris)
+- **Quoi** :
+  - **#134** : remplace les `except Exception:` nus dans `binance-bot/core/lock.py`, `telegram.py` et `runner.py` par des types précis (`OSError`, `json.JSONDecodeError`). Ajout de logging sur les exceptions capturées.
+  - **#135** : injecte un placeholder `__TRIGGER__` dans `runner.py` → disponible en variable `_trigger` dans le prompt → inclus dans chaque ligne JSONL `hb()` et dans le document MongoDB. Valeurs : `manual` (commande `/trade`) ou `auto` (scheduler 4h). Prépare le watchdog (issue #7) à distinguer les deux types de cycle.
+- **Doc tech** : [pr-134](../technique/pr-134-qualifier-les-except-generiques.md) — [pr-135](../technique/pr-135-add-trigger-heartbeat.md)
+
+#### #141 + #142 + #144 — Robustesse du prompt : skip_types, format date, variables Phase 7
+- **Mergées à** : 17:32 (#141), 17:33 (#142), 17:47 (#144) (Europe/Paris)
+- **Quoi** :
+  - **#141** : ajoute une section "Cycles de trading : skip_type et skip_detail" dans `CLAUDE.md`. Tableau des 4 types (TYPE_A à TYPE_D), exemples de `skip_detail`, utilité pour le debug. Documentation pure, zéro code modifié.
+  - **#142** : documente et justifie le format `%Y-%m-%dT%H:%M:%SZ` **avec secondes** dans Phase 8. Le format sans secondes (`%H:%M`) serait insuffisant car les 7 phases d'un cycle s'exécutent en < 60s — les timestamps seraient identiques.
+  - **#144** : initialise explicitement `top_score`, `executed`, `skipped`, `skip_type`, `skip_detail`, `sentiment`, `portfolio_total`, `open_positions` en tête du prompt, avec fallbacks redondants en Phase 7. Évite les `UnboundLocalError` si une phase échoue partiellement avant la persistance Mongo. *(Note : PR #143 a précédé #144 dans la même journée — même issue #125, #144 est la version finale retenue.)*
+- **Doc tech** : [pr-141](../technique/pr-141-documenter-skip-types.md) — [pr-142](../technique/pr-142-clarify-date-format.md) — [pr-144](../technique/pr-144-verify-variable-definitions.md)
+
+#### #120 — docs: article 01 publié sur Medium
+- **Mergée à** : 12:40 (Europe/Paris)
+- **Quoi** : clôture du ticket de tracking #119. Le fichier `docs/medium-articles/01-setup-projet-prompt-mcp.md` passe en statut `published`. Article disponible sur Medium (URL dans l'issue).
+
+### Issues fermées (22)
+
+**Fermées par leurs PR respectives :**
+- **#121** — [FEAT] Générer state/cycle_log.jsonl — fermée par #122
+- **#125** — [REC] Vérifier définition des variables Phase 3/5/6 — fermée par #143 puis #144
+- **#124** — [REC] Clarifier format date Phase 8 — fermée par #142
+- **#128** — [REC] Documenter TYPE_A/B/C/D skip_type — fermée par #141
+- **#132** — [REC] Test workflow binance-dev-auto — fermée par #133
+- **#31** — [REC] Ajouter champ trigger dans heartbeat JSONL — fermée par #135
+- **#27** — [REC] Remplacer bare except par except typés — fermée par #134
+
+**Batch de triage ~15h (Paris) — tickets REC obsolètes :**
+Les issues #44, #62, #67, #69–#78, #109, #110 ont été fermées manuellement. Ce sont des tickets `[REC]` anciens liés à une refactorisation en modules qui avait déjà été implémentée progressivement (#69 → `binance-bot/core/`, #70 → `core/env.py`, etc.). Nettoyage du board après validation que le code cible était déjà en place.
+
+### Nouveaux tickets (28 créés)
+
+Trois vagues de création aujourd'hui, toutes issues de reviews tech-lead :
+
+**Vague 1 — ~12:47 Paris (#121, #123–#127, #128)** : suite directe de la PR #122 (cycle_log.jsonl). Tickets de robustesse et de suivi : rotation du fichier (#126), centraliser le chemin en constante (#127), context manager pour `open()` (#123).
+
+**Vague 2 — ~15:17 Paris (#136–#139)** : issues Mypy/Bandit/logging sur `runner.py` et les fonctions Mongo :
+- **#136** — Mypy : type guard sur `process.stdout` (runner.py:113)
+- **#137** — Clarifier exceptions silencieuses dans `_update_cost_in_mongo`
+- **#138** — Bandit B603 : documenter absence d'untrusted input dans subprocess
+- **#139** — Ajouter logging DEBUG pour succès Mongo
+
+**Vague 3 — ~18:08 et ~18:37 Paris (#145–#165)** : nouvelle review tech-lead automatique déclenchée par les merges de l'après-midi. Tickets de la seconde vague :
+- **#145** — Protéger `state/trade_history.json` contre écritures corrompues (write atomique + validation au boot)
+- **#146** — Garantir un `hb(N)` par phase dans le TRADE_PROMPT
+- **#147** — Supprimer le conflit `json/_json` dans `prompts/trade_prompt.txt`
+- **#148** — Imposer `.venv/bin/python3` dans le TRADE_PROMPT
+- **#149** — Documenter les commandes `binance-cli` utiles dans le TRADE_PROMPT
+- **#155–#165** — Suite de la revue : variable `e` inutilisée, `__import__`, cleanup backups, helper `_safe_read_json`, monitoring taille state…
+
+Total en fin de journée : 23 tickets ouverts (28 créés − 5 fermés dans la journée).
+
+### Matériel disponible pour l'article
+
+- **Diff PR #140** : `git show bb84b9c --stat` — workflow + 2 scripts bash
+- **Diff PR #122** : `git show b94e0ac --stat` — Phase 8 JSONL dans `prompts/trade_prompt.txt`
+- **Doc tech #122** : `docs/technique/pr-122-cycle-log-jsonl.md` — schéma de la chaîne Phase 3→5→8 avec variables
+- **Doc tech #140** : `docs/technique/pr-140-post-review-trigger-binance-dev-auto.md` — diagramme avant/après du flux review → implémentation
+- **Fichier vivant** : `state/cycle_log.jsonl` — 2 lignes réelles de cycles du 28 mai (commits `363cac6`, `c7b5ee4`)
+- **Scripts** : `dispatch_rec_tickets.sh`, `label_rec_auto.sh` — bon matériel pour illustrer la migration manuelle → auto
+
+### Idée d'angle Medium
+
+**Angle 1 — "De la review au code sans intervention humaine"**
+La journée du 28 mai illustre un pipeline complet : une review tech-lead génère des tickets, les tickets déclenchent automatiquement `binance-dev`, qui ouvre une PR. PR #130 (fix trigger), PR #131 (auto-tag), PR #133 (test recette), PR #140 (bouclage de la boucle). Quatre PR dans la même journée pour construire une chaîne où le travail répétitif est entièrement éliminé. Article sur le design de pipelines "agent-to-agent" — avec les pièges réels (webhook `projects_v2_item` non supporté sur compte perso, race conditions entre dispatches, label `AUTO` comme garde-fou).
+
+**Angle 2 — "Le cycle_log.jsonl : quand git devient la base de monitoring"**
+Stocker les métriques de chaque cycle dans un fichier JSONL commité donne une chose qu'on n'a pas en MongoDB : l'historique est versionné, diff-able, grep-able localement. Article sur les patterns de traçabilité légère pour les projets LLM — MongoDB pour le détail, JSONL pour la vue d'ensemble, logs pour le debug. Trois niveaux de granularité, trois cas d'usage distincts.
+
+---
+
 ## 2026-05-25 — Récap quotidien
 
 ### PR mergées (3)
