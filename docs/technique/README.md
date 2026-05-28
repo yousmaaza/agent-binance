@@ -49,6 +49,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#118](pr-118-medium-articles-workflow.md) | feat(medium): dossier medium-articles + agent + CI skip article/* | 2026-05-25 |
 | [#130](pr-130-workflow-dispatch.md) | fix(ci): remplace projects_v2_item par workflow_dispatch dans binance-dev-auto | 2026-05-28 |
 | [#131](pr-131-post-review-auto-tag.md) | ci(post-review): auto-tag tech-lead-review + In progress sur tickets générés | 2026-05-28 |
+| [#133](pr-133-test-workflow-binance-dev.md) | [M132] Test workflow binance-dev-auto — vérification déclenchement workflow_dispatch | 2026-05-28 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
