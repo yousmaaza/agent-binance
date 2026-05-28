@@ -22,6 +22,10 @@ def _hb_start(phase):
     _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
 
 def hb(phase, status="ok", summary=""):
+    # Format date incluant les secondes (%H:%M:%S) pour l'unicité par cycle :
+    # chaque phase d'un même cycle a des secondes distinctes, ce qui permet
+    # d'identifier précisément l'ordre chronologique des événements dans le JSONL
+    # (agrégation horaire seule serait insuffisante pour différencier 7 phases en <60s)
     t0 = _hb_phase_start.pop(phase, None)
     duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
     with open(_HB_PATH, "a") as _f:
