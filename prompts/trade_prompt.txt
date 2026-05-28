@@ -2,9 +2,9 @@ Tu es un agent de trading Binance automatisé. Répertoire de travail : __PROJEC
 
 Pour envoyer des notifications Telegram à chaque étape, exécute ce code Python (utilise curl, pas urllib) :
 
-import subprocess, json as _json
+import subprocess, json
 def tg(text):
-    payload = _json.dumps({"chat_id": "__CHAT_ID__", "text": text})
+    payload = json.dumps({"chat_id": "__CHAT_ID__", "text": text})
     subprocess.run(
         ["curl", "-s", "-X", "POST",
          "https://api.telegram.org/bot__BOT_TOKEN__/sendMessage",
@@ -12,7 +12,7 @@ def tg(text):
          "-d", payload, "--max-time", "20"],
         capture_output=True)
 
-import json as _hb_json, datetime as _hb_dt, os as _hb_os
+import datetime as _hb_dt, os as _hb_os
 _HB_PATH = "__PROJECT_DIR__/logs/cycle___CYCLE_ID___phases.jsonl"
 _hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
 _hb_phase_start = {}
@@ -29,7 +29,7 @@ def hb(phase, status="ok", summary=""):
     t0 = _hb_phase_start.pop(phase, None)
     duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
     with open(_HB_PATH, "a") as _f:
-        _f.write(_hb_json.dumps({
+        _f.write(json.dumps({
             "ts": _hb_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "phase": phase,
             "status": status,
@@ -82,10 +82,10 @@ RATTRAPAGE protection_failed — encapsuler dans un try/finally pour libérer le
 Identifie les trades status="open" ET protection_failed=True dans trade_history.json.
 Pour chaque trade non protégé (idempotence : vérifier qu'aucun OCO actif n'existe déjà pour ce coin) :
 
-import json as _pf_json, subprocess as _pf_sub
+import subprocess as _pf_sub
 try:
     with open("__PROJECT_DIR__/state/trade_history.json") as _f:
-        _history = _pf_json.load(_f)
+        _history = json.load(_f)
     _unprotected = [t for t in _history if t.get("status") == "open" and t.get("protection_failed") is True]
 
     for _t in _unprotected:
@@ -100,7 +100,7 @@ try:
             ["binance-cli", "spot", "get-open-orders", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
             capture_output=True, text=True
         )
-        _open_orders = _pf_json.loads(_open_orders_raw.stdout) if _open_orders_raw.stdout.strip() else []
+        _open_orders = json.loads(_open_orders_raw.stdout) if _open_orders_raw.stdout.strip() else []
         _has_oco = any(o.get("type") in ("LIMIT_MAKER", "STOP_LOSS_LIMIT") for o in _open_orders)
         if _has_oco:
             # OCO déjà présent — mettre à jour protection_failed=False et continuer
@@ -115,7 +115,7 @@ try:
             ["binance-cli", "spot", "ticker-price", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
             capture_output=True, text=True
         )
-        _ticker = _pf_json.loads(_ticker_raw.stdout)
+        _ticker = json.loads(_ticker_raw.stdout)
         _prix_actuel = float(_ticker["price"])
 
         if _prix_actuel > _tp_calc:
@@ -125,7 +125,7 @@ try:
                  "--side", "SELL", "--type", "MARKET", "--quantity", str(_qty), "--profile", "agent-profile"],
                 capture_output=True, text=True
             )
-            _sell_resp = _pf_json.loads(_sell_raw.stdout) if _sell_raw.stdout.strip() else {}
+            _sell_resp = json.loads(_sell_raw.stdout) if _sell_raw.stdout.strip() else {}
             if _sell_resp.get("orderId"):
                 _fill_exit = float(_sell_resp.get("cummulativeQuoteQty", 0)) / float(_sell_resp.get("executedQty", _qty))
                 _pnl_usdc = (_fill_exit - _entry) * _qty
@@ -146,7 +146,7 @@ try:
                 ["binance-cli", "spot", "exchange-info", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
                 capture_output=True, text=True
             )
-            _ei = _pf_json.loads(_ei_raw.stdout) if _ei_raw.stdout.strip() else {}
+            _ei = json.loads(_ei_raw.stdout) if _ei_raw.stdout.strip() else {}
             _filters = {f["filterType"]: f for sym in _ei.get("symbols", []) for f in sym.get("filters", [])}
             _step = float(_filters.get("LOT_SIZE", {}).get("stepSize", "1"))
             import math as _math
@@ -183,7 +183,7 @@ try:
                 tg(f"⚠️ {_coin} : OCO rattrapage échoué — {_oco_raw.stdout[:200]}")
 
     with open("__PROJECT_DIR__/state/trade_history.json", "w") as _f:
-        _pf_json.dump(_history, _f, indent=2)
+        json.dump(_history, _f, indent=2)
 except Exception as _pf_err:
     tg(f"⚠️ Erreur routine rattrapage protection_failed : {_pf_err}")
 
