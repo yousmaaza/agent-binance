@@ -728,15 +728,56 @@ Utilise ces variables pour écrire un document JSON dans state/cycle_log.jsonl :
 }
 ```
 
-Procédure :
-1. Lire state/cycle_log.jsonl s'il existe (sinon liste vide)
-2. Ajouter la nouvelle ligne JSON
-3. Tronquer à 90 lignes maximum (garder les plus récentes)
-4. Réécrire le fichier
-5. Commit et push sur main (idempotent via git diff --cached)
+Exécute exactement ce bloc Python (copie-le tel quel) :
 
-Pour le push : `git-perso` est un alias zsh — utilise `bash -i -c "git-perso && cd __PROJECT_DIR__ && git add state/cycle_log.jsonl && git diff --cached --quiet || (git commit -m 'chore: cycle log __CYCLE_ID__' && git push origin main)"` via subprocess avec timeout=60.
+```python
+import json as _cl_json, datetime as _cl_dt, subprocess as _cl_sub, os as _cl_os
 
-Avec gestion d'erreur try/except et notification Telegram en cas d'échec.
+_cl_path = "__PROJECT_DIR__/state/cycle_log.jsonl"
+_cl_entry = {
+    "date": _cl_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "cycle_id": "__CYCLE_ID__",
+    "top_score": top_score,
+    "executed": executed,
+    "skipped": skipped,
+    "skip_type": skip_type,
+    "skip_detail": skip_detail,
+    "portfolio": portfolio_total,
+    "sentiment": sentiment,
+    "open_positions": open_positions,
+}
+try:
+    _cl_lines = []
+    if _cl_os.path.exists(_cl_path):
+        with open(_cl_path) as _f:
+            _cl_lines = [l for l in _f.read().splitlines() if l.strip()]
+    _cl_lines.append(_cl_json.dumps(_cl_entry))
+    if len(_cl_lines) > 90:
+        _cl_lines = _cl_lines[-90:]
+    with open(_cl_path, "w") as _f:
+        _f.write("\n".join(_cl_lines) + "\n")
+except Exception as _cl_err:
+    tg(f"⚠️ cycle_log.jsonl write failed : {_cl_err}")
+
+# Push via script temp (bash -i échoue dans subprocess sans TTY)
+try:
+    _cl_script = (
+        "#!/bin/bash\n"
+        "source ~/.zshrc 2>/dev/null || true\n"
+        "git-perso 2>/dev/null || true\n"
+        "cd __PROJECT_DIR__\n"
+        "git add state/cycle_log.jsonl\n"
+        "git diff --cached --quiet || "
+        "(git commit -m 'chore: cycle log __CYCLE_ID__' && git push origin main)\n"
+    )
+    with open("/tmp/_cl_push.sh", "w") as _f:
+        _f.write(_cl_script)
+    _cl_os.chmod("/tmp/_cl_push.sh", 0o755)
+    _cl_git = _cl_sub.run(["/tmp/_cl_push.sh"], capture_output=True, text=True, timeout=60)
+    if _cl_git.returncode != 0:
+        tg(f"⚠️ cycle_log push échoué (rc={_cl_git.returncode}) : {(_cl_git.stderr or _cl_git.stdout)[:200]}")
+except Exception as _cl_git_err:
+    tg(f"⚠️ cycle_log push exception : {_cl_git_err}")
+```
 
 hb(8, summary=f"Cycle log écrit, {executed} ordres exécutés")
