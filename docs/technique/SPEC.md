@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-05-28 (PR #134)
-> **Commit** : 4a2f77b
+> **Dernière mise à jour** : 2026-05-28 (PR #135)
+> **Commit** : 8b96823
 
 ---
 
@@ -197,7 +197,7 @@ webhook_server.py (process principal)
 |---|---|---|
 | `logs/stdout/cycle_<id>.log` | Log brut | Sortie stdout du sous-processus Claude (stream-json) — toujours écrit, même en cas d'erreur |
 | `logs/stderr/cycle_<id>.log` | Log brut | Sortie stderr du sous-processus Claude — toujours écrit, même en cas d'erreur |
-| `logs/cycle_<id>_phases.jsonl` | JSONL | Heartbeats par phase : une ligne JSON par phase terminée (0–7), avec `ts`, `phase`, `status`, `duration_s`, `summary` — base pour le watchdog ticket #7 |
+| `logs/cycle_<id>_phases.jsonl` | JSONL | Heartbeats par phase : une ligne JSON par phase terminée (0–7), avec `ts`, `phase`, `status`, `duration_s`, `summary`, `trigger` (`"manual"`\|`"auto"`) — base pour le watchdog ticket #7, qui peut filtrer par type de cycle |
 
 ---
 
@@ -293,3 +293,4 @@ webhook_server.py (process principal)
 | [#131](pr-131-post-review-auto-tag.md) | 2026-05-28 | Workflow post-review automation : nouveau `.github/workflows/claude-post-review.yml` avec job `fix-bloquants` (correction automatique issues review), job `create-recommendation-tickets` (tickétisation recommandations avec label `tech-lead-review`), step idempotent de création label avant usage |
 | [#133](pr-133-test-workflow-binance-dev.md) | 2026-05-28 | Test de recette du workflow `binance-dev-auto` : validation du pipeline entier (issue → branche → commit → PR → changement statut ticket) via `workflow_dispatch` |
 | [#134](pr-134-qualifier-les-except-generiques.md) | 2026-05-28 | Refactoring gestion d'erreurs : remplacement bare `except Exception` par types spécifiques (`OSError`, `json.JSONDecodeError`, `ValueError`) dans `core/lock.py`, `core/telegram.py`, `orchestration/runner.py` ; ajout journalisation des erreurs capturées |
+| [#135](pr-135-add-trigger-heartbeat.md) | 2026-05-28 | Injection du champ `trigger` dans les logs JSONL (Phase 7) et le document MongoDB : valeur `"manual"` ou `"auto"` — permet au watchdog (#7) de filtrer et distinguer les cycles manuels vs auto pour logiques de gestion différenciées |
