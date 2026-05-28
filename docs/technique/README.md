@@ -47,6 +47,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#106](pr-106-filtre-usdc-couplage-1d.md) | [OPT] Phase 1 filtre USDC non tradables + Phase 2 appels 1D couplés par coin | 2026-05-25 |
 | [#117](pr-117-ci-skip-doc-medium-report.md) | ci: skip tech-lead-review et doc-tech sur doc/medium-report | 2026-05-25 |
 | [#118](pr-118-medium-articles-workflow.md) | feat(medium): dossier medium-articles + agent + CI skip article/* | 2026-05-25 |
+| [#130](pr-130-workflow-dispatch.md) | fix(ci): remplace projects_v2_item par workflow_dispatch dans binance-dev-auto | 2026-05-28 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
