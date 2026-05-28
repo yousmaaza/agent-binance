@@ -168,7 +168,7 @@ try:
                  "--profile", "agent-profile"],
                 capture_output=True, text=True
             )
-            _oco_resp = _pf_json.loads(_oco_raw.stdout) if _oco_raw.stdout.strip() else {}
+            _oco_resp = json.loads(_oco_raw.stdout) if _oco_raw.stdout.strip() else {}
             if _oco_resp.get("orderListId"):
                 _reports = {r["type"]: r for r in _oco_resp.get("orderReports", [])}
                 _tp_id = _reports.get("LIMIT_MAKER", {}).get("orderId")
