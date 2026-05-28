@@ -590,3 +590,65 @@ if _uri:
 
 - Écris state/agent_lock.json : {"running": false, "started_at": null}
 hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, {N} ordre(s)")
+
+PHASE 8 — CYCLE LOG JSONL
+Écris une ligne dans state/cycle_log.jsonl et push sur GitHub.
+
+# Calcul des variables de synthèse
+# top_score    : score maximum parmi toutes les décisions de Phase 3 (int, 0-10)
+# executed     : len(orders_placed) — nombre d'ordres BUY MARKET passés en Phase 5
+# skipped      : nombre de BUY candidates bloqués par un filtre obligatoire en Phase 3/4/5
+# skip_type    : TYPE_A si max_open_positions atteint avec signal >= seuil | TYPE_B si budget × max_single_position_pct < min_order_usdc | TYPE_C si marché bearish, aucun signal >= min_signal_score | TYPE_D autre (corrélation, ADX, RSI extrême) | None si trade(s) exécuté(s)
+# skip_detail  : str décrivant le coin + contrainte bloquante principale, ou None
+# portfolio    : portfolio_total calculé en Phase 0 (float)
+# sentiment    : label sentiment Phase 1 (ex: "Neutral", "Bullish", "Bearish", etc.)
+# open_positions : nombre de trades status="open" après mise à jour en Phase 5
+
+import json as _cl_json, datetime as _cl_dt, subprocess as _cl_sub, os as _cl_os
+
+_cl_path = "__PROJECT_DIR__/state/cycle_log.jsonl"
+
+_cl_entry = {
+    "date": _cl_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%MZ"),
+    "cycle_id": "__CYCLE_ID__",
+    "top_score": top_score,
+    "executed": executed,
+    "skipped": skipped,
+    "skip_type": skip_type,
+    "skip_detail": skip_detail,
+    "portfolio": portfolio_total,
+    "sentiment": sentiment,
+    "open_positions": open_positions,
+}
+
+# Lire les lignes existantes, appender, tronquer à 90 lignes max
+try:
+    if _cl_os.path.exists(_cl_path):
+        with open(_cl_path) as _f:
+            _cl_lines = [l for l in _f.read().splitlines() if l.strip()]
+    else:
+        _cl_lines = []
+    _cl_lines.append(_cl_json.dumps(_cl_entry))
+    if len(_cl_lines) > 90:
+        _cl_lines = _cl_lines[-90:]
+    with open(_cl_path, "w") as _f:
+        _f.write("\n".join(_cl_lines) + "\n")
+except Exception as _cl_err:
+    tg(f"⚠️ cycle_log.jsonl write failed : {_cl_err}")
+
+# Commit + push sur main via subprocess bash
+# git-perso est un alias zsh — utilise bash -i pour charger .zshrc et les alias
+try:
+    _cl_git = _cl_sub.run(
+        ["bash", "-i", "-c",
+         "git-perso && "
+         "cd __PROJECT_DIR__ && "
+         "git add state/cycle_log.jsonl && "
+         "git diff --cached --quiet || "
+         "(git commit -m 'chore: cycle log __CYCLE_ID__' && git push origin main)"],
+        capture_output=True, text=True, timeout=60,
+    )
+    if _cl_git.returncode != 0:
+        tg(f"⚠️ cycle_log push échoué (code {_cl_git.returncode}) : {(_cl_git.stderr or _cl_git.stdout)[:200]}")
+except Exception as _cl_git_err:
+    tg(f"⚠️ cycle_log push exception : {_cl_git_err}")
