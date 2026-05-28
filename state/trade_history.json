@@ -196,5 +196,27 @@
     "pnl_usdc": -1.01,
     "pnl_pct": -3.28,
     "close_reason": "stop_hit"
+  },
+  {
+    "trade_id": "d9fbd844",
+    "date": "2026-05-28T16:06:16.634356+00:00",
+    "coin": "XLM",
+    "side": "BUY",
+    "signal_score": 7,
+    "entry_price": 0.1963,
+    "stop_price": 0.1865,
+    "tp_price": 0.2257,
+    "quantity": 208.0,
+    "risk_usdc": 2.0384,
+    "entry_order_id": 309067986,
+    "stop_order_id": 309070363,
+    "tp_order_id": 309070364,
+    "order_list_id": 22423253796,
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null
   }
 ]
