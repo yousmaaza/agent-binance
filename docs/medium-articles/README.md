@@ -57,7 +57,7 @@ Chaque article passe par 3 états dans le frontmatter YAML :
 
 | # | Titre | Statut | URL Medium |
 |---|---|---|---|
-| 01 | Setup d'un bot de trading piloté par Claude + MCP TradingView | draft | — |
+| 01 | Setup d'un bot de trading piloté par Claude + MCP TradingView | ✅ published | [Lire](https://medium.com/@yousrimaazaoui_98610/claude-code-mcp-tradingview-binance-cli-lalliance-ultime-pour-vos-agents-autonomes-1953597730d5) |
 
 ## Conventions de rédaction
 
