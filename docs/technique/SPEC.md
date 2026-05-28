@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-05-28 (PR #140)
-> **Commit** : 03cc08c
+> **Dernière mise à jour** : 2026-05-28 (PR #141)
+> **Commit** : 14aba18
 
 ---
 
@@ -295,3 +295,4 @@ webhook_server.py (process principal)
 | [#134](pr-134-qualifier-les-except-generiques.md) | 2026-05-28 | Refactoring gestion d'erreurs : remplacement bare `except Exception` par types spécifiques (`OSError`, `json.JSONDecodeError`, `ValueError`) dans `core/lock.py`, `core/telegram.py`, `orchestration/runner.py` ; ajout journalisation des erreurs capturées |
 | [#135](pr-135-add-trigger-heartbeat.md) | 2026-05-28 | Injection du champ `trigger` dans les logs JSONL (Phase 7) et le document MongoDB : valeur `"manual"` ou `"auto"` — permet au watchdog (#7) de filtrer et distinguer les cycles manuels vs auto pour logiques de gestion différenciées |
 | [#140](pr-140-post-review-trigger-binance-dev-auto.md) | 2026-05-28 | CI/workflow automation : post-review déclenche automatiquement `binance-dev-auto` sur tickets [REC] créés (labels AUTO, tech-lead-review) ; scripts utilitaires `dispatch_rec_tickets.sh` et `label_rec_auto.sh` pour migration tickets historiques |
+| [#141](pr-141-documenter-skip-types.md) | 2026-05-28 | Documentation : nouvelle section CLAUDE.md « Cycles de trading : skip_type et skip_detail » — classement des skips par type (TYPE_A/B/C/D), déclencheurs par phase, utilité pour le debug et l'optimisation stratégique |

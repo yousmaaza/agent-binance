@@ -53,6 +53,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | [#134](pr-134-qualifier-les-except-generiques.md) | [M27] Qualifier les except génériques par des types spécifiques | 2026-05-28 |
 | [#135](pr-135-add-trigger-heartbeat.md) | [M31] Add trigger field to JSONL heartbeat logs | 2026-05-28 |
 | [#140](pr-140-post-review-trigger-binance-dev-auto.md) | feat(ci): post-review déclenche binance-dev-auto sur tickets [REC] | 2026-05-28 |
+| [#141](pr-141-documenter-skip-types.md) | [M128] Documenter les TYPE_A/B/C/D de skip_type en CLAUDE.md | 2026-05-28 |
 
 ---
 *Source de vérité : ce dossier `docs/technique/`. Miroir disponible sur le [GitHub Wiki](../../wiki).*
