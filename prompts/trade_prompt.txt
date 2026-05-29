@@ -59,6 +59,35 @@ Envoie une notification à la FIN de chaque phase avant de passer à la suivante
 
 ---
 
+COMMANDES binance-cli UTILES DANS CE WORKFLOW
+
+Référence rapide des commandes employées lors des 7 phases de trading automatisé :
+
+| Besoin | Commande | Description |
+|--------|----------|-------------|
+| **Prix actuel** | `binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile` | Retourne `{"symbol": "BTCUSDC", "price": "67234.5"}`. Utilise ce format pour chaque coin candidat (Phase 1 vérification, Phase 5 avant exécution). |
+| **Volume 24h** | `binance-cli spot 24hr-stats --symbol {COIN}USDC --profile agent-profile` | Retourne `{"symbol": "BTCUSDC", "quoteAssetVolume": "5200000000.00"}`. Extraire le champ `quoteAssetVolume` pour vérifier si volume >= 5M USDC (filtrage Phase 1). |
+| **Bougies OHLC** | `binance-cli spot klines --symbol {COIN}USDC --interval {INTERVAL} --limit {N} --profile agent-profile` | Exemple : `--interval 4h --limit 50` retourne un array de bougies : `[[timestamp, open, high, low, close, volume, ...], ...]`. Utiliser pour extraire ATR, MACD, RSI (Phase 2). |
+| **Info d'échange** | `binance-cli spot exchange-info --symbol {COIN}USDC --profile agent-profile` | Contient les filtres de la paire : `LOT_SIZE.stepSize` (précision quantité), `PRICE_FILTER.tickSize` (précision prix), `MIN_NOTIONAL.minNotional` (montant minimum). Requis avant Phase 4 (sizing) et Phase 5 (OCO). |
+| **Solde compte** | `binance-cli spot get-account --profile agent-profile` | Retourne `{"balances": [{"asset": "BTC", "free": "1.5", "locked": "0"}, ...]}`. Extraire champ `free` pour USDC. Appelé en Phase 0 (budget) et Phase 5 (vérification avant exécution). |
+| **Ordres ouverts** | `binance-cli spot get-open-orders --symbol {COIN}USDC --profile agent-profile` | Retourne `[{"orderId": 123, "symbol": "BTCUSDC", "type": "LIMIT", "status": "NEW", ...}]`. Utilisé en Phase 0 (vérifier OCO actifs) et Phase 5 (idempotence avant placer nouvel OCO). |
+| **Placer un ordre BUY** | `binance-cli spot new-order --symbol {COIN}USDC --side BUY --type MARKET --quantity {QTY} --profile agent-profile` | Exécute un achat immédiat au marché. Retourne `{"orderId": 456, "status": "FILLED", "executedQty": "0.01", "cummulativeQuoteQty": "672.35"}`. Phase 5 — calcule prix de fill réel = `cummulativeQuoteQty / executedQty`. |
+| **Placer un ordre SELL** | `binance-cli spot new-order --symbol {COIN}USDC --side SELL --type MARKET --quantity {QTY} --profile agent-profile` | Vend immédiatement au marché (utilisé si prix dépasse TP au fill). Même structure de réponse que BUY. |
+| **Créer OCO (TP+SL)** | `binance-cli spot order-list-oco --symbol {COIN}USDC --side SELL --quantity {QTY} --above-type LIMIT_MAKER --above-price {TP} --below-type STOP_LOSS_LIMIT --below-price {SL} --below-stop-price {SL*1.002} --below-time-in-force GTC --profile agent-profile` | Crée un ordre One-Cancels-Other : si prix monte jusqu'au TP, vend à ce prix (profit) ; si prix descend jusqu'au SL, vend à ce prix (perte). Retourne `{"orderListId": 789, "orderReports": [...]}`. Phase 5 après chaque BUY MARKET réussi. |
+| **Annuler OCO** | `binance-cli spot delete-order-list --symbol {COIN}USDC --order-list-id {OCO_ID} --profile agent-profile` | Annule l'OCO existant. Utile pour trailing stop (Phase 0) : annuler ancien OCO, recalculer SL/TP, replacer nouvel OCO. |
+| **Vérifier un ordre** | `binance-cli spot get-order --symbol {COIN}USDC --order-id {ORDER_ID} --profile agent-profile` | Récupère `{"orderId": ..., "status": "FILLED"|"NEW"|"PARTIALLY_FILLED", "executedQty": ..., "cummulativeQuoteQty": ...}`. Phase 0 — vérifier si trade ouvert a été clôturé par TP/SL. |
+
+**Pièges courants (déjà testés, à éviter)** :
+
+- `avg-price` n'existe pas dans binance-cli — utiliser `ticker-price` pour le prix actuel
+- `24hr-ticker` n'existe pas — utiliser `24hr-stats` pour le volume 24h
+- `get-ticker` n'existe pas (problème du log cycle_20260528_155118.log)
+- Tous les prix dans les réponses JSON sont des strings — convertir en float() avant calculs (`float(ticker["price"])`)
+- `--profile agent-profile` doit TOUJOURS être fourni (sinon l'ordre ira sur le compte par défaut)
+- Les réponses peuvent être vides ou invalides JSON en cas d'erreur — toujours encapsuler dans try/except et vérifier avant parsing
+
+---
+
 PHASE 0 — VÉRIFICATIONS PRÉALABLES
 _hb_start(0)
 Lis config.json pour récupérer TOUS les paramètres.
