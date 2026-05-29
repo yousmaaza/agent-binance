@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-05-28 (PR #143)
+> **Dernière mise à jour** : 2026-05-29 (PR #166)
 > **Commit** : <current>
 
 ---
@@ -143,8 +143,14 @@ webhook_server.py (process principal)
 | `_risk_section()` | commands/eval.py:112 | Comptabilise les positions ouvertes sans stop-loss (`protection_failed`) dans `trade_history.json` |
 | `_stat_note()` | commands/eval.py:124 | Génère avertissement si < 30 trades sur la période (échantillon trop petit) |
 | `_parse_dt()` | commands/eval.py:133 | Utilitaire : parse ISO datetime string avec fallback UTC timezone |
-| `_hb_start(phase)` | TRADE_PROMPT:111 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
-| `hb(phase, status, summary)` | TRADE_PROMPT:114 | Clôture une phase (dans le sous-processus Claude) — calcule la durée, écrit une ligne JSON dans `logs/cycle_<id>_phases.jsonl`, flush immédiat |
+| `_validate_trade_history(data)` | core/state_manager.py:12 | Valide la structure list + dicts de `trade_history.json` — lève `ValueError` si invalide |
+| `load_trade_history(path)` | core/state_manager.py:24 | Charge et valide `trade_history.json` — lève `ValueError`/`FileNotFoundError` |
+| `save_trade_history(data, path)` | core/state_manager.py:45 | Sauvegarde atomique via tempfile + os.replace() ; valide avant écriture |
+| `validate_and_repair_boot()` | core/state_manager.py:79 | Vérifie l'intégrité de `trade_history.json` au démarrage ; crée backup daté en cas de corruption, réinitialise à `[]` ; retourne `(is_valid, error_msg)` |
+| `_hb_start(phase)` | TRADE_PROMPT:57 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
+| `hb(phase, status, summary)` | TRADE_PROMPT:60 | Clôture une phase avec **déduplication** : relit le JSONL, supprime l'ancienne entrée si la phase existe, append la nouvelle ligne JSON ; calcule la durée ; flux immédiat |
+| `binance(*args, _retries)` | TRADE_PROMPT:23 | Helper retry-backoff (x3, sleep 2s/4s/6s) pour appels binance-cli ; détecte "Invalid symbol" et "Request failed" ; lève `RuntimeError` si tous les retries échouent |
+| `_save_trade_history_atomic(data, path_override)` | TRADE_PROMPT:37 | Wrapper du module `state_manager` appelable dans le sous-processus Claude ; sauvegarde atomique `trade_history.json` |
 | Bloc trailing stop _(Phase 0)_ | TRADE_PROMPT:264–365 | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec OCO actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule l'OCO existant et replace un nouvel OCO avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
 | `_format_stream_event()` | :643 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
 | `_RESOURCE_ERROR_PATTERNS` _(constante module)_ | :934 | Liste des 8 patterns de chaîne indiquant une erreur de ressource Claude (credit insuffisant, rate_limit_error, overloaded_error, session limit, etc.) — utilisée par `_is_resource_error()` |
@@ -269,6 +275,7 @@ webhook_server.py (process principal)
 | v2 — 790b83a | 2025-xx-xx | Ajout capture raisonnement : loguru + MongoDB + commande `/raisonnement` |
 | v2 — 2bf48c0 | 2025-xx-xx | Mise à jour README et ajout CLAUDE.md (contraintes non négociables) |
 | Spec initiale | 2026-05-21 | Génération initiale de SPEC.md via `binance-doc-tech` one-shot |
+| [#166](pr-166-consolidation-145-146-147-148-149.md) | 2026-05-29 | [CONSOLIDATION] Atomic writes `trade_history.json` (state_manager.py) + dédup heartbeats JSONL + retry-backoff binance-cli + auto-détection BINANCE_CLI_PATH + doc binance-cli commands |
 | [#130](pr-130-workflow-dispatch.md) | 2026-05-28 | CI/infra : migrer trigger GitHub Actions de `projects_v2_item` (orga only) vers `workflow_dispatch` pour support des comptes personnels |
 | [#56](pr-56-trailing-stop-remonter-stop-loss.md) | 2026-05-22 | Ajout trailing stop dans Phase 0 du TRADE_PROMPT : remonte le stop-loss et recalcule le TP si le prix a progressé de plus de 20% de la distance originale, avec annulation/replacement de l'OCO |
 | [#17](pr-17-rotation-loguru-daemon-log.md) | 2026-05-21 | Rotation loguru activée sur `state/daemon.log` (10 MB, 5 fichiers) ; remplacement des `print()` par loguru ; suppression du handler stderr par défaut (id=0) |
