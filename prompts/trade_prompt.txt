@@ -24,6 +24,8 @@ def binance(*args, _retries=3):
     for _attempt in range(_retries):
         _r = subprocess.run([BINANCE_CLI] + list(args), capture_output=True, text=True, timeout=30)
         raw = _r.stdout.strip()
+        if raw.startswith("Invalid symbol"):
+            raise ValueError("Invalid symbol")
         if raw and not raw.startswith("Request failed") and not raw.startswith("Usage:"):
             return raw
         if _attempt < _retries - 1:
@@ -416,11 +418,11 @@ Pour chaque groupe de 4 coins (ou moins pour le dernier groupe) :
   Mémorise pour chaque coin : recommendation (signal_4h) et rsi.
 
   Étape B — Appels 1D couplés, immédiatement après les résultats 4h du groupe :
-  Pour chaque coin du groupe dont signal_4h est BUY ou STRONG_BUY :
-  - Lance mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d) immédiatement
-  - Les appels 1D des différents coins BUY d'un même groupe peuvent se faire en parallèle entre eux
   Pour les coins du groupe avec signal_4h NEUTRAL, SELL ou STRONG_SELL :
   - Ne pas lancer d'appel 1D. Leur signal_1d = "NEUTRAL" pour le scoring Phase 3.
+  Pour chaque coin du groupe dont signal_4h est BUY ou STRONG_BUY :
+  - Avant le PREMIER appel 1D du groupe, attendre time.sleep(5) pour laisser le rate limit TradingView se réinitialiser.
+  - Lancer les appels 1D en SÉQUENTIEL (un par un, jamais en parallèle) : appeler mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d), attendre le résultat, puis time.sleep(2) avant le prochain appel 1D.
 
   Si un appel 1D échoue (réponse vide, timeout) : noter signal_1d = "NEUTRAL" pour ce coin et continuer sans l'éliminer.
 
