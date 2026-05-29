@@ -1,6 +1,7 @@
 """Bootstrap : chargement .env, constantes globales, setup loguru, chargement du prompt."""
 import hashlib
 import os
+import shutil
 
 from loguru import logger
 
@@ -29,6 +30,7 @@ _load_env()
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BINANCE_CLI_PATH = shutil.which("binance-cli") or "binance-cli"
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 LOGS_DIR = os.path.join(PROJECT_DIR, "logs")
 MONGO_URI = os.environ.get("MONGODB_URI", "").strip()
@@ -69,10 +71,11 @@ with open(_PROMPT_FILE) as _f:
 # SHA1 calculé sur le template brut — stable entre cycles
 PROMPT_VERSION = hashlib.sha1(_TRADE_PROMPT_TEMPLATE.encode(), usedforsecurity=False).hexdigest()[:8]
 
-# Substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR) — effectuées une seule fois au démarrage
+# Substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) — effectuées une seule fois au démarrage
 TRADE_PROMPT = (
     _TRADE_PROMPT_TEMPLATE
     .replace("__BOT_TOKEN__", TOKEN)
     .replace("__CHAT_ID__", CHAT_ID)
     .replace("__PROJECT_DIR__", PROJECT_DIR)
+    .replace("__BINANCE_CLI_PATH__", BINANCE_CLI_PATH)
 )
