@@ -3,3 +3,4 @@
 {"date": "2026-05-28T23:03Z", "cycle_id": "20260528_225523", "top_score": 4, "executed": 0, "skipped": 4, "skip_type": "TYPE_D", "skip_detail": "Coins \u00e9limin\u00e9s faible volume USDC (STX/IOTA/ALGO/DEXE)", "portfolio": 148.57, "sentiment": "Neutral", "open_positions": 1}
 {"date": "2026-05-29T00:05Z", "cycle_id": "20260529_000503", "top_score": 3, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 147.49, "sentiment": "Neutral", "open_positions": 0}
 {"date": "2026-05-29T04:10Z", "cycle_id": "20260529_040506", "top_score": 3, "executed": 0, "skipped": 4, "skip_type": "TYPE_A", "skip_detail": "Aucun coin \u2265 7/10, march\u00e9 bearish g\u00e9n\u00e9ral", "portfolio": 192.88, "sentiment": "Neutral", "open_positions": 0}
+{"date": "2026-05-29T08:11Z", "cycle_id": "20260529_080505", "top_score": 5, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 692.82, "sentiment": "Neutral", "open_positions": 0}
