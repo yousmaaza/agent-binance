@@ -17,6 +17,7 @@ from commands.perf import run_perf
 from commands.raisonnement import run_raisonnement
 from commands.status import run_status
 from core.lock import release_lock
+from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
 from core.timing import fmt_local, next_4h_slot
 from orchestration.runner import run_trade_workflow
@@ -36,6 +37,15 @@ def main_loop():
     offset = get_offset()
 
     from core.env import TRADE_PROMPT  # noqa: F401 — vérifie que le prompt est bien chargé
+
+    is_valid, error = validate_and_repair_boot()
+    if not is_valid:
+        logger.warning(f"trade_history.json était corrompu — repaired : {error}")
+        send_telegram(
+            f"⚠️ trade_history.json détecté corrompu au boot : {error}\n"
+            f"Backup créé, fichier réinitialisé. Cycles précédents non affectés."
+        )
+
     logger.info(f"Bot v2 démarre en mode polling (offset={offset})")
     logger.info(f"Prochain cycle auto : {fmt_next()}")
 
