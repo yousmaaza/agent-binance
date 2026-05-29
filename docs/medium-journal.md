@@ -10,6 +10,70 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-05-29 — Récap quotidien
+
+### PR mergées (0)
+
+Aucune PR mergée sur `main` aujourd'hui.
+
+### Événements PR notables
+
+#### PR #166 ouverte — [CONSOLIDATION] #145 #146 #147 #148 #149 + 4 bugfixes post-cycle
+- **Ouverte à** : 11:55 (Europe/Paris) — toujours en review en fin de journée
+- **Branche** : `feat/consolidation-145-146-147-148-149`
+- **Quoi** : les 5 PR individuelles (#150 à #154), ouvertes hier, ont été fermées ce matin à 11:56 et remplacées par une PR unique qui consolide leurs changements. La raison : un conflit de merge était détecté entre #145 (écriture atomique dans `state_manager.py`) et #147 (unification du module `json` dans le même fichier) — résoudre le conflit une fois dans une branche dédiée est plus propre que de le faire lors de deux merges successifs.
+
+  La PR couvre les 5 issues consolidées :
+
+  | Issue | Contenu |
+  |-------|---------|
+  | #145 | Écriture atomique de `trade_history.json` via `os.replace()` + validation JSON au boot + backup automatique |
+  | #146 | Garantir un `hb(N)` par phase dans le TRADE_PROMPT — Phase 7 complète les heartbeats manquants avec statut `"recovered"` |
+  | #147 | Unification de tous les imports `json as _json / _hb_json / _pf_json` en un seul `import json` |
+  | #148 | Instruction explicite en tête du prompt : utiliser `.venv/bin/python3` (évite la résolution vers anaconda sur Mac) |
+  | #149 | Table de référence `binance-cli` dans le prompt — 10 commandes essentielles avec exemples JSON |
+
+  Dans l'après-midi, suite aux bugs révélés par le cycle `cycle_20260529_162033`, la PR a été mise à jour pour inclure 4 bugfixes supplémentaires (#168, #169, #170, #171 — détaillés ci-dessous).
+
+- **Pourquoi c'est intéressant pour Medium** : la PR #166 incarne deux patterns distincts réunis dans un seul artefact. (1) La consolidation de branches en conflit — décision technique de rassembler 5 features dans une seule PR pour absorber les conflits de merge en un seul endroit. (2) Le cycle de feedback en temps réel — une exécution du bot à 18h20 révèle des bugs qui intègrent directement la PR ouverte le matin. Le cycle `cycle_20260529_162033` a joué le rôle d'un test d'intégration grandeur nature.
+
+### Issues fermées (0)
+
+Aucune issue fermée aujourd'hui.
+
+### Nouveaux tickets (6)
+
+Deux vagues de création :
+
+**Vague 1 — ~11:58 Paris (#167)** : review tech-lead automatique déclenchée à l'ouverture de PR #166.
+- **#167** — [REC] Refactor `main_loop()` avec dispatch table pour handlers — `enhancement + tech-lead-review + AUTO`. La cascade `if/elif` qui gère 8+ commandes Telegram (complexité cyclomatique C = 17) doit être remplacée par un dictionnaire de handlers. Recommandation issue du reviewer automatique.
+
+**Vague 2 — ~18:43-18:44 Paris (#168–#172)** : post-mortem automatique du cycle `cycle_20260529_162033` (exécuté à 18:20 Paris).
+- **#168** — [BUG] `BINANCE_CLI` path non injecté dans `TRADE_PROMPT` — l'agent perd ~5 min par cycle à chercher le chemin absolu de `binance-cli` (`/Users/.../.nvm/.../bin/binance-cli`) car subprocess Python n'hérite pas du PATH nvm. Fix attendu : `shutil.which("binance-cli")` au démarrage de `webhook_server.py`, injectée via `__BINANCE_CLI_PATH__` dans le template.
+- **#169** — [BUG] Table `binance-cli` : commande `24hr-stats` inexistante — la table de référence ajoutée par PR #149 documente une commande qui n'existe pas. La bonne commande est `ticker24hr`. L'agent l'a découvert en live lors du cycle.
+- **#170** — [BUG] `binance-cli` retourne `'Request failed after 3 retries'` (non-JSON) — le helper `binance()` ne gère pas ce cas, provoque un crash sur `json.loads()`. Fix attendu : détection de la réponse non-JSON + retry x3 avec backoff.
+- **#171** — [BUG] JSONL phases : doublons si un script de phase est re-exécuté — `hb(N)` peut être appelé plusieurs fois pour la même phase (observé 3 fois pour la phase 1 dans le cycle de référence). La vérification Phase 7 détecte les phases manquantes mais pas les doublons. Fix : `hb()` réécrit le fichier avec déduplication plutôt qu'appender.
+- **#172** — [AMÉLIORATION] Maintenir une `usdc_whitelist` dans `config.json` — sur 20 coins candidats, 16 sont systématiquement éliminés TYPE_D (paire USDC introuvable sur Binance). ~30s et des appels binance-cli inutiles à chaque cycle. Whitelist proposée : `["BTC", "ETH", "SOL", "XRP", "SUI", "BNB", "AVAX", "DOT", "LINK", "ADA", "MATIC", "NEAR"]`.
+
+Les tickets #168–#172 ont été créés directement depuis les logs `logs/stdout/cycle_20260529_162033.log`, ce qui en fait des retours d'expérience factuels, pas des spéculations.
+
+### Matériel disponible pour l'article
+
+- **PR #166 ouverte** : diff complet des 5 issues consolidées + 4 bugfixes post-cycle — branche `feat/consolidation-145-146-147-148-149`
+- **Log cycle de référence** : `logs/stdout/cycle_20260529_162033.log` — contient les erreurs brutes qui ont généré les 5 tickets
+- **Log JSONL** : `logs/cycle_20260529_162033_phases.jsonl` — phase 1 dupliquée 3 fois (illustration du bug #171)
+- **Issues fraiches** : #168-172 — créées 23 min après le cycle, tracent la chaîne observation → ticket en temps réel
+
+### Idée d'angle Medium
+
+**Angle 1 — "Le cycle comme test d'intégration"**
+Le cycle `cycle_20260529_162033` a tourné à 18:20 et révélé 4 bugs en 23 minutes : PATH manquant, commande inexistante, non-JSON non géré, doublons JSONL. Tous ont été transformés en tickets structurés et intégrés à la PR en cours d'ici 20h13. Article sur la valeur des logs de cycle comme oracle de qualité — pas des tests unitaires, mais l'environnement réel avec Binance, bcp de rate limits et un prompt qui s'exécute comme un programme.
+
+**Angle 2 — "Consolider 5 branches en conflit sans perdre l'historique"**
+Plutôt que de merger #145-149 dans l'ordre en résolvant les conflits un par un (risque d'erreur, perte de contexte), une PR de consolidation repart de `main` et intègre toutes les features dans un diff unique. Pattern utile pour les projets où plusieurs agents ouvrent des PRs en parallèle sur les mêmes fichiers — le conflit de merge est inévitable, la consolidation manuelle reste la solution la plus lisible.
+
+---
+
 ## 2026-05-28 — Récap quotidien
 
 ### PR mergées (12)
