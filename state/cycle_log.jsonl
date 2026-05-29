@@ -1,3 +1,4 @@
 {"date": "2026-05-28T16:07Z", "cycle_id": "20260528_155118", "top_score": 7, "executed": 1, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 146.22, "sentiment": "Strongly Bullish", "open_positions": 1}
 {"date": "2026-05-28T20:14Z", "cycle_id": "20260528_200500", "top_score": 4, "executed": 0, "skipped": 0, "skip_type": "TYPE_A", "skip_detail": "Score maximum 4/10 < seuil 7, aucun signal BUY suffisant", "portfolio": 105.2, "sentiment": "Neutral", "open_positions": 1}
 {"date": "2026-05-28T23:03Z", "cycle_id": "20260528_225523", "top_score": 4, "executed": 0, "skipped": 4, "skip_type": "TYPE_D", "skip_detail": "Coins \u00e9limin\u00e9s faible volume USDC (STX/IOTA/ALGO/DEXE)", "portfolio": 148.57, "sentiment": "Neutral", "open_positions": 1}
+{"date": "2026-05-29T00:05Z", "cycle_id": "20260529_000503", "top_score": 3, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 147.49, "sentiment": "Neutral", "open_positions": 0}
