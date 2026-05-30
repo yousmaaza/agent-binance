@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-05-29 (PR #166)
+> **Dernière mise à jour** : 2026-05-30 (PR #187)
 > **Commit** : <current>
 
 ---
@@ -147,8 +147,9 @@ webhook_server.py (process principal)
 | `load_trade_history(path)` | core/state_manager.py:24 | Charge et valide `trade_history.json` — lève `ValueError`/`FileNotFoundError` |
 | `save_trade_history(data, path)` | core/state_manager.py:45 | Sauvegarde atomique via tempfile + os.replace() ; valide avant écriture |
 | `validate_and_repair_boot()` | core/state_manager.py:79 | Vérifie l'intégrité de `trade_history.json` au démarrage ; crée backup daté en cas de corruption, réinitialise à `[]` ; retourne `(is_valid, error_msg)` |
-| `_hb_start(phase)` | TRADE_PROMPT:57 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
-| `hb(phase, status, summary)` | TRADE_PROMPT:60 | Clôture une phase avec **déduplication** : relit le JSONL, supprime l'ancienne entrée si la phase existe, append la nouvelle ligne JSON ; calcule la durée ; flux immédiat |
+| `_hb_start(phase)` | helpers:157 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
+| `hb(phase, status, summary)` | helpers:161 | Clôture une phase avec **déduplication** : relit le JSONL, supprime l'ancienne entrée si la phase existe, append la nouvelle ligne JSON ; calcule la durée ; flux immédiat |
+| `CycleLogger.warning()` | botlogging/cycle_logger.py:34 | Nouvelle méthode pour logger les avertissements au niveau cycle avec préfixe structuré ; complète les méthodes `info()` et `error()` existantes |
 | `binance(*args, _retries)` | TRADE_PROMPT:23 | Helper retry-backoff (x3, sleep 2s/4s/6s) pour appels binance-cli ; détecte "Invalid symbol" et "Request failed" ; lève `RuntimeError` si tous les retries échouent |
 | `_save_trade_history_atomic(data, path_override)` | TRADE_PROMPT:37 | Wrapper du module `state_manager` appelable dans le sous-processus Claude ; sauvegarde atomique `trade_history.json` |
 | Bloc trailing stop _(Phase 0)_ | TRADE_PROMPT:264–365 | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec OCO actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule l'OCO existant et replace un nouvel OCO avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
@@ -158,8 +159,10 @@ webhook_server.py (process principal)
 | `_read_last_jsonl_phase()` | :690 | Lit la dernière ligne valide du fichier `cycle_<id>_phases.jsonl` — utilisé par le watchdog pour connaître la dernière phase complétée |
 | `_watchdog_thread()` | :710 | Thread daemon qui surveille le cycle actif via le JSONL des heartbeats : alerte Telegram si aucune phase ne progresse pendant > 15 min |
 | `PROMPT_VERSION` _(constante module)_ | :410 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
-| `run_trade_workflow()` | runner.py:21 | Orchestre un cycle complet : lock → extraction du modèle depuis `CLAUDE_CLI_FLAGS` → notifications Telegram de démarrage (modèle + mode abonnement affiché) → subprocess Claude (sans `ANTHROPIC_API_KEY` — mode abonnement uniquement) → capture logs stdout/stderr → extraction coût API → update Mongo `api_cost_usd` et `billing_mode: "abonnement"` → si erreur ressource détectée, envoie message Telegram explicite et marque le cycle en erreur → fallback Mongo en cas d'erreur → unlock |
-| `_run_claude()` | runner.py:110 | Lance le sous-processus Claude CLI avec flags configurables : streame les événements stream-json depuis stdout, parse chaque ligne via `parse_stream_event()`, écrit les lignes formatées dans le fichier log stdout. Exécution en mode abonnement uniquement (pas de retry fallback API). Timeout 3600s avec timer. |
+| `run_trade_workflow()` | runner.py:23 | Orchestre un cycle complet : lock → création fichier helpers via `tempfile.mkstemp()` → injection `__HELPERS_PATH__` dans le prompt → sous-processus Claude (sans `ANTHROPIC_API_KEY` — mode abonnement uniquement) → capture logs stdout/stderr → extraction coût API → update Mongo `api_cost_usd` et `billing_mode: "abonnement"` → si erreur ressource détectée, envoie message Telegram explicite → fallback Mongo en cas d'erreur → cleanup fichier helpers en `finally` → unlock |
+| `_write_helpers_file()` | runner.py:116 | Génère le fichier temporaire des helpers (tg, binance, hb, _hb_start, _save_trade_history_atomic) via `tempfile.mkstemp()` : permissions 0o600 garanties, secrets lus depuis `os.environ` au runtime (jamais substitués en dur), injectables dans le TRADE_PROMPT |
+| `_send_start_notification()` | runner.py:99 | Envoie la notification Telegram de démarrage d'un cycle : affiche le modèle Claude utilisé (extrait depuis `CLAUDE_CLI_FLAGS`), le mode de facturation (abonnement), et l'heure du prochain cycle auto en heure locale ; différencie cycles manuels vs auto |
+| `_run_claude()` | runner.py:205 | Lance le sous-processus Claude CLI avec flags configurables : streame les événements stream-json depuis stdout, parse chaque ligne via `parse_stream_event()`, écrit les lignes formatées dans le fichier log stdout. Exécution en mode abonnement uniquement (pas de retry fallback API). Timeout 3600s (CLAUDE_PROCESS_TIMEOUT_S) avec timer. |
 | `parse_stream_event()` | stream_parser.py:8 | Parse une ligne stream-json de Claude CLI en log humain lisible, sans paramètre `session_cb` (mécanisme supprimé avec le fallback API). Transforme : `system/init` → log d'init, `assistant` → blocs texte + tool_use, `user` → tool_result, `result` → résumé + durée + coût. |
 | `_update_billing_mode_in_mongo()` | runner.py:156 | Enregistre le mode de facturation (`"abonnement"` ou `"api"`) dans Mongo après chaque cycle (distinction primaire vs fallback API) |
 | `run_raisonnement()` | :864 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
@@ -308,3 +311,4 @@ webhook_server.py (process principal)
 | [#142](pr-142-clarify-date-format.md) | 2026-05-28 | Clarification CLAUDE.md : format date des heartbeat logs JSONL utilise `%Y-%m-%dT%H:%M:%SZ` **avec secondes** pour garantir l'unicité chronologique des 7 phases exécutées en <60s (sinon agrégation %H:%M serait insuffisante) |
 | [#144](pr-144-verify-variable-definitions.md) | 2026-05-28 | TRADE_PROMPT : initialisation explicite des variables de synthèse + fallbacks en Phase 7 (top_score, executed, skipped, skip_type, skip_detail, sentiment, portfolio_total, open_positions) + clarification des points d'assignation par phase → prévention UnboundLocalError, meilleure traçabilité |
 | [#122](pr-122-cycle-log-jsonl.md) | 2026-05-28 | Ajout Phase 8 : écriture `state/cycle_log.jsonl` (append-only) avec synthèse cycle (top_score, executed, skipped, skip_type, portfolio, sentiment) ; rotation à 90 lignes max ; commit+push automatique sur main après Phase 7 |
+| [#187](pr-187-consolidate-helpers-security-recs.md) | 2026-05-30 | [CONSOLIDÉ] Helpers partagés par cycle via `tempfile.mkstemp()` (Bandit B108 résolu) + extraction `_write_helpers_file()` + `_send_start_notification()` + constante `CLAUDE_PROCESS_TIMEOUT_S` + ajout méthode `CycleLogger.warning()` + lint script `check_cycle_logger_methods.sh` |
