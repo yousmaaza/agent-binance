@@ -13,3 +13,4 @@
 {"date": "2026-05-30T15:02:43Z", "cycle_id": "20260530_145034", "top_score": 6, "executed": 2, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 106.2213458, "sentiment": "Neutral", "open_positions": 2}
 {"date": "2026-05-30T16:12:38Z", "cycle_id": "20260530_160505", "top_score": 4, "executed": 0, "skipped": 1, "skip_type": "TYPE_A", "skip_detail": "Score 4/10 < seuil 7", "portfolio": 74.53, "sentiment": "Neutral", "open_positions": 2}
 {"date": "2026-05-30T21:23:42Z", "cycle_id": "20260530_211337", "top_score": 9, "executed": 0, "skipped": 12, "skip_type": "TYPE_A", "skip_detail": "Positions max atteintes (3/3)", "portfolio": 74.5364881, "sentiment": "Bullish", "open_positions": 2}
+{"date": "2026-05-30T21:34:28Z", "cycle_id": "20260530_212810", "top_score": 5, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 74.5364881, "sentiment": "Neutral", "open_positions": 2}
