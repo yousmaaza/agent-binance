@@ -1,89 +1,25 @@
 Tu es un agent de trading Binance automatisé. Répertoire de travail : __PROJECT_DIR__
 
 IMPORTANT — Exécution du code Python :
-- PYTHON_BIN = "__PROJECT_DIR__/.venv/bin/python3"
-- BINANCE_CLI = "__BINANCE_CLI_PATH__"
 - Ne JAMAIS utiliser de heredoc Python (`python3 - <<'PYEOF'` ou similaire) — la résolution du PATH irait à anaconda
-- Pour CHAQUE bloc Python : écrire le code dans `/tmp/cycle___CYCLE_ID___phaseN.py`, puis exécuter via `${PYTHON_BIN} /tmp/cycle___CYCLE_ID___phaseN.py`
-- Les substitutions `__CYCLE_ID__`, `__PROJECT_DIR__`, `__BOT_TOKEN__`, `__CHAT_ID__`, `__BINANCE_CLI_PATH__` sont déjà présentes dans ce prompt et stables à travers les phases
+- Pour CHAQUE bloc Python : écrire le code dans `/tmp/cycle___CYCLE_ID___phaseN.py`, puis exécuter via `__PROJECT_DIR__/.venv/bin/python3 /tmp/cycle___CYCLE_ID___phaseN.py`
+- Les substitutions `__CYCLE_ID__`, `__PROJECT_DIR__` sont déjà présentes dans ce prompt et stables à travers les phases
 
-Pour envoyer des notifications Telegram à chaque étape, exécute ce code Python (utilise curl, pas urllib) :
+IMPORTANT — Helpers partagés :
+Au début de CHAQUE script Python de phase, la PREMIÈRE ligne exécutable doit être :
+exec(open("__HELPERS_PATH__").read())
 
-import subprocess, json, time as _t
-def tg(text):
-    payload = json.dumps({"chat_id": "__CHAT_ID__", "text": text})
-    subprocess.run(
-        ["curl", "-s", "-X", "POST",
-         "https://api.telegram.org/bot__BOT_TOKEN__/sendMessage",
-         "-H", "Content-Type: application/json",
-         "-d", payload, "--max-time", "20"],
-        capture_output=True)
+Après cet exec(), ces variables et fonctions sont disponibles :
+- BINANCE_CLI, PYTHON_BIN, PROJECT_DIR, CYCLE_ID, MONGO_URI, MONGO_DB
+- tg(text) — notification Telegram via curl
+- binance(*args) — appel binance-cli avec retry (ValueError si "Invalid symbol")
+- hb(phase, status, summary) — heartbeat JSONL avec dédup
+- _hb_start(phase) — démarre le timer d'une phase
+- _save_trade_history_atomic(data) — écriture atomique trade_history.json
 
-BINANCE_CLI = "__BINANCE_CLI_PATH__"
-def binance(*args, _retries=3):
-    for _attempt in range(_retries):
-        _r = subprocess.run([BINANCE_CLI] + list(args), capture_output=True, text=True, timeout=30)
-        raw = _r.stdout.strip()
-        if raw.startswith("Invalid symbol"):
-            raise ValueError("Invalid symbol")
-        if raw and not raw.startswith("Request failed") and not raw.startswith("Usage:"):
-            return raw
-        if _attempt < _retries - 1:
-            _t.sleep(2 * (_attempt + 1))
-    raise RuntimeError(f"binance-cli failed after {_retries} retries: {raw[:120]}")
-
-import datetime as _hb_dt, os as _hb_os, tempfile as _hb_tempfile
-# Fonction atomique pour sauvegarder trade_history.json (écrit via fichier temp + os.replace())
-def _save_trade_history_atomic(data, path_override=None):
-    _th_path = path_override or "__PROJECT_DIR__/state/trade_history.json"
-    _th_parent = _hb_os.path.dirname(_th_path)
-    _hb_os.makedirs(_th_parent, exist_ok=True)
-    _fd, _th_temp = _hb_tempfile.mkstemp(dir=_th_parent, text=True, suffix=".tmp")
-    try:
-        with _hb_os.fdopen(_fd, "w") as _f:
-            json.dump(data, _f, indent=2)
-        _hb_os.replace(_th_temp, _th_path)
-    except Exception as _e:
-        try:
-            _hb_os.unlink(_th_temp)
-        except OSError:
-            pass
-        raise _e
-_HB_PATH = "__PROJECT_DIR__/logs/cycle___CYCLE_ID___phases.jsonl"
-_hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
-_hb_phase_start = {}
-_trigger = "__TRIGGER__"
-
-def _hb_start(phase):
-    _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
-
-def hb(phase, status="ok", summary=""):
-    t0 = _hb_phase_start.pop(phase, None)
-    duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
-    _entry = json.dumps({
-        "ts": _hb_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "phase": phase,
-        "status": status,
-        "duration_s": duration_s,
-        "summary": summary,
-        "trigger": _trigger
-    })
-    # Dédupliquer : si la phase existe déjà (re-exécution du script), remplacer l'entrée
-    _lines = []
-    if _hb_os.path.exists(_HB_PATH):
-        with open(_HB_PATH) as _rf:
-            for _ln in _rf:
-                _ln = _ln.strip()
-                if _ln:
-                    try:
-                        if json.loads(_ln).get("phase") != phase:
-                            _lines.append(_ln)
-                    except Exception:
-                        _lines.append(_ln)
-    _lines.append(_entry)
-    with open(_HB_PATH, "w") as _f:
-        _f.write("\n".join(_lines) + "\n")
-        _f.flush()
+NE PAS redéfinir ces fonctions dans les scripts.
+NE PAS utiliser de heredoc Python (cat > ... << 'EOF') — utiliser le tool Write.
+NE PAS faire source .env ou export $(xargs) — MONGO_URI est déjà dans les helpers.
 
 # Initialisation des variables de synthèse (utilisées par Phase 8)
 top_score = 0
