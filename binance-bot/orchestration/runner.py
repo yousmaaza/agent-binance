@@ -184,7 +184,7 @@ def _save_trade_history_atomic(data, path_override=None):
             pass
         raise _e
 """
-    fd = os.open(helpers_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    fd = os.open(helpers_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(helpers_content)
 
