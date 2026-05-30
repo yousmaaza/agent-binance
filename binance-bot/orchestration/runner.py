@@ -100,17 +100,18 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
 
 
 def _write_helpers_file(helpers_path: str, cycle_id: str, trigger: str) -> None:
-    """Écrit /tmp/cycle_{cycle_id}_helpers.py avec les helpers partagés pour le sous-processus Claude."""
-    mongo_uri = os.environ.get("MONGODB_URI", "")
-    mongo_db = os.environ.get("MONGODB_DB", "agent-binance")
+    """Écrit /tmp/cycle_{cycle_id}_helpers.py avec les helpers partagés pour le sous-processus Claude.
+
+    Permissions 0o600 (owner-only). Aucun secret baked — lus depuis os.environ au runtime.
+    """
     helpers_content = f"""import subprocess, json, time as _t, datetime as _hb_dt, os as _hb_os, tempfile as _hb_tempfile, math
 
 BINANCE_CLI = {repr(BINANCE_CLI_PATH)}
 PYTHON_BIN  = {repr(sys.executable)}
 PROJECT_DIR = {repr(PROJECT_DIR)}
 CYCLE_ID    = {repr(cycle_id)}
-MONGO_URI   = {repr(mongo_uri)}
-MONGO_DB    = {repr(mongo_db)}
+MONGO_URI   = _hb_os.environ.get("MONGODB_URI", "")
+MONGO_DB    = _hb_os.environ.get("MONGODB_DB", "agent-binance")
 _HB_PATH    = {repr(f"{PROJECT_DIR}/logs/cycle_{cycle_id}_phases.jsonl")}
 _trigger    = {repr(trigger)}
 
@@ -118,10 +119,12 @@ _hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
 _hb_phase_start = {{}}
 
 def tg(text):
-    payload = json.dumps({{"chat_id": {repr(CHAT_ID)}, "text": text}})
+    _tok = _hb_os.environ.get("TELEGRAM_TOKEN", "")
+    _cid = _hb_os.environ.get("TELEGRAM_CHAT_ID", "")
+    payload = json.dumps({{"chat_id": _cid, "text": text}})
     subprocess.run(
         ["curl", "-s", "-X", "POST",
-         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+         f"https://api.telegram.org/bot{{_tok}}/sendMessage",
          "-H", "Content-Type: application/json",
          "-d", payload, "--max-time", "20"],
         capture_output=True)
@@ -181,7 +184,8 @@ def _save_trade_history_atomic(data, path_override=None):
             pass
         raise _e
 """
-    with open(helpers_path, "w") as f:
+    fd = os.open(helpers_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         f.write(helpers_content)
 
 
