@@ -3,11 +3,12 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 from datetime import datetime, timezone
 
 from config.llm import CLAUDE_CLI_FLAGS
-from core.env import BINANCE_CLI_PATH, CHAT_ID, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TOKEN, TRADE_PROMPT
+from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
 from core.timing import fmt_local
@@ -15,6 +16,8 @@ from orchestration.stream_parser import is_resource_error, parse_stream_event
 from orchestration.watchdog import WatchdogThread
 from botlogging.cycle_logger import CycleLogger
 from storage.mongo import mongo_repo
+
+CLAUDE_PROCESS_TIMEOUT_S = 3600  # 1h max par cycle — tuer le processus si dépassé
 
 
 def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
@@ -34,35 +37,29 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     cycle_log.info(f"Démarrage (trigger={trigger})")
 
     fmt_next = fmt_next_fn() if fmt_next_fn else "–"
-    _model_idx = CLAUDE_CLI_FLAGS.index("--model") + 1 if "--model" in CLAUDE_CLI_FLAGS else -1
-    _model = CLAUDE_CLI_FLAGS[_model_idx] if _model_idx > 0 else "claude (défaut)"
+    _send_start_notification(cycle_id, trigger, started_at, fmt_next)
 
-    if trigger == "auto":
-        send_telegram(
-            f"🤖 Cycle auto 4h démarré ({fmt_local(started_at)})\n"
-            f"🧠 Modèle : {_model} (abonnement)\n"
-            f"⏰ Prochain cycle auto : {fmt_next}"
-        )
-    else:
-        send_telegram(
-            f"🔧 Cycle manuel {cycle_id} démarré\n"
-            f"🧠 Modèle : {_model} (abonnement)\n"
-            f"⏰ Prochain cycle auto : {fmt_next}"
-        )
+    try:
+        helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"cycle_{cycle_id}_")
+    except OSError as e:
+        send_telegram(f"❌ Cycle {cycle_id} — impossible de créer le fichier helpers (disque plein ?) : {e}")
+        cycle_log.error(f"mkstemp helpers échoué : {e}")
+        release_lock()
+        return
 
     prompt = (
         TRADE_PROMPT
         .replace("__CYCLE_ID__", cycle_id)
+        .replace("__HELPERS_PATH__", helpers_path)
         .replace("__PROMPT_VERSION__", PROMPT_VERSION)
         .replace("__TRIGGER__", trigger)
     )
 
+    _write_helpers_file(helpers_fd, helpers_path, cycle_id, trigger)
+
     stdout_path = f"{LOGS_DIR}/stdout/cycle_{cycle_id}.log"
     stderr_path = f"{LOGS_DIR}/stderr/cycle_{cycle_id}.log"
     exit_code = -1
-
-    helpers_path = f"/tmp/cycle_{cycle_id}_helpers.py"
-    _write_helpers_file(helpers_path, cycle_id, trigger)
 
     watchdog = WatchdogThread(cycle_log)
     watchdog.start()
@@ -99,10 +96,27 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
             pass
 
 
-def _write_helpers_file(helpers_path: str, cycle_id: str, trigger: str) -> None:
-    """Écrit /tmp/cycle_{cycle_id}_helpers.py avec les helpers partagés pour le sous-processus Claude.
+def _send_start_notification(cycle_id: str, trigger: str, started_at: datetime, fmt_next: str) -> None:
+    _model_idx = CLAUDE_CLI_FLAGS.index("--model") + 1 if "--model" in CLAUDE_CLI_FLAGS else -1
+    _model = CLAUDE_CLI_FLAGS[_model_idx] if _model_idx > 0 else "claude (défaut)"
+    if trigger == "auto":
+        send_telegram(
+            f"🤖 Cycle auto 4h démarré ({fmt_local(started_at)})\n"
+            f"🧠 Modèle : {_model} (abonnement)\n"
+            f"⏰ Prochain cycle auto : {fmt_next}"
+        )
+    else:
+        send_telegram(
+            f"🔧 Cycle manuel {cycle_id} démarré\n"
+            f"🧠 Modèle : {_model} (abonnement)\n"
+            f"⏰ Prochain cycle auto : {fmt_next}"
+        )
 
-    Permissions 0o600 (owner-only). Aucun secret baked — lus depuis os.environ au runtime.
+
+def _write_helpers_file(fd: int, helpers_path: str, cycle_id: str, trigger: str) -> None:
+    """Écrit le fichier helpers via fd issu de tempfile.mkstemp.
+
+    Permissions 0o600 garanties par mkstemp. Aucun secret baked — lus depuis os.environ au runtime.
     """
     helpers_content = f"""import subprocess, json, time as _t, datetime as _hb_dt, os as _hb_os, tempfile as _hb_tempfile, math
 
@@ -184,7 +198,6 @@ def _save_trade_history_atomic(data, path_override=None):
             pass
         raise _e
 """
-    fd = os.open(helpers_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(helpers_content)
 
@@ -205,7 +218,7 @@ def _run_claude(
             stdout=subprocess.PIPE, stderr=err_f,
             text=True, cwd=PROJECT_DIR, bufsize=1, env=env,
         )
-        timer = threading.Timer(3600, process.kill)
+        timer = threading.Timer(CLAUDE_PROCESS_TIMEOUT_S, process.kill)
         timer.start()
         try:
             for raw_line in process.stdout:
