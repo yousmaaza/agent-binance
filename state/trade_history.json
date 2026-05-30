@@ -236,10 +236,10 @@
     "tp_order_id": 1021855573,
     "order_list_id": 22447624153,
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 0.10062,
+    "exit_date": "2026-05-30T04:06:38.848218+00:00",
+    "pnl_usdc": 2.7312500000000024,
+    "pnl_pct": 6.622867436685394
   }
 ]
