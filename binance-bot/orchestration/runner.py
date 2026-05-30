@@ -2,11 +2,12 @@
 import os
 import re
 import subprocess
+import sys
 import threading
 from datetime import datetime, timezone
 
 from config.llm import CLAUDE_CLI_FLAGS
-from core.env import LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT
+from core.env import BINANCE_CLI_PATH, CHAT_ID, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TOKEN, TRADE_PROMPT
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
 from core.timing import fmt_local
@@ -60,6 +61,9 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     stderr_path = f"{LOGS_DIR}/stderr/cycle_{cycle_id}.log"
     exit_code = -1
 
+    helpers_path = f"/tmp/cycle_{cycle_id}_helpers.py"
+    _write_helpers_file(helpers_path, cycle_id, trigger)
+
     watchdog = WatchdogThread(cycle_log)
     watchdog.start()
 
@@ -89,6 +93,96 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     finally:
         watchdog.stop()
         release_lock()
+        try:
+            os.unlink(helpers_path)
+        except OSError:
+            pass
+
+
+def _write_helpers_file(helpers_path: str, cycle_id: str, trigger: str) -> None:
+    """Écrit /tmp/cycle_{cycle_id}_helpers.py avec les helpers partagés pour le sous-processus Claude."""
+    mongo_uri = os.environ.get("MONGODB_URI", "")
+    mongo_db = os.environ.get("MONGODB_DB", "agent-binance")
+    helpers_content = f"""import subprocess, json, time as _t, datetime as _hb_dt, os as _hb_os, tempfile as _hb_tempfile, math
+
+BINANCE_CLI = {repr(BINANCE_CLI_PATH)}
+PYTHON_BIN  = {repr(sys.executable)}
+PROJECT_DIR = {repr(PROJECT_DIR)}
+CYCLE_ID    = {repr(cycle_id)}
+MONGO_URI   = {repr(mongo_uri)}
+MONGO_DB    = {repr(mongo_db)}
+_HB_PATH    = {repr(f"{PROJECT_DIR}/logs/cycle_{cycle_id}_phases.jsonl")}
+_trigger    = {repr(trigger)}
+
+_hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
+_hb_phase_start = {{}}
+
+def tg(text):
+    payload = json.dumps({{"chat_id": {repr(CHAT_ID)}, "text": text}})
+    subprocess.run(
+        ["curl", "-s", "-X", "POST",
+         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+         "-H", "Content-Type: application/json",
+         "-d", payload, "--max-time", "20"],
+        capture_output=True)
+
+def binance(*args, _retries=3):
+    for _attempt in range(_retries):
+        _r = subprocess.run([BINANCE_CLI] + list(args), capture_output=True, text=True, timeout=30)
+        raw = _r.stdout.strip()
+        if raw.startswith("Invalid symbol"):
+            raise ValueError("Invalid symbol")
+        if raw and not raw.startswith("Request failed") and not raw.startswith("Usage:"):
+            return raw
+        if _attempt < _retries - 1:
+            _t.sleep(2 * (_attempt + 1))
+    raise RuntimeError(f"binance-cli failed after {{_retries}} retries: {{raw[:120]}}")
+
+def _hb_start(phase):
+    _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
+
+def hb(phase, status="ok", summary=""):
+    t0 = _hb_phase_start.pop(phase, None)
+    duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
+    _entry = json.dumps({{
+        "ts": _hb_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "phase": phase, "status": status,
+        "duration_s": duration_s, "summary": summary, "trigger": _trigger
+    }})
+    _lines = []
+    if _hb_os.path.exists(_HB_PATH):
+        with open(_HB_PATH) as _rf:
+            for _ln in _rf:
+                _ln = _ln.strip()
+                if _ln:
+                    try:
+                        if json.loads(_ln).get("phase") != phase:
+                            _lines.append(_ln)
+                    except Exception:
+                        _lines.append(_ln)
+    _lines.append(_entry)
+    with open(_HB_PATH, "w") as _f:
+        _f.write("\\n".join(_lines) + "\\n")
+        _f.flush()
+
+def _save_trade_history_atomic(data, path_override=None):
+    _th_path = path_override or f"{{PROJECT_DIR}}/state/trade_history.json"
+    _th_parent = _hb_os.path.dirname(_th_path)
+    _hb_os.makedirs(_th_parent, exist_ok=True)
+    _fd, _th_temp = _hb_tempfile.mkstemp(dir=_th_parent, text=True, suffix=".tmp")
+    try:
+        with _hb_os.fdopen(_fd, "w") as _f:
+            json.dump(data, _f, indent=2)
+        _hb_os.replace(_th_temp, _th_path)
+    except Exception as _e:
+        try:
+            _hb_os.unlink(_th_temp)
+        except OSError:
+            pass
+        raise _e
+"""
+    with open(helpers_path, "w") as f:
+        f.write(helpers_content)
 
 
 def _run_claude(
