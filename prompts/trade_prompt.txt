@@ -357,10 +357,13 @@ Pour chaque groupe de 4 coins (ou moins pour le dernier groupe) :
   Pour les coins du groupe avec signal_4h NEUTRAL, SELL ou STRONG_SELL :
   - Ne pas lancer d'appel 1D. Leur signal_1d = "NEUTRAL" pour le scoring Phase 3.
   Pour chaque coin du groupe dont signal_4h est BUY ou STRONG_BUY :
-  - Avant le PREMIER appel 1D du groupe, attendre time.sleep(5) pour laisser le rate limit TradingView se réinitialiser.
-  - Lancer les appels 1D en SÉQUENTIEL (un par un, jamais en parallèle) : appeler mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d), attendre le résultat, puis time.sleep(2) avant le prochain appel 1D.
+  - Avant le PREMIER appel 1D du groupe, attendre time.sleep(15) pour laisser le rate limit TradingView se réinitialiser après le burst 4h.
+  - Lancer les appels 1D en SÉQUENTIEL (un par un, jamais en parallèle) : appeler mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d), attendre le résultat, puis time.sleep(5) avant le prochain appel 1D.
 
-  Si un appel 1D échoue (réponse vide, timeout) : noter signal_1d = "NEUTRAL" pour ce coin et continuer sans l'éliminer.
+  Gestion d'erreur 1D (OBLIGATOIRE) : pour chaque appel coin_analysis 1D :
+  - Si le résultat contient une clé "error" → signal_1d = "NEUTRAL", logger "1D indisponible (rate limit): {result['error']}", continuer sans bloquer.
+  - Si l'appel lève une exception → signal_1d = "NEUTRAL", logger "1D exception: {e}", continuer sans bloquer.
+  - Ne jamais propager l'erreur 1D vers Telegram ni interrompre le cycle.
 
   Attends que tous les appels 4h ET 1D du groupe soient terminés avant de passer au groupe suivant.
 
