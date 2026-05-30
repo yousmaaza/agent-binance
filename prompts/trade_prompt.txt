@@ -364,6 +364,7 @@ Pour chaque groupe de 4 coins (ou moins pour le dernier groupe) :
   - Si le résultat contient une clé "error" → signal_1d = "NEUTRAL", logger "1D indisponible (rate limit): {result['error']}", continuer sans bloquer.
   - Si l'appel lève une exception → signal_1d = "NEUTRAL", logger "1D exception: {e}", continuer sans bloquer.
   - Ne jamais propager l'erreur 1D vers Telegram ni interrompre le cycle.
+  - IMPORTANT scoring : signal_1d = "NEUTRAL" (rate limit) ≠ signal bearish. En Phase 3, ce NEUTRAL donne 0 pts (les +2 ne sont pas comptabilisés) mais aucun malus n'est appliqué. Ne pas assigner skip_type = TYPE_C pour cette raison.
 
   Attends que tous les appels 4h ET 1D du groupe soient terminés avant de passer au groupe suivant.
 
@@ -403,6 +404,7 @@ Pour chaque coin, calcule un score sur 10 :
 DÉCISION par coin :
 - Score >= min_signal_score (6) ET signal_4h = BUY ou STRONG_BUY → BUY CANDIDATE
   * Le signal 1d haussier contribue déjà +2 pts au score (non bloqueur) — un 1d bearish réduit le score mais n'empêche pas le trade si le score total ≥ 6 et le 4h est haussier
+  * Si signal_1d = "NEUTRAL" pour cause de rate limit TradingView (données indisponibles) : 0 pts, aucun malus. Le scoring reste basé sur signal_4h dominant + les 6 autres critères. Un coin STRONG_BUY 4h peut toujours atteindre score >= 6 sans confirmation 1D.
   * Si coin déjà en portfolio → RENFORCER (si pas déjà une position open dans trade_history)
   * Si coin nouveau → NOUVELLE POSITION
   * Mise à jour : top_score = max(top_score, score)
