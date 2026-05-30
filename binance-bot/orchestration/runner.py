@@ -222,7 +222,7 @@ def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogge
                 if m:
                     cost_usd = float(m.group(1))
     except (OSError, ValueError) as e:
-        cycle_log.warning(f"Erreur lecture cost depuis {stdout_path}: {e}")
+        cycle_log.error(f"Erreur lecture cost depuis {stdout_path}: {e}")
 
     if cost_usd is not None:
         db = mongo_repo._db()
@@ -255,7 +255,7 @@ def _handle_error(
         with open(stderr_path) as f:
             err_extract = f.read()[:400] or "(vide)"
     except OSError as e:
-        cycle_log.warning(f"Erreur lecture {stderr_path}: {e}")
+        cycle_log.error(f"Erreur lecture {stderr_path}: {e}")
         err_extract = "(illisible)"
 
     send_telegram(
