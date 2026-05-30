@@ -10,6 +10,98 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-05-30 — Récap quotidien
+
+### PR mergées (1)
+
+#### #187 — [CONSOLIDÉ] Helpers partagés par cycle + sécurité + recommandations tech lead
+
+- **Branche** : `feat/consolidate-helpers-sec-recs`
+- **Mergée à** : 12:43 (Europe/Paris)
+- **Issues fermées** : #175, #178, #179, #180, #181, #182, #183, #184, #185, #186 (10 au total)
+
+**Récit**
+
+La journée a commencé par un diagnostic de cycle à 04:05 UTC : le bot avait exclu Bitcoin à tort, à cause d'un rate limit Binance non géré. L'enquête a révélé la cause racine — l'agent réécrivait sa propre version allégée des helpers (`tg()`, `binance()`, `hb()`) dans chaque script de phase, en ignorant celle du prompt principal. Sans retry dans son `binance()` local, la moindre erreur API excluait le coin directement. Autre symptôme du même problème : `MONGODB_URI` était relu depuis `.env` via `source` shell (ce qui casse avec le `&` dans la chaîne de connexion), et des heredocs Python continuaient à s'infiltrer malgré l'interdiction dans CLAUDE.md.
+
+La solution : externaliser les fonctions partagées dans un fichier temporaire généré par `runner.py` juste avant chaque cycle. L'agent importe ce fichier via `exec(open("__HELPERS_PATH__").read())` en tête de chaque script de phase — il ne peut plus "oublier" les retries ou inventer ses propres variantes.
+
+Deux PR intermédiaires (#176 pour les helpers, #177 pour les permissions du fichier `/tmp`) ont été ouvertes en matinée. La review automatique du tech lead (CI) a produit 9 tickets `[REC]` en 3 minutes, dont un finding sécurité sérieux : le chemin `/tmp/cycle_XXXX_helpers.py` hardcodé exposait une race condition TOCTOU (Bandit B108). La PR de consolidation #187 a absorbé les deux PR initiales plus les 9 recommandations en un seul merge propre à 12:43.
+
+**Changements techniques**
+
+| Fichier | Changement |
+|---|---|
+| `binance-bot/orchestration/runner.py` | `_write_helpers_file()` via `tempfile.mkstemp()` (0o600, pas de TOCTOU) ; `_send_start_notification()` extraite ; constante `CLAUDE_PROCESS_TIMEOUT_S = 3600` ; `OSError` capturée si disque plein |
+| `prompts/trade_prompt.txt` | Suppression de ~60 lignes de helpers redéfinis en dur ; remplacés par `exec(open("__HELPERS_PATH__").read())` en tête de chaque script |
+| `binance-bot/botlogging/cycle_logger.py` | Ajout de `CycleLogger.warning()` — corrige 2 appels fantômes existants depuis PR #176 |
+| `scripts/check_cycle_logger_methods.sh` | Script lint 25 lignes : vérifie que les appels `cycle_log.xxx()` utilisent des méthodes définies |
+
+**Décision sécurité notable** : les secrets (`MONGO_URI`, `TELEGRAM_TOKEN`, etc.) ne sont plus injectés dans le fichier helpers par Python avant l'exécution — ils sont lus depuis `os.environ` au runtime dans le fichier lui-même. La PR #176 originale les bakeait via `repr()` dans un fichier `/tmp` world-readable (0o644). Corrigé par #177, consolidé dans #187.
+
+- **Doc tech** : [docs/technique/pr-187-consolidate-helpers-security-recs.md](../technique/pr-187-consolidate-helpers-security-recs.md)
+
+---
+
+### Issues fermées (10)
+
+Toutes fermées via PR #187 :
+
+| # | Titre | Origine |
+|---|---|---|
+| [#175](https://github.com/yousmaaza/agent-binance/issues/175) | [FIX] Factoriser les helpers du prompt dans un fichier partagé par cycle | Bug signalé par l'utilisateur |
+| [#178](https://github.com/yousmaaza/agent-binance/issues/178) | [REC] [SECURITY] Remplacer /tmp hardcoded par tempfile.mkstemp() | CI tech lead |
+| [#179](https://github.com/yousmaaza/agent-binance/issues/179) | [REC] [REFACTOR] Réduire la complexité cyclomatique de run_trade_workflow | CI tech lead |
+| [#180](https://github.com/yousmaaza/agent-binance/issues/180) | [REC] [LISIBILITÉ] Extraire le timeout du watchdog en constante | CI tech lead |
+| [#181](https://github.com/yousmaaza/agent-binance/issues/181) | [REC] [ROBUSTESSE] Ajouter logging d'erreur dans _update_cost_in_mongo | CI tech lead |
+| [#182](https://github.com/yousmaaza/agent-binance/issues/182) | [REC] [CLEANUP] Éliminer les lignes redondantes du prompt (PYTHON_BIN/BINANCE_CLI) | CI tech lead |
+| [#183](https://github.com/yousmaaza/agent-binance/issues/183) | [REC] [FEATURE] Ajouter une méthode warning() à CycleLogger | CI tech lead |
+| [#184](https://github.com/yousmaaza/agent-binance/issues/184) | [REC] [MAINTENANCE] Linter pour détecter les warning() fantômes | CI tech lead |
+| [#185](https://github.com/yousmaaza/agent-binance/issues/185) | [REC] Supprimer imports TOKEN et CHAT_ID obsolètes dans runner.py | CI tech lead |
+| [#186](https://github.com/yousmaaza/agent-binance/issues/186) | [REC] Tester scénario /tmp full pour robustesse des helpers | CI tech lead |
+
+---
+
+### Nouveaux tickets créés (19)
+
+**10 créés et fermés dans la journée** — #175 et #178–#186 (voir ci-dessus).
+
+**9 ouverts en fin de journée** :
+
+| # | Titre | Type |
+|---|---|---|
+| [#193](https://github.com/yousmaaza/agent-binance/issues/193) | [FIX] Phase 2 — appels coin_analysis 1D séquentiels + sleep 15s pour éviter rate limits | Bug (utilisateur) |
+| [#188](https://github.com/yousmaaza/agent-binance/issues/188) | [REC] Refactor template helpers vers fichier externe | CI post-PR #187 |
+| [#189](https://github.com/yousmaaza/agent-binance/issues/189) | [REC] Add error handling pour streaming stdout | CI post-PR #187 |
+| [#190](https://github.com/yousmaaza/agent-binance/issues/190) | [REC] Document helpers namespace isolation strategy | CI post-PR #187 |
+| [#191](https://github.com/yousmaaza/agent-binance/issues/191) | [REC] Add synthetic test pour cycle_logger workflow | CI post-PR #187 |
+| [#192](https://github.com/yousmaaza/agent-binance/issues/192) | [REC] Implement dry-run mode pour offline cycle testing | CI post-PR #187 |
+| [#195](https://github.com/yousmaaza/agent-binance/issues/195) | [REC] Clarifier l'impact NEUTRAL Phase 3 quand 1D rate limit | CI post-PR #187 |
+| [#196](https://github.com/yousmaaza/agent-binance/issues/196) | [REC] Ajouter heartbeat Phase 2 pour tracking rate limits | CI post-PR #187 |
+| [#197](https://github.com/yousmaaza/agent-binance/issues/197) | [REC] Implémenter adaptive sleep intelligente pour rate limits | CI post-PR #187 |
+
+Le ticket #193 (bug utilisateur) pointe un problème récurrent : les appels TradingView `coin_analysis 1D` en parallèle en Phase 2 déclenchent des rate limits API. Solution envisagée : passer en séquentiel avec `sleep 15s` entre chaque appel, et utiliser `signal_1d = "NEUTRAL"` si le timeout est atteint.
+
+---
+
+### Matériel disponible pour illustrer
+
+- Diff de `runner.py` : passage de `open("/tmp/cycle_...")` vers `tempfile.mkstemp()` — bonne illustration d'un fix sécurité minimaliste (3 lignes changées, un finding Bandit résolu, une race condition éliminée).
+- Screenshot du board GitHub : 9 tickets `[REC]` créés par `github-actions[bot]` en moins de 3 minutes après l'ouverture de PR #176 — illustration concrète de l'automatisation CI → backlog.
+- Script `scripts/check_cycle_logger_methods.sh` (25 lignes) : lint artisanal sur mesure, sans framework de test.
+- Log du cycle 04:05 UTC avec l'exclusion incorrecte de BTC due au rate limit sans retry — point d'entrée narratif naturel.
+
+### Idée d'angle Medium
+
+**"La boucle fermée : un bug à 4h du matin, 10 tickets fermés à midi"**
+
+Le 30 mai condense tout le pipeline en une journée : cycle qui détecte un bug en prod → issue créée manuellement → 2 PR ouvertes → CI génère 9 tickets [REC] automatiquement (dont un finding sécurité sérieux) → PR de consolidation qui ferme les 10 issues d'un coup → bot prêt à redémarrer en 3h. Angle narratif : la trace complète de cause (rate limit BTC à 4h) → effet (10 commits, 3 PRs, 9 tickets auto) est entièrement visible dans le repo. C'est une démonstration de ce que "traçabilité complète" veut dire dans un projet géré par des agents.
+
+**Angle secondaire — "La sécurité comme sous-produit de l'automatisation"**
+La race condition TOCTOU n'aurait probablement pas été détectée en review humaine rapide. C'est Bandit lancé en CI qui l'a flaggée, traduite en ticket `[REC]` par l'agent tech lead, implémentée dans la PR de consolidation. Le pipeline de qualité a fait le travail sans friction humaine consciente.
+
+---
+
 ## 2026-05-29 — Récap quotidien
 
 ### PR mergées (0)
