@@ -357,10 +357,16 @@ Pour chaque groupe de 4 coins (ou moins pour le dernier groupe) :
   Pour les coins du groupe avec signal_4h NEUTRAL, SELL ou STRONG_SELL :
   - Ne pas lancer d'appel 1D. Leur signal_1d = "NEUTRAL" pour le scoring Phase 3.
   Pour chaque coin du groupe dont signal_4h est BUY ou STRONG_BUY :
-  - Avant le PREMIER appel 1D du groupe, attendre time.sleep(5) pour laisser le rate limit TradingView se réinitialiser.
-  - Lancer les appels 1D en SÉQUENTIEL (un par un, jamais en parallèle) : appeler mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d), attendre le résultat, puis time.sleep(2) avant le prochain appel 1D.
+  - Avant le PREMIER appel 1D du groupe, attendre time.sleep(15) pour laisser le rate limit TradingView se réinitialiser après le burst 4h.
+  - Lancer les appels 1D en SÉQUENTIEL (un par un, jamais en parallèle) : appeler mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d), attendre le résultat, puis time.sleep(5) avant le prochain appel 1D.
 
-  Si un appel 1D échoue (réponse vide, timeout) : noter signal_1d = "NEUTRAL" pour ce coin et continuer sans l'éliminer.
+  Gestion d'erreur 1D (OBLIGATOIRE) : pour chaque appel coin_analysis 1D :
+  - Si le résultat contient une clé "error" → signal_1d = "NEUTRAL", signal_1d_rate_limited = True, logger "1D indisponible (rate limit): {result['error']}", continuer sans bloquer.
+  - Si l'appel lève une exception → signal_1d = "NEUTRAL", signal_1d_rate_limited = True, logger "1D exception: {e}", continuer sans bloquer.
+  - Si l'appel réussit (pas d'erreur) → signal_1d_rate_limited = False.
+  - Stocker signal_1d_rate_limited dans analysis_results[coin] pour que Phase 3 puisse détecter le mode dégradé.
+  - Ne jamais propager l'erreur 1D vers Telegram ni interrompre le cycle.
+  - IMPORTANT scoring : signal_1d = "NEUTRAL" (rate limit) ≠ signal bearish. En Phase 3, ce NEUTRAL donne 0 pts (les +2 ne sont pas comptabilisés) mais aucun malus n'est appliqué. Ne pas assigner skip_type = TYPE_C pour cette raison.
 
   Attends que tous les appels 4h ET 1D du groupe soient terminés avant de passer au groupe suivant.
 
@@ -375,6 +381,17 @@ hb(2, summary=f"{coins_4h_count} coins analysés 4h, {coins_1d_count} analysés 
 PHASE 3 — SCORING ET SÉLECTION
 ⏱️ HEARTBEAT START PHASE 3
 _hb_start(3)
+
+# Seuil adaptatif : si tous les coins BUY/STRONG_BUY 4h ont eu un rate limit 1D,
+# utiliser min_signal_score_degraded (config) au lieu de min_signal_score strict.
+min_signal_score = config["min_signal_score"]
+_buy_4h = [c for c in analysis_results if analysis_results[c].get("signal_4h") in ("BUY", "STRONG_BUY")]
+_all_rl = bool(_buy_4h) and all(analysis_results[c].get("signal_1d_rate_limited", False) for c in _buy_4h)
+if _all_rl:
+    effective_min_score = config.get("min_signal_score_degraded", min_signal_score)
+    tg(f"⚠️ Mode dégradé 1D (rate limit TradingView) — seuil abaissé à {effective_min_score}/10 (normal : {min_signal_score}/10)")
+else:
+    effective_min_score = min_signal_score
 
 # Initialiser les structures de données pour Phase 3
 buy_candidates = []
@@ -398,8 +415,9 @@ Pour chaque coin, calcule un score sur 10 :
 | Coin dans top_gainers avec momentum positif | +1 |
 
 DÉCISION par coin :
-- Score >= min_signal_score (6) ET signal_4h = BUY ou STRONG_BUY → BUY CANDIDATE
+- Score >= effective_min_score ET signal_4h = BUY ou STRONG_BUY → BUY CANDIDATE
   * Le signal 1d haussier contribue déjà +2 pts au score (non bloqueur) — un 1d bearish réduit le score mais n'empêche pas le trade si le score total ≥ 6 et le 4h est haussier
+  * Si signal_1d = "NEUTRAL" pour cause de rate limit TradingView (données indisponibles) : 0 pts, aucun malus. Le scoring reste basé sur signal_4h dominant + les 6 autres critères. Un coin STRONG_BUY 4h peut toujours atteindre score >= 6 sans confirmation 1D.
   * Si coin déjà en portfolio → RENFORCER (si pas déjà une position open dans trade_history)
   * Si coin nouveau → NOUVELLE POSITION
   * Mise à jour : top_score = max(top_score, score)

@@ -13,6 +13,7 @@
   "risk_per_trade_pct": 0.02,
   "reward_risk_ratio": 3.0,
   "min_signal_score": 7,
+  "min_signal_score_degraded": 6,
   "max_correlated_positions": 2,
   "daily_loss_limit_pct": 0.05,
   "atr_stop_multiplier": 2.5,
