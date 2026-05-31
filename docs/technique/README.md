@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#194](pr-194-phase-2-1d-rate-limit-handling.md) | Phase 2 : sleep 15s post-batch 4h + gestion erreur 1D silencieuse | 2026-05-31 |
 | [#187](pr-187-consolidate-helpers-security-recs.md) | [CONSOLIDÉ] Helpers partagés par cycle + sécurité + recommandations tech lead | 2026-05-30 |
 | [#166](pr-166-consolidation-145-146-147-148-149.md) | [CONSOLIDATION] Atomic writes + Heartbeats + JSON unification + Python venv + binance-cli docs | 2026-05-29 |
 | [#17](pr-17-rotation-loguru-daemon-log.md) | [M1] Activer rotation loguru sur state/daemon.log (10 MB, retention 5) | 2026-05-21 |
