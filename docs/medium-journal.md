@@ -10,6 +10,76 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-05-31 — Récap quotidien
+
+### PR mergées (1)
+
+#### #194 — [M193] Phase 2 : sleep 15s post-batch 4h + gestion erreur 1D silencieuse
+
+- **Branche** : `feat/issue-193-fix-1d-rate-limit`
+- **Mergée à** : 16:11 (Europe/Paris)
+- **Issues fermées** : #193
+
+**Récit**
+
+Le matin du 31 mai, le cycle `cycle_20260530_101921` révélait une erreur familière dans `logs/stdout/` : `{"error": "Analysis failed: Expecting value: line 1 column 1 (char 0)"}` sur les appels TradingView 1D de XRPUSDT. Ce n'était pas un bug de code — c'était une régression architecturale.
+
+La PR #104 (24 mai) avait optimisé la Phase 2 en limitant les appels 1D aux seuls coins candidats BUY 4H. Mais cette PR avait créé un nouveau problème : le burst de 4 appels `coin_analysis 4H` en parallèle épuise le quota TradingView MCP juste avant que les appels 1D séquentiels ne démarrent. TradingView retourne alors un body vide, ce qui provoque un `JSONDecodeError` côté agent. La PR #106 (25 mai) avait déjà corrigé un problème similaire, mais à force d'optimisations successives, le burst 4H était devenu assez dense pour recréer le throttle.
+
+Le fix de PR #194 est en trois couches. Première : un `time.sleep(15)` ajouté dans le prompt entre la fin du batch 4H et le début des appels 1D, laissant le quota TradingView se réinitialiser. Deuxième : les appels 1D passent en mode rigoureusement séquentiel (1 coin à la fois, `sleep 5s` entre chaque) au lieu de chercher à les grouper. Troisième : une gestion d'erreur silencieuse — si un appel 1D retourne `{"error": ...}`, l'agent assigne `signal_1d = "NEUTRAL"` et continue sans notification Telegram. Un flag `signal_1d_rate_limited` permet à la Phase 3 de détecter si tous les coins BUY 4H ont subi un rate limit, auquel cas le seuil de score passe automatiquement de 7 à 6 (`min_signal_score_degraded`).
+
+Ce mode dégradé est la décision technique la plus intéressante : un coin STRONG_BUY 4H avec RSI/MACD/ADX favorables peut toujours atteindre 6/10 sans la confirmation 1D. Bloquer le cycle entier parce que TradingView est lent serait une sur-réaction — rater une opportunité réelle pour des données de confirmation manquantes.
+
+**Changements techniques**
+
+| Fichier | Changement |
+|---|---|
+| `prompts/trade_prompt.txt` | `sleep 15` post-batch 4H + appels 1D séquentiels avec `sleep 5` + try/except sur erreur 1D + `signal_1d_rate_limited` flag |
+| `config.json` | Ajout de `min_signal_score_degraded: 6` pour le mode dégradé Phase 3 |
+
+- **Doc tech** : [docs/technique/pr-194-phase-2-1d-rate-limit-handling.md](../technique/pr-194-phase-2-1d-rate-limit-handling.md)
+
+---
+
+### Issues fermées (1)
+
+| # | Titre |
+|---|---|
+| [#193](https://github.com/yousmaaza/agent-binance/issues/193) | [FIX] Phase 2 — appels coin_analysis 1D séquentiels + sleep 15s pour éviter rate limit TradingView |
+
+---
+
+### Nouveaux tickets créés (3)
+
+| # | Titre | Type |
+|---|---|---|
+| [#199](https://github.com/yousmaaza/agent-binance/issues/199) | [AMÉLIORATION] Enrichir CLAUDE.md avec principes généraux de développement (Think/Simplicity/Surgical) | documentation + enhancement |
+| [#200](https://github.com/yousmaaza/agent-binance/issues/200) | [REC] Setup Graphify — knowledge graph MCP du codebase | enhancement + AUTO |
+| [#203](https://github.com/yousmaaza/agent-binance/issues/203) | [CONFIG] Évaluer hausse max_open_positions 3→4 — opportunité score 9/10 manquée le 2026-05-30 | enhancement (analyse-config auto) |
+
+Le ticket #199 est une initiative d'amélioration de `CLAUDE.md` : ajouter trois règles comportementales génériques (réflexion préalable, minimalisme, modifications chirurgicales) avant les règles projet-spécifiques. Cela normalise le comportement de l'IA dans les sessions futures, quel que soit le contexte.
+
+Le ticket #203 est notable : il a été créé automatiquement à 22:09 par l'agent `analyse-config` (cron `0 20 UTC`) après avoir analysé 22 cycles sur 7 jours. L'agent a détecté qu'un cycle du 2026-05-30 à 21:23 avait un `top_score` de 9/10 et un sentiment Bullish, mais avait été bloqué par `max_open_positions=3` déjà atteint. Il propose de monter la limite à 4, avec des conditions précises pour l'appliquer (sentiment ≥ Bullish, score ≥ 8, portfolio ≥ 100 USDC) et une alternative conservatrice (position bonus conditionnelle à 0.5× sizing). C'est le premier ticket où le bot analyse ses propres cycles et génère une recommandation de configuration fondée sur des données.
+
+---
+
+### Matériel disponible pour illustrer
+
+- Extrait de `logs/stdout/cycle_20260530_101921.log` : l'erreur `Expecting value: line 1 column 1` qui a déclenché le ticket #193 — illustration concrète du cycle comme oracle de régression.
+- Diff `prompts/trade_prompt.txt` entre PR #104, #106 et #194 : la même erreur TradingView réapparaît deux fois sous deux formes légèrement différentes — bon exemple de la difficulté à anticiper les interactions entre optimisations.
+- Issue #203 complète avec son tableau de 22 cycles et ses critères conditionnels — matériel brut d'un agent d'analyse qui raisonne sur ses propres données d'exécution.
+
+### Idée d'angle Medium
+
+**"La 3e occurrence d'un bug : quand le rate-limit devient un pattern architectural"**
+
+La même erreur TradingView est apparue trois fois en 7 jours (PR #104, #106, #194), chaque fois déclenchée par une optimisation qui réintroduisait un burst d'appels. Article sur la différence entre corriger un bug et comprendre la contrainte sous-jacente — ici, TradingView MCP a un quota strict et toute stratégie d'appels parallèles le déclenche. La résolution finale (mode dégradé + seuil adaptatif) montre comment absorber une contrainte externe plutôt que de chercher à l'éviter.
+
+**Angle secondaire — "Un agent qui analyse ses propres décisions"**
+Le ticket #203 est généré par le bot à partir de 22 cycles de données. Il ne dit pas juste "augmente max_open_positions" — il qualifie les conditions d'application (sentiment, score, liquidité), propose une alternative conservatrice, et liste les risques. C'est la première fois dans ce projet qu'un agent produit une recommandation stratégique argumentée. Court article sur la différence entre logging (ce qui s'est passé) et auto-analyse (ce qu'on devrait changer).
+
+---
+
 ## 2026-05-30 — Récap quotidien
 
 ### PR mergées (1)
