@@ -30,3 +30,6 @@ venv/
 
 # Claude Code settings locaux (uniquement settings perso, agents/commands sont versionnés)
 .claude/settings.local.json
+
+# Graphify — knowledge graph généré localement
+graphify-out/

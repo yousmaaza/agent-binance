@@ -1,0 +1,11 @@
+# Graphify ignore — exclusions pour l'indexation du knowledge graph
+# Syntaxe gitignore. Graphify utilise ce fichier en priorité sur .gitignore.
+
+# Venv Python — déjà exclu par les _SKIP_DIRS de graphify, listé ici pour la clarté
+.venv/
+
+# Données runtime et logs — pas de code, pas d'architecture
+state/
+logs/
+reports/
+graphify-out/
