@@ -12,8 +12,8 @@
       "command": "uv",
       "args": [
         "run",
-        "--with", "graphifyy",
-        "--with", "mcp",
+        "--with", "graphifyy==0.8.26",
+        "--with", "mcp==1.26.0",
         "-m", "graphify.serve",
         "graphify-out/graph.json"
       ]
