@@ -8,6 +8,25 @@ Bot de trading Binance piloté par Telegram. Architecture polling-only : aucun p
 - Le sous-processus Claude reçoit `TRADE_PROMPT` (variable à la racine de `webhook_server.py`) qui décrit 7 phases d'exécution.
 - État persistant dans `state/` (JSON files). Logs dans `logs/`. MongoDB Atlas pour la collection `cycles`.
 
+## Principes généraux de développement
+
+### Réfléchir avant de coder
+- Énoncer les hypothèses explicitement. Si plusieurs interprétations existent, les présenter — ne pas choisir silencieusement.
+- Si l'approche est incertaine, s'arrêter et demander. Ne pas implémenter dans le vague.
+- Signaler l'approche la plus simple si elle existe. Pousser en arrière si la demande est overcompliquée.
+
+### Minimalisme
+- Code minimum qui résout le problème. Rien de spéculatif.
+- Pas de fonctionnalité non demandée. Pas d'abstraction pour un usage unique.
+- Pas de gestion d'erreur pour des scénarios impossibles dans ce contexte (bot mono-fichier, flux contrôlé).
+- Si le code fait 200 lignes et peut en faire 50, le réécrire.
+
+### Modifications chirurgicales
+- Toucher uniquement ce qui est nécessaire. Ne pas "améliorer" le code adjacent non demandé.
+- Conserver le style existant, même si on ferait autrement.
+- Si du dead code non lié est repéré → le **mentionner**, ne pas le supprimer.
+- Chaque ligne modifiée doit être traçable directement à la demande de l'utilisateur.
+
 ## Règles de modification non négociables
 
 ### 1. Tous les appels Telegram passent par `curl` via subprocess, jamais `urllib`
