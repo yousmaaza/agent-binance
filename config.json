@@ -12,13 +12,13 @@
 
   "risk_per_trade_pct": 0.02,
   "reward_risk_ratio": 3.0,
-  "min_signal_score": 7,
-  "min_signal_score_degraded": 6,
+  "min_signal_score": 6,
+  "min_signal_score_degraded": 4,
   "max_correlated_positions": 2,
   "daily_loss_limit_pct": 0.05,
   "atr_stop_multiplier": 2.5,
   "timeframes_required": ["4h"],
   "min_adx": 20,
-  "max_open_positions": 3,
+  "max_open_positions": 4,
   "universe_scan_top_n": 20
 }
