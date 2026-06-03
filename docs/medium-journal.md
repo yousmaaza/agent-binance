@@ -10,6 +10,69 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-03 — Récap quotidien
+
+### PR mergées (1)
+
+#### #201 — [M199] Enrichir CLAUDE.md avec principes généraux de développement (Think/Simplicity/Surgical)
+
+- **Branche** : `feat/issue-199-enrichir-claude-md`
+- **Mergée à** : 21:46 (Europe/Paris)
+- **Issues fermées** : #199
+
+**Récit**
+
+Depuis la création du projet, `CLAUDE.md` accumulait des règles très concrètes — comment lancer le venv, comment structurer les commits, quels appels Telegram éviter, quand ne pas utiliser urllib. Des règles opérationnelles, précises, project-specific. Mais aucune règle sur la façon de *penser* avant d'écrire du code. Cette lacune laissait la porte ouverte aux comportements LLM classiques : sur-ingénierie par habitude, refactorisation non demandée du code adjacent, implémentation dans l'ambiguïté plutôt que la demande de clarification.
+
+La PR #201 comble ce vide. Elle insère une section **"Principes généraux de développement"** dans `CLAUDE.md`, positionnée délibérément après `## Stack` (le contexte) et avant `## Règles de modification non négociables` (les contraintes opérationnelles) — pour établir les fondations culturelles avant les règles de procédure. La section regroupe trois principes :
+
+1. **Réfléchir avant de coder** : énoncer les hypothèses explicitement, présenter les alternatives, ne pas implémenter dans l'ambiguïté, signaler la solution la plus simple quand elle existe.
+2. **Minimalisme** : code minimum qui résout le problème, rien de spéculatif, pas d'abstraction pour un usage unique, pas de gestion d'erreur pour des scénarios impossibles dans ce contexte.
+3. **Modifications chirurgicales** : toucher uniquement ce qui est demandé, conserver le style existant, mentionner (ne pas supprimer) le dead code repéré, chaque ligne modifiée doit être traçable directement à la demande de l'utilisateur.
+
+Ce qui est notable : la PR ne touche aucun fichier de code. Pas de `webhook_server.py`, pas de `config.json`, pas de workflow YAML. Un seul fichier Markdown, 73 lignes ajoutées. C'est une modification qui agit entièrement sur le comportement futur de l'IA — en configurant ses principes de raisonnement plutôt que la logique de l'application.
+
+**Changements techniques**
+
+| Fichier | Changement |
+|---|---|
+| `CLAUDE.md` | Insertion de la section `## Principes généraux de développement` (73 lignes) entre `## Stack` et `## Règles de modification non négociables` |
+
+- **Doc tech** : [docs/technique/pr-201-enrichir-claude-md.md](../technique/pr-201-enrichir-claude-md.md)
+
+---
+
+### Issues fermées (1)
+
+| # | Titre |
+|---|---|
+| [#199](https://github.com/yousmaaza/agent-binance/issues/199) | [AMÉLIORATION] Enrichir CLAUDE.md avec principes généraux de développement (Think/Simplicity/Surgical) |
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé aujourd'hui.
+
+---
+
+### Matériel disponible pour illustrer
+
+- Diff PR #201 dans `CLAUDE.md` : avant/après de la section — illustre l'ajout d'un contrat comportemental LLM dans un fichier de configuration projet.
+- Issue #199 complète : inclut le texte exact des règles à insérer, les critères d'acceptation, et la justification d'inspiration (dépôt `multica-ai/andrej-karpathy-skills`). Bonne illustration de la rigueur d'un ticket de documentation pure.
+- `docs/technique/pr-201-enrichir-claude-md.md` : résumé structuré de l'impact de gouvernance — base pour un passage explicatif dans un article Medium.
+
+### Idée d'angle Medium
+
+**"CLAUDE.md comme contrat comportemental : configurer le raisonnement, pas seulement la stack"**
+
+La plupart des projets LLM documentent *ce que l'IA doit faire* (appeler telle API, utiliser tel format). Le ticket #199 documente *comment l'IA doit penser* — énoncer les hypothèses, refuser l'ambiguïté, ne pas toucher le code adjacent. C'est une catégorie de configuration entièrement différente : non plus des règles métier, mais des règles épistémiques. Article sur la distinction entre les deux niveaux de `CLAUDE.md` dans ce projet — règles opérationnelles (procédures, chemins, conventions) vs règles culturelles (comportement, style, rigueur). La question sous-jacente : peut-on vraiment changer le comportement d'un LLM par des instructions persistantes dans un fichier de config, ou doit-on le faire à chaque session ?
+
+**Angle secondaire — "L'exception qui confirme la règle"**
+Ce ticket illustre une règle de CLAUDE.md elle-même : `CLAUDE.md` peut être modifié directement sur `main`, sans PR, sans branche. Pourtant, une PR a bien été ouverte (#201) et une branche créée. Pourquoi ? Parce que l'agent `binance-dev` suit toujours le workflow standard, et l'utilisateur a choisi de merger proprement plutôt que de contourner. Court billet sur la différence entre "autorisé à" et "systématiquement faire" — et sur la valeur des exceptions bien documentées dans un projet qui vit de ses conventions.
+
+---
+
 ## 2026-05-31 — Récap quotidien
 
 ### PR mergées (1)
