@@ -274,6 +274,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#201](pr-201-enrichir-claude-md.md) | 2026-06-03 | Documentation : ajout section « Principes généraux de développement » (Think/Simplicity/Surgical) dans CLAUDE.md |
 | Initial release | 2025-xx-xx | Architecture polling-only v1, scripts shell legacy |
 | v2 — 790b83a | 2025-xx-xx | Ajout capture raisonnement : loguru + MongoDB + commande `/raisonnement` |
 | v2 — 2bf48c0 | 2025-xx-xx | Mise à jour README et ajout CLAUDE.md (contraintes non négociables) |
