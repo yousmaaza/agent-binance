@@ -8,48 +8,28 @@ Bot de trading Binance piloté par Telegram. Architecture polling-only : aucun p
 - Le sous-processus Claude reçoit `TRADE_PROMPT` (variable à la racine de `webhook_server.py`) qui décrit 7 phases d'exécution.
 - État persistant dans `state/` (JSON files). Logs dans `logs/`. MongoDB Atlas pour la collection `cycles`.
 
+## Principes généraux de développement
+
+### Réfléchir avant de coder
+- Énoncer les hypothèses explicitement. Si plusieurs interprétations existent, les présenter — ne pas choisir silencieusement.
+- Si l'approche est incertaine, s'arrêter et demander. Ne pas implémenter dans le vague.
+- Signaler l'approche la plus simple si elle existe. Pousser en arrière si la demande est overcompliquée.
+
+### Minimalisme
+- Code minimum qui résout le problème. Rien de spéculatif.
+- Pas de fonctionnalité non demandée. Pas d'abstraction pour un usage unique.
+- Pas de gestion d'erreur pour des scénarios impossibles dans ce contexte (bot mono-fichier, flux contrôlé).
+- Si le code fait 200 lignes et peut en faire 50, le réécrire.
+
+### Modifications chirurgicales
+- Toucher uniquement ce qui est nécessaire. Ne pas "améliorer" le code adjacent non demandé.
+- Conserver le style existant, même si on ferait autrement.
+- Si du dead code non lié est repéré → le **mentionner**, ne pas le supprimer.
+- Chaque ligne modifiée doit être traçable directement à la demande de l'utilisateur.
+
 ## Règles de modification non négociables
 
-### 1. Tous les appels Telegram passent par `curl` via subprocess, jamais `urllib`
-
-`urllib.request` échoue avec `[Errno 8] nodename nor servname provided` en contexte nohup sur le Mac de l'utilisateur (résolution DNS IPv6 mais pas de connectivité IPv6). `curl` fonctionne dans tous les contextes. La fonction `tg_post()` de `webhook_server.py` utilise déjà curl — quand tu ajoutes du code Telegram dans le `TRADE_PROMPT` (qui s'exécute dans le sous-processus Claude), utilise le helper `tg()` défini en tête du prompt, qui shell out vers curl.
-
-### 2. Aucun secret hardcodé — tout vient de `.env`
-
-`webhook_server.py` charge `.env` au démarrage via `_load_env()`. Les secrets attendus :
-- `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` (obligatoires)
-- `MONGODB_URI`, `MONGODB_DB` (optionnels — si absents, le bot tourne mais `/raisonnement` et la Phase 7 retournent un warning)
-
-Si tu ajoutes une nouvelle dépendance externe avec credentials, ajoute la clé dans `.env`, `.env.example`, et **jamais** en dur dans le code. Les anciens scripts shell (`bot_daemon.sh`, `start_webhook.sh`, `run_trade.sh`) sont legacy v1 mais ont aussi été migrés vers `.env`.
-
-### 3. `PROJECT_DIR` est dynamique
-
-```python
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-```
-
-Jamais de chemin Mac hardcodé. Le projet doit pouvoir tourner sur un VPS Linux sans modification.
-
-### 4. Stdout et stderr du sous-processus Claude sont **toujours** sauvegardés
-
-À chaque cycle, `run_trade_workflow()` génère un `cycle_id = YYYYMMDD_HHMMSS` (UTC) et écrit :
-- `logs/stdout/cycle_{cycle_id}.log` : sortie brute Claude
-- `logs/stderr/cycle_{cycle_id}.log` : erreurs Claude
-
-Même en cas d'exit code non-zéro. Ne supprime jamais cette capture — c'est la seule façon de debugger un cycle qui plante avant la Phase 7 (qui écrit en Mongo).
-
-### 5. Convention horaire : interne UTC, affichage local
-
-- Toute logique interne (`next_4h_slot`, comparaisons, timestamps Mongo) en UTC
-- Tout affichage utilisateur (notifications Telegram) en heure locale via `fmt_local()` / `fmt_next()`
-- Les slots auto sont alignés sur les clôtures TradingView 4h : 00:05, 04:05, ..., 20:05 **UTC**
-- **Format date pour l'unicité par cycle** : les heartbeat logs (JSONL) utilisent le format `%Y-%m-%dT%H:%M:%SZ` **avec secondes** pour garantir que chaque phase d'un même cycle ait un timestamp distinct (7 phases peuvent s'exécuter en moins de 60s). L'agrégation horaire seule (`%H:%M`) serait insuffisante.
-
-### 6. Auto-scheduler dans la main loop, pas via cron/systemd
-
-L'auto-scheduler vit dans `main_loop()` de `webhook_server.py` — il déclenche `run_trade_workflow(trigger="auto")` au prochain slot 4h. Ne le déplace pas vers cron : la loop de polling Telegram est déjà toujours active, donc autant en profiter pour scheduler.
-
-### 7. Python via venv `.venv` (3.11) et profil shell `git-perso` obligatoires
+### 1. Python via venv `.venv` (3.11) et profil shell `git-perso` obligatoires
 
 **Tout** appel à `python`, `pip`, ou installation de package se fait depuis le venv local du projet en Python 3.11. **Tout** appel à `git` ou `gh` qui touche au remote se fait après avoir chargé le profil perso via `git-perso`.
 
@@ -73,6 +53,66 @@ python --version   # doit afficher Python 3.11.x
 - Toute commande dans la doc qui dit `python3 -c "..."` doit en pratique être lancée **après** `source .venv/bin/activate` (le binaire `python` du venv pointe alors vers le 3.11 attendu).
 - Le `nohup python3 -u scripts/webhook_server.py ...` du daemon doit pointer vers `.venv/bin/python` (chemin absolu) si lancé en dehors d'un shell où le venv est activé.
 
+### 2. `PROJECT_DIR` est dynamique
+
+```python
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+```
+### 3. Toute modification du code passe par l'agent `binance-dev` (workflow ticket → branche → PR)
+
+**Aucune modification de code ne se fait directement sur `main`.** Sans exception, même pour un hotfix d'une ligne.
+
+Workflow obligatoire :
+1. Créer (ou identifier) l'issue GitHub correspondante sur le repo `yousmaaza/agent-binance`
+2. L'ajouter au board "Binance Bot Agent" (project #4) et la basculer en "In progress"
+3. Invoquer l'agent `binance-dev` pour implémenter sur une branche `feat/issue-<N>-<slug>`
+4. `binance-dev` crée la PR et bascule le ticket en "In review" — c'est l'utilisateur qui merge
+
+Les seules exceptions autorisées à une modification directe sur `main` :
+- Mise à jour de `CLAUDE.md` lui-même (méta-règles, pas de code)
+- Fichiers de configuration non-code (`config.json`) sur instruction explicite de l'utilisateur
+
+❌ Commits directs sur `main`, `git add .`, `git push` sans branche et sans PR : **interdits**.
+
+
+Jamais de chemin Mac hardcodé. Le projet doit pouvoir tourner sur un VPS Linux sans modification.
+
+
+
+### 3. Aucun secret hardcodé — tout vient de `.env`
+
+`webhook_server.py` charge `.env` au démarrage via `_load_env()`. Les secrets attendus :
+- `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` (obligatoires)
+- `MONGODB_URI`, `MONGODB_DB` (optionnels — si absents, le bot tourne mais `/raisonnement` et la Phase 7 retournent un warning)
+
+Si tu ajoutes une nouvelle dépendance externe avec credentials, ajoute la clé dans `.env`, `.env.example`, et **jamais** en dur dans le code. Les anciens scripts shell (`bot_daemon.sh`, `start_webhook.sh`, `run_trade.sh`) sont legacy v1 mais ont aussi été migrés vers `.env`.
+
+### 4. Tous les appels Telegram passent par `curl` via subprocess, jamais `urllib`
+
+`urllib.request` échoue avec `[Errno 8] nodename nor servname provided` en contexte nohup sur le Mac de l'utilisateur (résolution DNS IPv6 mais pas de connectivité IPv6). `curl` fonctionne dans tous les contextes. La fonction `tg_post()` de `webhook_server.py` utilise déjà curl — quand tu ajoutes du code Telegram dans le `TRADE_PROMPT` (qui s'exécute dans le sous-processus Claude), utilise le helper `tg()` défini en tête du prompt, qui shell out vers curl.
+
+
+### 5. Stdout et stderr du sous-processus Claude sont **toujours** sauvegardés
+
+À chaque cycle, `run_trade_workflow()` génère un `cycle_id = YYYYMMDD_HHMMSS` (UTC) et écrit :
+- `logs/stdout/cycle_{cycle_id}.log` : sortie brute Claude
+- `logs/stderr/cycle_{cycle_id}.log` : erreurs Claude
+
+Même en cas d'exit code non-zéro. Ne supprime jamais cette capture — c'est la seule façon de debugger un cycle qui plante avant la Phase 7 (qui écrit en Mongo).
+
+### 6. Convention horaire : interne UTC, affichage local
+
+- Toute logique interne (`next_4h_slot`, comparaisons, timestamps Mongo) en UTC
+- Tout affichage utilisateur (notifications Telegram) en heure locale via `fmt_local()` / `fmt_next()`
+- Les slots auto sont alignés sur les clôtures TradingView 4h : 00:05, 04:05, ..., 20:05 **UTC**
+- **Format date pour l'unicité par cycle** : les heartbeat logs (JSONL) utilisent le format `%Y-%m-%dT%H:%M:%SZ` **avec secondes** pour garantir que chaque phase d'un même cycle ait un timestamp distinct (7 phases peuvent s'exécuter en moins de 60s). L'agrégation horaire seule (`%H:%M`) serait insuffisante.
+
+### 7. Auto-scheduler dans la main loop, pas via cron/systemd
+
+L'auto-scheduler vit dans `main_loop()` de `webhook_server.py` — il déclenche `run_trade_workflow(trigger="auto")` au prochain slot 4h. Ne le déplace pas vers cron : la loop de polling Telegram est déjà toujours active, donc autant en profiter pour scheduler.
+
+
+
 ## Workflow type d'une modification
 
 0. **Activer le venv + profil perso** (une fois par session shell) :
@@ -89,7 +129,6 @@ python --version   # doit afficher Python 3.11.x
 4. **Vérifier le startup** : `tail -10 state/daemon.log` doit montrer "🚀 Bot v2 démarré" et la ligne "Prochain cycle auto"
 5. **Test fonctionnel** : envoyer `/status` depuis Telegram → réponse en < 5s
 
-Pas besoin de tests unitaires pour ce projet — c'est un bot mono-fichier piloté par interactions Telegram. Le test, c'est la commande qui arrive et la notification qui repart.
 
 ## Debug d'un cycle qui plante
 
@@ -139,22 +178,6 @@ Ces classifications permettent de :
 1. **Distinguer les skips volontaires** (filtre stratégique, TYPE_A) des **skips techniques** (indisponibilité, TYPE_C/D).
 2. **Tracer les pertes d'opportunité** : si un coin prometteur est systématiquement TYPE_D, c'est un signal d'ajuster la liste USDC supportée.
 3. **Optimiser la stratégie** : si TYPE_B domine, c'est que la volatilité est trop haute et le risk_per_trade_pct est trop conservateur.
-
-### 8. Toute modification du code passe par l'agent `binance-dev` (workflow ticket → branche → PR)
-
-**Aucune modification de code ne se fait directement sur `main`.** Sans exception, même pour un hotfix d'une ligne.
-
-Workflow obligatoire :
-1. Créer (ou identifier) l'issue GitHub correspondante sur le repo `yousmaaza/agent-binance`
-2. L'ajouter au board "Binance Bot Agent" (project #4) et la basculer en "In progress"
-3. Invoquer l'agent `binance-dev` pour implémenter sur une branche `feat/issue-<N>-<slug>`
-4. `binance-dev` crée la PR et bascule le ticket en "In review" — c'est l'utilisateur qui merge
-
-Les seules exceptions autorisées à une modification directe sur `main` :
-- Mise à jour de `CLAUDE.md` lui-même (méta-règles, pas de code)
-- Fichiers de configuration non-code (`config.json`) sur instruction explicite de l'utilisateur
-
-❌ Commits directs sur `main`, `git add .`, `git push` sans branche et sans PR : **interdits**.
 
 ## Ne pas faire
 
