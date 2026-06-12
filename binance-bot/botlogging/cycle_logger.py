@@ -34,6 +34,9 @@ class CycleLogger:
     def warning(self, msg: str) -> None:
         logger.warning(f"[Cycle {self.cycle_id}] {msg}")
 
+    def debug(self, msg: str) -> None:
+        logger.debug(f"[Cycle {self.cycle_id}] {msg}")
+
     def read_last_phase(self) -> dict | None:
         """Retourne le dernier objet JSON valide du fichier JSONL, ou None."""
         try:
