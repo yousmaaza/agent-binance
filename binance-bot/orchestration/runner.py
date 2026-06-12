@@ -221,6 +221,8 @@ def _run_claude(
         timer = threading.Timer(CLAUDE_PROCESS_TIMEOUT_S, process.kill)
         timer.start()
         try:
+            # Mypy type guard: stdout=PIPE garantit que stdout n'est pas None
+            assert process.stdout is not None
             for raw_line in process.stdout:
                 formatted = parse_stream_event(raw_line.rstrip("\n"))
                 if formatted:
