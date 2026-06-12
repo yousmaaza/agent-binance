@@ -231,6 +231,8 @@ def _run_claude(
 
 
 def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogger) -> None:
+    # Cost extraction is optional; skip silently if file unreadable or regex fails.
+    # This ensures a malformed log or missing file doesn't crash the cycle.
     cost_usd = None
     try:
         with open(stdout_path) as f:
@@ -268,6 +270,9 @@ def _handle_error(
     stdout_path: str,
     cycle_log: CycleLogger,
 ) -> None:
+    # If stderr file is unreadable, show placeholder instead of crashing.
+    # Error is logged at warning level for observability; user still gets
+    # a Telegram notification with a fallback message.
     try:
         with open(stderr_path) as f:
             err_extract = f.read()[:400] or "(vide)"
