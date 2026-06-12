@@ -10,6 +10,102 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-12 — Récap quotidien
+
+### PR mergées (0)
+
+Aucune PR mergée sur `main` aujourd'hui.
+
+---
+
+### Issues fermées (3)
+
+| # | Titre | Motif |
+|---|---|---|
+| [#25](https://github.com/yousmaaza/agent-binance/issues/25) | [REC] Corriger B324 HIGH — ajouter `usedforsecurity=False` sur `hashlib.sha1` | Completed — fix implémenté via `feat/issue-25-hashlib-usedforsecurity` |
+| [#200](https://github.com/yousmaaza/agent-binance/issues/200) | [REC] Setup Graphify — knowledge graph MCP du codebase | Not planned — idée reportée sans suite |
+| [#203](https://github.com/yousmaaza/agent-binance/issues/203) | [CONFIG] Évaluer hausse `max_open_positions` 3→4 — opportunité score 9/10 manquée le 2026-05-30 | Not planned — supersédé par l'analyse plus complète de #218 |
+
+Le ticket #25 est celui qui a abouti : un seul paramètre ajouté (`usedforsecurity=False`) dans l'appel `hashlib.sha1()` qui calcule le fingerprint du `TRADE_PROMPT`. Le flag documente l'intention non-cryptographique du hash — il ne change pas le calcul — et fait disparaître le finding Bandit HIGH B324 qui masquait les vrais problèmes de sécurité dans les rapports CI.
+
+Le ticket #203 est fermé non pas parce que le problème n'existe plus, mais parce qu'une analyse plus récente (#218) le couvre dans un contexte plus dégradé. La montée de `max_open_positions` à 4 reste sur la table, mais avec de nouvelles contraintes.
+
+---
+
+### Nouveaux tickets créés (6)
+
+Deux origines : reviews automatiques des PR #208 / #213 / #214, et l'agent `analyse-config` qui tourne en cron à 20h UTC.
+
+**Cluster CycleLogger — issues #209, #210, #211, #216** (depuis reviews PR #208 / #213)
+
+| # | Titre | Origine |
+|---|---|---|
+| [#209](https://github.com/yousmaaza/agent-binance/issues/209) | Mypy: type guard sur `process.stdout` (`runner.py:224`) | Review PR #208 |
+| [#210](https://github.com/yousmaaza/agent-binance/issues/210) | Ajouter la méthode `debug()` à `CycleLogger` | Review PR #208 |
+| [#211](https://github.com/yousmaaza/agent-binance/issues/211) | Typer `CycleLogger` avec type hints complets | Review PR #208 |
+| [#216](https://github.com/yousmaaza/agent-binance/issues/216) | Modèle de logging plus fluide dans `CycleLogger` | Review PR #213 |
+
+Ces quatre tickets forment un seul cluster de dette technique sur `CycleLogger` : la classe expose `info()`, `warning()`, `error()`, `heartbeat()` mais pas `debug()`. La PR #208 (logging debug Mongo) avait essayé de l'appeler sans qu'elle existe. Les reviews ont révélé en cascade : méthode manquante, absence de type hints, et `process.stdout` non gardé contre `None` dans `runner.py`.
+
+**Documentation — issue #215** (depuis review PR #214)
+
+| # | Titre | Origine |
+|---|---|---|
+| [#215](https://github.com/yousmaaza/agent-binance/issues/215) | Ajouter docstring module en tête de `binance-bot/core/env.py` | Review PR #214 |
+
+Le module `env.py` est le bootstrap du bot (chargement `.env`, setup loguru, chargement du prompt) mais n'a aucune docstring. Ticket minimaliste : 5 à 10 lignes à ajouter, aucune modification de code.
+
+**Alerte config automatique — issue #218** (agent cron 20h UTC)
+
+| # | Titre | Origine |
+|---|---|---|
+| [#218](https://github.com/yousmaaza/agent-binance/issues/218) | TYPE_B récurrent + drawdown -70 % : `max_single_position_pct` trop restrictif avec capital résiduel faible | Analyse-config automatique |
+
+Le ticket le plus substantiel de la journée. L'agent `analyse-config` a détecté que les deux derniers cycles du jour s'étaient terminés en TYPE_B avec exactement le même calcul bloquant :
+
+```
+USDC libre    = 17.24
+Budget/pos    = 17.24 × 0.40 = 6.90 USDC
+6.90 < 11     → SKIP TYPE_B
+```
+
+Il propose de monter `max_single_position_pct` de 0.40 à 0.65 (ce qui donnerait 17.24 × 0.65 = 11.21 USDC, juste au-dessus du seuil), mais conditionne l'application à un rebond confirmé : BTC sentiment Bullish, top_score ≥ 6, portfolio > 50 USDC.
+
+---
+
+### Comportement du bot en production
+
+Deux cycles aujourd'hui :
+
+| Heure UTC | Score | Skip | Portfolio | Sentiment |
+|---|---|---|---|---|
+| 10:45 | 6/10 | TYPE_B — 6.90 USDC < seuil 11 (XPL, ATR élevé) | 118.85 USDC | Bullish |
+| 12:14 | 4/10 | TYPE_B — 6.90 USDC < seuil 11 (disponible: 17.24) | 24.63 USDC | Neutral |
+
+Le portfolio a chuté de 118.85 à 24.63 USDC entre les deux cycles, reflétant des positions ouvertes en mark-to-market négatif (3/4 slots occupés). Sur 7 jours, le drawdown atteint −70 % (81.58 → 24.63 USDC).
+
+Le bot a correctement loggé les deux TYPE_B dans `state/cycle_log.jsonl`. L'agent cron a agrégé ces logs à 20:07 UTC et créé le ticket #218 avec un diagnostic structuré : calcul chiffré du blocage, recommandation conditionnelle, risques, et conditions d'application. Aucune intervention humaine entre le log et le ticket.
+
+---
+
+### Matériel disponible pour illustrer
+
+- `state/cycle_log.jsonl` : lignes `20260612_103604` et `20260612_120500` — les deux TYPE_B avec `skip_detail` chiffré.
+- Issue #218 complète : tableau des 4 cycles analysés, calcul `17.24 × 0.40 = 6.90`, recommandation + conditions + risques. Format structuré généré automatiquement à partir de données de production.
+- Branche `feat/issue-25-hashlib-usedforsecurity` : diff minimal — 1 paramètre, 1 fichier, finding Bandit éliminé. Bon exemple d'un ticket `[REC]` de sécurité résolu en chirurgie.
+- Issues #209–#211 comme illustration de la dette technique qui s'accumule quand on ajoute des fonctionnalités (PR #208 debug Mongo) sans compléter l'interface existante (méthode `debug()` manquante).
+
+### Idée d'angle Medium
+
+**"Le bot qui se diagnostique lui-même : de la log au ticket de configuration"**
+
+La journée du 12 juin illustre une boucle fermée sur la configuration : cycles bloqués → logs TYPE_B → agent cron qui agrège les données → ticket structuré avec calcul, recommandation et conditions d'application → humain qui décide. Le bot ne corrige pas sa propre configuration (l'humain garde la main sur `config.json`), mais il produit un dossier d'aide à la décision complet, fondé sur des données réelles de production. Article sur la distinction entre autonomie d'exécution (ce que le bot fait seul) et autonomie de décision (ce que l'humain garde).
+
+**Angle secondaire — "Le cluster de dette : quand une PR révèle trois tickets connexes"**
+La PR #208 (logging debug Mongo) a déclenché reviews qui ont révélé que `CycleLogger` manquait de `debug()`, de type hints, et que `runner.py` avait un `process.stdout` potentiellement `None`. Trois tickets distincts (#209, #210, #211) nés d'une seule feature. Court article sur le pattern "dette visible" — les reviews automatiques ne bloquent pas, elles exposent la surface réelle du code. La question est : traiter immédiatement ou accumuler consciemment.
+
+---
+
 ## 2026-06-03 — Récap quotidien
 
 ### PR mergées (1)
