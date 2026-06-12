@@ -213,6 +213,7 @@ def _run_claude(
     env = os.environ.copy()
 
     with open(stdout_path, "w", buffering=1) as out_f, open(stderr_path, "w", buffering=1) as err_f:
+        # Bandit B603: flags from CLAUDE_CLI_FLAGS (config), prompt from TRADE_PROMPT (env) — no untrusted input
         process = subprocess.Popen(
             ["claude"] + flags + [prompt],
             stdout=subprocess.PIPE, stderr=err_f,
