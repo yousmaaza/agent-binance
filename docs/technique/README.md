@@ -6,7 +6,6 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique globale du projet | 2026-06-13 (PR #217) |
 
 ## Diagrammes
 
@@ -25,7 +24,6 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
-| [#217](pr-217-consolidation-rec-auto.md) | [CONSOLIDÉ] Ajout CycleLogger.debug() + refactoring open() + clarté commentaires | 2026-06-13 |
 | [#201](pr-201-enrichir-claude-md.md) | Enrichir CLAUDE.md avec principes généraux de développement | 2026-06-03 |
 | [#194](pr-194-phase-2-1d-rate-limit-handling.md) | Phase 2 : sleep 15s post-batch 4h + gestion erreur 1D silencieuse | 2026-05-31 |
 | [#187](pr-187-consolidate-helpers-security-recs.md) | [CONSOLIDÉ] Helpers partagés par cycle + sécurité + recommandations tech lead | 2026-05-30 |

@@ -1,7 +1,11 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
+<<<<<<< HEAD
 > **Dernière mise à jour** : 2026-06-13 (PR #217)
+=======
+> **Dernière mise à jour** : 2026-05-30 (PR #187)
+>>>>>>> origin/main
 > **Commit** : <current>
 
 ---
@@ -315,4 +319,8 @@ webhook_server.py (process principal)
 | [#122](pr-122-cycle-log-jsonl.md) | 2026-05-28 | Ajout Phase 8 : écriture `state/cycle_log.jsonl` (append-only) avec synthèse cycle (top_score, executed, skipped, skip_type, portfolio, sentiment) ; rotation à 90 lignes max ; commit+push automatique sur main après Phase 7 |
 | [#187](pr-187-consolidate-helpers-security-recs.md) | 2026-05-30 | [CONSOLIDÉ] Helpers partagés par cycle via `tempfile.mkstemp()` (Bandit B108 résolu) + extraction `_write_helpers_file()` + `_send_start_notification()` + constante `CLAUDE_PROCESS_TIMEOUT_S` + ajout méthode `CycleLogger.warning()` + lint script `check_cycle_logger_methods.sh` |
 | [#194](pr-194-phase-2-1d-rate-limit-handling.md) | 2026-05-31 | Phase 2 : délai de récupération 15s post-batch 4h + appels 1D séquentiels 5s + gestion silencieuse erreur 1D (rate limit TradingView) + seuil adaptatif Phase 3 |
+<<<<<<< HEAD
 | [#217](pr-217-consolidation-rec-auto.md) | 2026-06-13 | [CONSOLIDÉ] Ajout méthode `CycleLogger.debug()` + refactoring `open()` avec context manager + commentaires clarifiés (Bandit B603, Bandit B324, Mypy type guards) + logs MongoDB debug pour coût et mode facturation |
+=======
+| [#219](pr-219-consolidation-auto.md) | 2026-06-13 | [CONSOLIDATION] Refonte architecture : séparation logique orchestration cycle dans `binance-bot/orchestration/runner.py` (modules core, storage, botlogging, commands, models) ; classe `runner.run_trade_workflow()` remplace la logique monolithique dans webhook_server.py ; helpers via tempfile sécurisé (Bandit B108) |
+>>>>>>> origin/main
