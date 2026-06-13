@@ -213,6 +213,7 @@ def _run_claude(
     env = os.environ.copy()
 
     with open(stdout_path, "w", buffering=1) as out_f, open(stderr_path, "w", buffering=1) as err_f:
+        # Bandit B603: flags from CLAUDE_CLI_FLAGS (config), prompt from TRADE_PROMPT (env) — no untrusted input
         process = subprocess.Popen(
             ["claude"] + flags + [prompt],
             stdout=subprocess.PIPE, stderr=err_f,
@@ -221,6 +222,8 @@ def _run_claude(
         timer = threading.Timer(CLAUDE_PROCESS_TIMEOUT_S, process.kill)
         timer.start()
         try:
+            # Mypy type guard: stdout=PIPE garantit que stdout n'est pas None
+            assert process.stdout is not None
             for raw_line in process.stdout:
                 formatted = parse_stream_event(raw_line.rstrip("\n"))
                 if formatted:
@@ -231,6 +234,8 @@ def _run_claude(
 
 
 def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogger) -> None:
+    # Cost extraction is optional; skip silently if file unreadable or regex fails.
+    # This ensures a malformed log or missing file doesn't crash the cycle.
     cost_usd = None
     try:
         with open(stdout_path) as f:
@@ -246,6 +251,7 @@ def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogge
         if db is not None:
             try:
                 db.cycles.update_one({"_id": cycle_id}, {"$set": {"api_cost_usd": cost_usd}})
+                cycle_log.debug(f"Cost updated in MongoDB: {cost_usd} USD")
             except Exception as e:
                 cycle_log.error(f"Mongo cost update échec : {e}")
 
@@ -255,6 +261,7 @@ def _update_billing_mode_in_mongo(cycle_id: str, billing_mode: str, cycle_log: C
     if db is not None:
         try:
             db.cycles.update_one({"_id": cycle_id}, {"$set": {"billing_mode": billing_mode}})
+            cycle_log.debug(f"Billing mode updated in MongoDB: {billing_mode}")
         except Exception as e:
             cycle_log.error(f"Mongo billing_mode update échec : {e}")
 
@@ -268,6 +275,9 @@ def _handle_error(
     stdout_path: str,
     cycle_log: CycleLogger,
 ) -> None:
+    # If stderr file is unreadable, show placeholder instead of crashing.
+    # Error is logged at warning level for observability; user still gets
+    # a Telegram notification with a fallback message.
     try:
         with open(stderr_path) as f:
             err_extract = f.read()[:400] or "(vide)"
