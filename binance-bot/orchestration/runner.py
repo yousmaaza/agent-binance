@@ -8,7 +8,7 @@ import threading
 from datetime import datetime, timezone
 
 from config.llm import CLAUDE_CLI_FLAGS
-from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT
+from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, get_cycle_phases_log_path
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
 from core.timing import fmt_local
@@ -89,6 +89,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
         cycle_log.error(f"Exception inattendue : {e}")
     finally:
         watchdog.stop()
+        watchdog.join(timeout=2)
         release_lock()
         try:
             os.unlink(helpers_path)
@@ -97,8 +98,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
 
 
 def _send_start_notification(cycle_id: str, trigger: str, started_at: datetime, fmt_next: str) -> None:
-    _model_idx = CLAUDE_CLI_FLAGS.index("--model") + 1 if "--model" in CLAUDE_CLI_FLAGS else -1
-    _model = CLAUDE_CLI_FLAGS[_model_idx] if _model_idx > 0 else "claude (défaut)"
+    _model = get_configured_model()
     if trigger == "auto":
         send_telegram(
             f"🤖 Cycle auto 4h démarré ({fmt_local(started_at)})\n"
@@ -118,6 +118,7 @@ def _write_helpers_file(fd: int, helpers_path: str, cycle_id: str, trigger: str)
 
     Permissions 0o600 garanties par mkstemp. Aucun secret baked — lus depuis os.environ au runtime.
     """
+    hb_path = get_cycle_phases_log_path(cycle_id)
     helpers_content = f"""import subprocess, json, time as _t, datetime as _hb_dt, os as _hb_os, tempfile as _hb_tempfile, math
 
 BINANCE_CLI = {repr(BINANCE_CLI_PATH)}
@@ -126,7 +127,7 @@ PROJECT_DIR = {repr(PROJECT_DIR)}
 CYCLE_ID    = {repr(cycle_id)}
 MONGO_URI   = _hb_os.environ.get("MONGODB_URI", "")
 MONGO_DB    = _hb_os.environ.get("MONGODB_DB", "agent-binance")
-_HB_PATH    = {repr(f"{PROJECT_DIR}/logs/cycle_{cycle_id}_phases.jsonl")}
+_HB_PATH    = {repr(hb_path)}
 _trigger    = {repr(trigger)}
 
 _hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
@@ -156,13 +157,13 @@ def binance(*args, _retries=3):
     raise RuntimeError(f"binance-cli failed after {{_retries}} retries: {{raw[:120]}}")
 
 def _hb_start(phase):
-    _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
+    _hb_phase_start[phase] = _hb_dt.datetime.now(_hb_dt.timezone.utc).timestamp()
 
 def hb(phase, status="ok", summary=""):
     t0 = _hb_phase_start.pop(phase, None)
-    duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
+    duration_s = round(_hb_dt.datetime.now(_hb_dt.timezone.utc).timestamp() - t0, 1) if t0 is not None else -1
     _entry = json.dumps({{
-        "ts": _hb_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ts": _hb_dt.datetime.now(_hb_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "phase": phase, "status": status,
         "duration_s": duration_s, "summary": summary, "trigger": _trigger
     }})
@@ -207,12 +208,13 @@ def _run_claude(
     stdout_path: str,
     stderr_path: str,
     cycle_log: CycleLogger,
-) -> int:
+) -> int:  # type: ignore
     """Lance le sous-processus claude et streame stdout vers stdout_path. Retourne l'exit code."""
     flags = CLAUDE_CLI_FLAGS
     env = os.environ.copy()
 
     with open(stdout_path, "w", buffering=1) as out_f, open(stderr_path, "w", buffering=1) as err_f:
+        # flags from CLAUDE_CLI_FLAGS (config), prompt from TRADE_PROMPT (env) — no user input
         process = subprocess.Popen(
             ["claude"] + flags + [prompt],
             stdout=subprocess.PIPE, stderr=err_f,
@@ -221,6 +223,8 @@ def _run_claude(
         timer = threading.Timer(CLAUDE_PROCESS_TIMEOUT_S, process.kill)
         timer.start()
         try:
+            # Mypy type guard: stdout=PIPE garantit que stdout n'est pas None
+            assert process.stdout is not None
             for raw_line in process.stdout:
                 formatted = parse_stream_event(raw_line.rstrip("\n"))
                 if formatted:
@@ -231,6 +235,8 @@ def _run_claude(
 
 
 def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogger) -> None:
+    # Cost extraction is optional; skip silently if file unreadable or regex fails.
+    # This ensures a malformed log or missing file doesn't crash the cycle.
     cost_usd = None
     try:
         with open(stdout_path) as f:
@@ -246,6 +252,7 @@ def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogge
         if db is not None:
             try:
                 db.cycles.update_one({"_id": cycle_id}, {"$set": {"api_cost_usd": cost_usd}})
+                cycle_log.info(f"Cost updated in MongoDB: {cost_usd} USD")
             except Exception as e:
                 cycle_log.error(f"Mongo cost update échec : {e}")
 
@@ -255,6 +262,7 @@ def _update_billing_mode_in_mongo(cycle_id: str, billing_mode: str, cycle_log: C
     if db is not None:
         try:
             db.cycles.update_one({"_id": cycle_id}, {"$set": {"billing_mode": billing_mode}})
+            cycle_log.info(f"Billing mode updated in MongoDB: {billing_mode}")
         except Exception as e:
             cycle_log.error(f"Mongo billing_mode update échec : {e}")
 
@@ -268,6 +276,9 @@ def _handle_error(
     stdout_path: str,
     cycle_log: CycleLogger,
 ) -> None:
+    # If stderr file is unreadable, show placeholder instead of crashing.
+    # Error is logged at warning level for observability; user still gets
+    # a Telegram notification with a fallback message.
     try:
         with open(stderr_path) as f:
             err_extract = f.read()[:400] or "(vide)"

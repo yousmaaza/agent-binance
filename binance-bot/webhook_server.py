@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -58,7 +59,7 @@ def main_loop():
 
     while True:
         try:
-            if NEXT_AUTO_TRADE and __import__("datetime").datetime.now(__import__("datetime").timezone.utc) >= NEXT_AUTO_TRADE:
+            if NEXT_AUTO_TRADE and datetime.now(timezone.utc) >= NEXT_AUTO_TRADE:
                 NEXT_AUTO_TRADE = next_4h_slot()
                 logger.info(f"[Scheduler] Auto-trade → prochain slot {fmt_next()}")
                 threading.Thread(

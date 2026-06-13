@@ -36,6 +36,9 @@ LOGS_DIR = os.path.join(PROJECT_DIR, "logs")
 MONGO_URI = os.environ.get("MONGODB_URI", "").strip()
 MONGO_DB = os.environ.get("MONGODB_DB", "agent-binance").strip()
 
+def get_cycle_phases_log_path(cycle_id: str) -> str:
+    return os.path.join(LOGS_DIR, f"cycle_{cycle_id}_phases.jsonl")
+
 if not TOKEN or not CHAT_ID:
     logger.warning("TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID manquant dans .env")
 
@@ -46,7 +49,8 @@ os.makedirs(f"{LOGS_DIR}/stderr", exist_ok=True)
 # Initialisation du cycle log JSONL si absent
 _cycle_log_path = os.path.join(PROJECT_DIR, "state", "cycle_log.jsonl")
 if not os.path.exists(_cycle_log_path):
-    open(_cycle_log_path, "w").close()
+    with open(_cycle_log_path, "w"):
+        pass
 
 logger.add(
     f"{LOGS_DIR}/bot_{{time:YYYY-MM-DD}}.log",
@@ -68,7 +72,8 @@ _PROMPT_FILE = os.path.join(PROJECT_DIR, "prompts", "trade_prompt.txt")
 with open(_PROMPT_FILE) as _f:
     _TRADE_PROMPT_TEMPLATE = _f.read()
 
-# SHA1 calculé sur le template brut — stable entre cycles
+# SHA1 du template brut pour versionner le prompt (fingerprint non-cryptographique, stable entre cycles)
+# usedforsecurity=False supprime le warning Bandit B324 (usage déclaré non-cryptographique)
 PROMPT_VERSION = hashlib.sha1(_TRADE_PROMPT_TEMPLATE.encode(), usedforsecurity=False).hexdigest()[:8]
 
 # Substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) — effectuées une seule fois au démarrage

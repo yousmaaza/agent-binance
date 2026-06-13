@@ -121,19 +121,35 @@ jobs:
             --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
             --max-turns 40
 
-  # ── Job 2 : créer les tickets de recommandations ─────────────────────────
-  create-recommendation-tickets:
+  # ── Job 2 : implémenter les recommandations sur la branche PR ───────────
+  implement-recommendations:
+    needs: fix-bloquants
     if: |
       github.event.workflow_run.conclusion == 'success' &&
       toJson(github.event.workflow_run.pull_requests) != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           ref: ${{ github.event.workflow_run.pull_requests[0].head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install review tooling
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          else
+            pip install ruff radon bandit mypy
+          fi
 
       - name: Fetch review comment
         id: review
@@ -149,89 +165,69 @@ jobs:
           fi
           echo "has_review=true" >> $GITHUB_OUTPUT
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "pr_branch=${{ github.event.workflow_run.pull_requests[0].head.ref }}" >> $GITHUB_OUTPUT
           echo "$REVIEW" > /tmp/review_comment.md
 
-      - name: Ensure tech-lead-review + AUTO labels exist
-        if: steps.review.outputs.has_review == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-          REPO: ${{ github.repository }}
-        run: |
-          gh label create "tech-lead-review" \
-            --repo "$REPO" \
-            --color "0075ca" \
-            --description "Ticket généré automatiquement depuis une review tech lead" \
-            2>/dev/null || true
-          gh label create "AUTO" \
-            --repo "$REPO" \
-            --color "0075ca" \
-            --description "Ticket éligible au workflow binance-dev-auto" \
-            2>/dev/null || true
-
-      - name: Create recommendation tickets (ticket-manager)
+      - name: Implement recommendations (Claude)
         if: steps.review.outputs.has_review == 'true'
         uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.review.outputs.pr_number }}
+          PR_BRANCH: ${{ steps.review.outputs.pr_branch }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            Tu es l'agent `ticket-manager` (lis sa définition complète dans
-            `.claude/agents/ticket-manager.md`). Tu dois convertir les recommandations
-            de la review tech lead en tickets GitHub sur le board "Binance Bot Agent"
-            (project #4, compte yousmaaza, repo yousmaaza/agent-binance).
+            Tu es un développeur Python senior qui doit implémenter les recommandations
+            de la review tech lead directement sur la branche de la PR #${{ steps.review.outputs.pr_number }}
+            (repo agent-binance, bot Telegram de trading Binance, polling-only).
 
-            La review complète est dans `/tmp/review_comment.md` :
+            La review complète est dans `/tmp/review_comment.md` — lis-la d'abord :
             `cat /tmp/review_comment.md`
 
-            Sections à traiter :
-            - `### ⚠️ À simplifier / à clarifier` → tickets [REC] P2
-            - `### 💡 Pour aller plus loin` → tickets [REC] P2
+            Puis :
+            1. Localise les sections `### ⚠️ À simplifier / à clarifier` et
+               `### 💡 Pour aller plus loin`.
+               - Si les deux contiennent "RAS" ou sont vides → poste un commentaire
+                 "✅ Aucune recommandation à implémenter." sur la PR et STOP.
+               - Sinon, liste chaque recommandation (fichier:ligne + description).
 
-            Si les deux sections contiennent "RAS" ou sont vides → poste un commentaire
-            "✅ Aucune recommandation à tickétiser." sur la PR et STOP.
+            2. Pour chaque recommandation :
+               a. Lis le fichier concerné en entier avant d'éditer.
+               b. Implémente la recommandation de façon chirurgicale.
+               c. Respecte CLAUDE.md : curl-only pour Telegram, secrets via .env,
+                  `PROJECT_DIR` dynamique, pas de scipy/pandas.
+               d. Si la recommandation nécessite une décision produit ou est trop
+                  risquée → commente sur la PR et SKIP.
 
-            IMPORTANT : `GH_TOKEN` est déjà initialisé avec un PAT qui a le scope `project`.
-            Toutes les commandes `gh` (issue create, project item-add, project item-edit)
-            utilisent ce token automatiquement — pas besoin de le préfixer.
+            3. Vérifie la syntaxe de chaque fichier Python modifié :
+               `python3 -m py_compile <fichier>`
+               Si échec → reviens corriger avant de commit.
 
-            Pour chaque item :
-            1. Anti-doublon obligatoire (`gh issue list --search "<mot-clé>"`)
-            2. Crée le ticket avec le template standard (Contexte / Objectif /
-               Détails techniques / Critères d'acceptation / Pièges)
-            3. Dans le body, ajoute : "Recommandation issue de la review PR #${{ steps.review.outputs.pr_number }}"
-            4. Ajoute au board (#4) : Status=In progress, Priority=P2,
-               Size selon complexité apparente
-            5. Labels : `enhancement`, `tech-lead-review`, `AUTO`
-            6. **Conserve en mémoire** pour chaque ticket créé : `issue_number` et `item_node_id`
-               (le node_id Project V2 retourné par `addProjectV2ItemById`).
-
-            Conventions :
-            - Tag : `[REC]` (recommandation de review)
-            - Tous les textes en français
-            - Pas de ticket si la recommandation dit "optionnel" ou est triviale (<5 min)
-
-            À la fin :
-
-            A. Pour chaque ticket créé, déclenche le workflow `binance-dev-auto` :
-               ```bash
-               gh workflow run binance-dev-auto.yml \
-                 --repo ${{ github.repository }} \
-                 --ref main \
-                 -f issue_number=<ISSUE_NUMBER> \
-                 -f item_node_id=<ITEM_NODE_ID>
-               sleep 10   # éviter les races GitHub Actions
+            4. Configure git et commit en un seul commit groupant toutes les reco :
+               ```
+               git config user.email "claude-bot@github.com"
+               git config user.name "claude[bot]"
+               git pull origin ${{ steps.review.outputs.pr_branch }}
+               git add <fichiers modifiés — nominatifs, jamais git add -A>
+               git commit -m "refactor: apply tech-lead recommendations from PR #${{ steps.review.outputs.pr_number }}"
+               git push origin ${{ steps.review.outputs.pr_branch }}
                ```
 
-            B. Poste un commentaire récap sur la PR :
+            5. Poste un commentaire récap sur la PR :
                ```
                gh pr comment ${{ steps.review.outputs.pr_number }} \
                  --repo ${{ github.repository }} \
-                 --body "### 📋 Tickets créés depuis les recommandations\n<liste avec URLs>\n\n⚡ Workflow binance-dev-auto déclenché pour chaque ticket."
+                 --body "### ✅ Recommandations implémentées\n<liste avec fichier:ligne pour chaque reco appliquée>"
                ```
+
+            Garde-fous absolus :
+            - Jamais `git add -A` ni `git add .`
+            - Jamais `--force` ni `--no-verify`
+            - Jamais modifier `.env`, `state/trade_history.json`, `CLAUDE.md`
+            - Jamais merger la PR
           claude_args: |
             --model claude-haiku-4-5-20251001
-            --allowedTools "Bash,Read,Grep,Write"
+            --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
             --max-turns 40

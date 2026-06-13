@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from core.env import LOGS_DIR
+from core.env import get_cycle_phases_log_path
 
 
 class CycleLogger:
     def __init__(self, cycle_id: str):
         self.cycle_id = cycle_id
-        self.jsonl_path = f"{LOGS_DIR}/cycle_{cycle_id}_phases.jsonl"
+        self.jsonl_path = get_cycle_phases_log_path(cycle_id)
 
     def heartbeat(self, phase: int, summary: str = "") -> None:
         entry = {
@@ -33,6 +33,9 @@ class CycleLogger:
 
     def warning(self, msg: str) -> None:
         logger.warning(f"[Cycle {self.cycle_id}] {msg}")
+
+    def debug(self, msg: str) -> None:
+        logger.debug(f"[Cycle {self.cycle_id}] {msg}")
 
     def read_last_phase(self) -> dict | None:
         """Retourne le dernier objet JSON valide du fichier JSONL, ou None."""

@@ -1,0 +1,121 @@
+name: Auto-dispatch binance-dev on AUTO label
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  dispatch:
+    if: github.event.label.name == 'AUTO'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Resolve project item + move to In progress
+        id: project
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          python3 - <<'PYEOF'
+          import subprocess, json, os, sys
+
+          PROJECT_ID   = "PVT_kwHOC0Dy0s4BYYhT"
+          STATUS_FIELD = "PVTSSF_lAHOC0Dy0s4BYYhTzhTexN4"
+          IN_PROGRESS  = "47fc9ee4"
+          ISSUE_NUM    = int("${{ github.event.issue.number }}")
+          ISSUE_NODE   = "${{ github.event.issue.node_id }}"
+
+          FIND_QUERY = """
+          query($projectId: ID!, $cursor: String) {
+            node(id: $projectId) {
+              ... on ProjectV2 {
+                items(first: 100, after: $cursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    id
+                    content { ... on Issue { number } }
+                  }
+                }
+              }
+            }
+          }
+          """
+
+          ADD_MUTATION = """
+          mutation($projectId: ID!, $contentId: ID!) {
+            addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+              item { id }
+            }
+          }
+          """
+
+          STATUS_MUTATION = """
+          mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+            updateProjectV2ItemFieldValue(input: {
+              projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+              value: { singleSelectOptionId: $optionId }
+            }) { projectV2Item { id } }
+          }
+          """
+
+          def gh_graphql(query, **fields):
+              args = ["gh", "api", "graphql", "-f", f"query={query}"]
+              for k, v in fields.items():
+                  args += ["-F", f"{k}={v}"]
+              r = subprocess.run(args, capture_output=True, text=True)
+              return json.loads(r.stdout)
+
+          # Chercher l'item dans le board
+          item_id = None
+          cursor = None
+          while True:
+              extra = {"cursor": cursor} if cursor else {"cursor": ""}
+              data = gh_graphql(FIND_QUERY, projectId=PROJECT_ID, **extra)
+              items = data["data"]["node"]["items"]
+              for node in items["nodes"]:
+                  if (node.get("content") or {}).get("number") == ISSUE_NUM:
+                      item_id = node["id"]
+                      break
+              if item_id or not items["pageInfo"]["hasNextPage"]:
+                  break
+              cursor = items["pageInfo"]["endCursor"]
+
+          # Si absent du board → l'ajouter
+          if not item_id:
+              data = gh_graphql(ADD_MUTATION, projectId=PROJECT_ID, contentId=ISSUE_NODE)
+              if "errors" in data:
+                  print(f"Erreur ajout board: {data['errors'][0]['message']}", file=sys.stderr)
+                  sys.exit(1)
+              item_id = data["data"]["addProjectV2ItemById"]["item"]["id"]
+              print(f"Issue ajoutée au board: {item_id}")
+
+          # Passer en In progress
+          data = gh_graphql(STATUS_MUTATION,
+              projectId=PROJECT_ID, itemId=item_id,
+              fieldId=STATUS_FIELD, optionId=IN_PROGRESS)
+          if "errors" in data:
+              print(f"Erreur status: {data['errors'][0]['message']}", file=sys.stderr)
+              sys.exit(1)
+
+          # Exporter pour le step suivant
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"item_id={item_id}\n")
+              f.write("item_found=true\n")
+
+          print(f"✓ #{ISSUE_NUM} → In progress (item_id: {item_id})")
+          PYEOF
+
+      - name: Dispatch binance-dev-auto
+        if: steps.project.outputs.item_found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh workflow run binance-dev-auto.yml \
+            --repo ${{ github.repository }} \
+            --ref main \
+            -f issue_number=${{ github.event.issue.number }} \
+            -f item_node_id=${{ steps.project.outputs.item_id }}
+          echo "✓ binance-dev-auto dispatché pour #${{ github.event.issue.number }}"

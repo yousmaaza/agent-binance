@@ -68,7 +68,7 @@ def save_trade_history(data, path=None):
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2)
         os.replace(temp_path, path)
-    except Exception as e:
+    except Exception:
         try:
             os.unlink(temp_path)
         except OSError:
