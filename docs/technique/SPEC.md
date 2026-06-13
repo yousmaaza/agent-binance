@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-05-30 (PR #187)
+> **Dernière mise à jour** : 2026-06-13 (PR #217)
 > **Commit** : <current>
 
 ---
@@ -150,6 +150,7 @@ webhook_server.py (process principal)
 | `_hb_start(phase)` | helpers:157 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
 | `hb(phase, status, summary)` | helpers:161 | Clôture une phase avec **déduplication** : relit le JSONL, supprime l'ancienne entrée si la phase existe, append la nouvelle ligne JSON ; calcule la durée ; flux immédiat |
 | `CycleLogger.warning()` | botlogging/cycle_logger.py:34 | Nouvelle méthode pour logger les avertissements au niveau cycle avec préfixe structuré ; complète les méthodes `info()` et `error()` existantes |
+| `CycleLogger.debug()` | botlogging/cycle_logger.py:37 | Méthode pour logger les messages de debug au niveau cycle avec préfixe structuré ; complète les méthodes `info()`, `error()`, `warning()` existantes |
 | `binance(*args, _retries)` | TRADE_PROMPT:23 | Helper retry-backoff (x3, sleep 2s/4s/6s) pour appels binance-cli ; détecte "Invalid symbol" et "Request failed" ; lève `RuntimeError` si tous les retries échouent |
 | `_save_trade_history_atomic(data, path_override)` | TRADE_PROMPT:37 | Wrapper du module `state_manager` appelable dans le sous-processus Claude ; sauvegarde atomique `trade_history.json` |
 | Bloc trailing stop _(Phase 0)_ | TRADE_PROMPT:264–365 | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec OCO actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule l'OCO existant et replace un nouvel OCO avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
@@ -314,3 +315,4 @@ webhook_server.py (process principal)
 | [#122](pr-122-cycle-log-jsonl.md) | 2026-05-28 | Ajout Phase 8 : écriture `state/cycle_log.jsonl` (append-only) avec synthèse cycle (top_score, executed, skipped, skip_type, portfolio, sentiment) ; rotation à 90 lignes max ; commit+push automatique sur main après Phase 7 |
 | [#187](pr-187-consolidate-helpers-security-recs.md) | 2026-05-30 | [CONSOLIDÉ] Helpers partagés par cycle via `tempfile.mkstemp()` (Bandit B108 résolu) + extraction `_write_helpers_file()` + `_send_start_notification()` + constante `CLAUDE_PROCESS_TIMEOUT_S` + ajout méthode `CycleLogger.warning()` + lint script `check_cycle_logger_methods.sh` |
 | [#194](pr-194-phase-2-1d-rate-limit-handling.md) | 2026-05-31 | Phase 2 : délai de récupération 15s post-batch 4h + appels 1D séquentiels 5s + gestion silencieuse erreur 1D (rate limit TradingView) + seuil adaptatif Phase 3 |
+| [#217](pr-217-consolidation-rec-auto.md) | 2026-06-13 | [CONSOLIDÉ] Ajout méthode `CycleLogger.debug()` + refactoring `open()` avec context manager + commentaires clarifiés (Bandit B603, Bandit B324, Mypy type guards) + logs MongoDB debug pour coût et mode facturation |
