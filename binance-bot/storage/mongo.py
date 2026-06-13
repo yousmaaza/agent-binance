@@ -12,7 +12,7 @@ class MongoRepository:
     def __init__(self):
         self._client: Optional[MongoClient] = None
 
-    def _db(self):
+    def _db(self) -> Optional[Any]:
         if not MONGO_URI:
             return None
         if self._client is None:

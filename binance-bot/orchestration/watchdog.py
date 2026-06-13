@@ -39,9 +39,9 @@ class WatchdogThread:
             try:
                 mtime = os.path.getmtime(jsonl_path)
             except FileNotFoundError:
-                continue
+                continue  # Jsonl file not created yet, keep polling
             except Exception:
-                continue
+                continue  # Transient file error, keep polling
 
             if last_mtime is not None and mtime > last_mtime:
                 already_warned = False

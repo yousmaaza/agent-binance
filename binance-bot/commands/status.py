@@ -76,7 +76,7 @@ def _format_trades_section(fmt_next: str) -> list[str]:
             for t in open_trades:
                 lines.append(f"  🎯 {t['coin']} @ {t['entry_price']:.4g} | Stop: {t['stop_price']:.4g} | TP: {t['tp_price']:.4g}")
     except Exception:
-        pass
+        pass  # File not found is okay
     lines.append(f"\n⏰ <b>Prochain cycle auto</b> : <code>{fmt_next}</code>")
     return lines
 
@@ -88,7 +88,7 @@ def run_status(fmt_next_fn=None) -> str:
 
     data = _fetch_account_data(binance_profile)
     if data is None:
-        return f"❌ Erreur /status : impossible de récupérer les données du compte"
+        return "❌ Erreur /status : impossible de récupérer les données du compte"
 
     balances = [b for b in data["balances"] if float(b["free"]) > 0 or float(b["locked"]) > 0]
     open_orders = _fetch_open_orders(binance_profile)
