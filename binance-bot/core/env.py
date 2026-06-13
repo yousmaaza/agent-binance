@@ -36,6 +36,9 @@ LOGS_DIR = os.path.join(PROJECT_DIR, "logs")
 MONGO_URI = os.environ.get("MONGODB_URI", "").strip()
 MONGO_DB = os.environ.get("MONGODB_DB", "agent-binance").strip()
 
+def get_cycle_phases_log_path(cycle_id: str) -> str:
+    return os.path.join(LOGS_DIR, f"cycle_{cycle_id}_phases.jsonl")
+
 if not TOKEN or not CHAT_ID:
     logger.warning("TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID manquant dans .env")
 
