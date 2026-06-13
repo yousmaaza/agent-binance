@@ -251,7 +251,7 @@ def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogge
         if db is not None:
             try:
                 db.cycles.update_one({"_id": cycle_id}, {"$set": {"api_cost_usd": cost_usd}})
-                cycle_log.debug(f"Cost updated in MongoDB: {cost_usd} USD")
+                cycle_log.info(f"Cost updated in MongoDB: {cost_usd} USD")
             except Exception as e:
                 cycle_log.error(f"Mongo cost update échec : {e}")
 
@@ -261,7 +261,7 @@ def _update_billing_mode_in_mongo(cycle_id: str, billing_mode: str, cycle_log: C
     if db is not None:
         try:
             db.cycles.update_one({"_id": cycle_id}, {"$set": {"billing_mode": billing_mode}})
-            cycle_log.debug(f"Billing mode updated in MongoDB: {billing_mode}")
+            cycle_log.info(f"Billing mode updated in MongoDB: {billing_mode}")
         except Exception as e:
             cycle_log.error(f"Mongo billing_mode update échec : {e}")
 
