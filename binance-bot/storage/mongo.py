@@ -26,6 +26,11 @@ class MongoRepository:
                 return None
         return self._client[MONGO_DB]
 
+    def _with_db(self, fn):
+        """Helper pour exécuter une fonction avec la DB si disponible."""
+        db = self._db()
+        return fn(db) if db is not None else None
+
     def save_cycle(self, doc: CycleDocument) -> bool:
         db = self._db()
         if db is None:
