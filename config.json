@@ -20,5 +20,7 @@
   "timeframes_required": ["4h"],
   "min_adx": 20,
   "max_open_positions": 4,
-  "universe_scan_top_n": 20
+  "universe_scan_top_n": 20,
+
+  "usdc_blacklist": []
 }
