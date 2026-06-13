@@ -22,6 +22,9 @@ class WatchdogThread:
     def stop(self):
         self._stop.set()
 
+    def join(self, timeout: float | None = None) -> None:
+        self._thread.join(timeout=timeout)
+
     def _run(self):
         jsonl_path = self._logger.jsonl_path
         cycle_id = self._logger.cycle_id

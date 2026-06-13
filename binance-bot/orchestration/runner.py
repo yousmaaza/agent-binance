@@ -7,7 +7,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 
-from config.llm import CLAUDE_CLI_FLAGS
+from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
 from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
@@ -89,6 +89,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
         cycle_log.error(f"Exception inattendue : {e}")
     finally:
         watchdog.stop()
+        watchdog.join(timeout=2)
         release_lock()
         try:
             os.unlink(helpers_path)
@@ -97,8 +98,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
 
 
 def _send_start_notification(cycle_id: str, trigger: str, started_at: datetime, fmt_next: str) -> None:
-    _model_idx = CLAUDE_CLI_FLAGS.index("--model") + 1 if "--model" in CLAUDE_CLI_FLAGS else -1
-    _model = CLAUDE_CLI_FLAGS[_model_idx] if _model_idx > 0 else "claude (défaut)"
+    _model = get_configured_model()
     if trigger == "auto":
         send_telegram(
             f"🤖 Cycle auto 4h démarré ({fmt_local(started_at)})\n"
@@ -156,13 +156,13 @@ def binance(*args, _retries=3):
     raise RuntimeError(f"binance-cli failed after {{_retries}} retries: {{raw[:120]}}")
 
 def _hb_start(phase):
-    _hb_phase_start[phase] = _hb_dt.datetime.utcnow().timestamp()
+    _hb_phase_start[phase] = _hb_dt.datetime.now(_hb_dt.timezone.utc).timestamp()
 
 def hb(phase, status="ok", summary=""):
     t0 = _hb_phase_start.pop(phase, None)
-    duration_s = round(_hb_dt.datetime.utcnow().timestamp() - t0, 1) if t0 is not None else None
+    duration_s = round(_hb_dt.datetime.now(_hb_dt.timezone.utc).timestamp() - t0, 1) if t0 is not None else -1
     _entry = json.dumps({{
-        "ts": _hb_dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ts": _hb_dt.datetime.now(_hb_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "phase": phase, "status": status,
         "duration_s": duration_s, "summary": summary, "trigger": _trigger
     }})
@@ -207,7 +207,7 @@ def _run_claude(
     stdout_path: str,
     stderr_path: str,
     cycle_log: CycleLogger,
-) -> int:
+) -> int:  # type: ignore
     """Lance le sous-processus claude et streame stdout vers stdout_path. Retourne l'exit code."""
     flags = CLAUDE_CLI_FLAGS
     env = os.environ.copy()

@@ -29,6 +29,29 @@ def run_eval(period_days: int = 7) -> str:
     return "\n".join(lines)
 
 
+def _compute_trade_stats(closed: list, open_pos: list) -> dict:
+    """Calcule les statistiques de trading."""
+    wins = [t for t in closed if (t.get("pnl_usdc") or 0) > 0]
+    losses = [t for t in closed if (t.get("pnl_usdc") or 0) <= 0]
+    pnl_net = sum(t.get("pnl_usdc") or 0 for t in closed)
+    avg_win = sum(t["pnl_usdc"] for t in wins) / len(wins) if wins else 0
+    avg_loss = sum(t["pnl_usdc"] for t in losses) / len(losses) if losses else 0
+    ratio = abs(avg_win / avg_loss) if avg_loss != 0 else None
+    win_rate = len(wins) / len(closed) * 100 if closed else None
+
+    return {
+        "n_closed": len(closed),
+        "n_wins": len(wins),
+        "n_losses": len(losses),
+        "win_rate": win_rate,
+        "avg_win": avg_win,
+        "avg_loss": avg_loss,
+        "ratio": ratio,
+        "pnl_net": pnl_net,
+        "n_open": len(open_pos),
+    }
+
+
 def _trades_section(cutoff: datetime) -> dict:
     try:
         with open(f"{PROJECT_DIR}/state/trade_history.json") as f:
@@ -44,30 +67,24 @@ def _trades_section(cutoff: datetime) -> dict:
     ]
     open_pos = [t for t in history if t.get("status") == "open"]
 
-    wins = [t for t in closed if (t.get("pnl_usdc") or 0) > 0]
-    losses = [t for t in closed if (t.get("pnl_usdc") or 0) <= 0]
-    pnl_net = sum(t.get("pnl_usdc") or 0 for t in closed)
-    avg_win = sum(t["pnl_usdc"] for t in wins) / len(wins) if wins else 0
-    avg_loss = sum(t["pnl_usdc"] for t in losses) / len(losses) if losses else 0
-    ratio = abs(avg_win / avg_loss) if avg_loss != 0 else None
-    win_rate = len(wins) / len(closed) * 100 if closed else None
+    stats = _compute_trade_stats(closed, open_pos)
 
-    lines = [f"📈 <b>Performance</b> ({len(closed)} trades fermés)"]
+    lines = [f"📈 <b>Performance</b> ({stats['n_closed']} trades fermés)"]
     if closed:
-        wr_str = f"{len(wins)}/{len(closed)} ({win_rate:.1f}%)"
+        wr_str = f"{stats['n_wins']}/{stats['n_closed']} ({stats['win_rate']:.1f}%)"
         lines.append(f"  Win rate       : {wr_str}")
-        lines.append(f"  Gain moyen     : +{avg_win:.2f} USDC")
-        lines.append(f"  Perte moyenne  : {avg_loss:.2f} USDC")
-        ratio_str = f"{ratio:.2f}x" if ratio is not None else "n/a (aucune perte)"
+        lines.append(f"  Gain moyen     : +{stats['avg_win']:.2f} USDC")
+        lines.append(f"  Perte moyenne  : {stats['avg_loss']:.2f} USDC")
+        ratio_str = f"{stats['ratio']:.2f}x" if stats['ratio'] is not None else "n/a (aucune perte)"
         lines.append(f"  Ratio G/P      : {ratio_str}")
-        pnl_icon = "✅" if pnl_net > 0 else "❌"
-        lines.append(f"  PnL net        : {pnl_net:+.2f} USDC {pnl_icon}")
+        pnl_icon = "✅" if stats['pnl_net'] > 0 else "❌"
+        lines.append(f"  PnL net        : {stats['pnl_net']:+.2f} USDC {pnl_icon}")
     else:
         lines.append("  Aucun trade fermé sur la période")
     if open_pos:
-        lines.append(f"  Positions ouvertes : {len(open_pos)}")
+        lines.append(f"  Positions ouvertes : {stats['n_open']}")
 
-    return {"text": "\n".join(lines), "n_closed": len(closed), "pnl_net": pnl_net}
+    return {"text": "\n".join(lines), "n_closed": stats['n_closed'], "pnl_net": stats['pnl_net']}
 
 
 def _cycles_and_cost_section(cutoff: datetime, period_days: int) -> tuple[str, str]:
