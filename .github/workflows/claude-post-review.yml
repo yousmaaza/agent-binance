@@ -168,7 +168,7 @@ jobs:
             --description "Ticket éligible au workflow binance-dev-auto" \
             2>/dev/null || true
 
-      - name: Create recommendation tickets (ticket-manager)
+      - name: Create consolidated recommendation ticket (ticket-manager)
         if: steps.review.outputs.has_review == 'true'
         uses: anthropics/claude-code-action@v1
         env:
@@ -179,58 +179,86 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             Tu es l'agent `ticket-manager` (lis sa définition complète dans
-            `.claude/agents/ticket-manager.md`). Tu dois convertir les recommandations
-            de la review tech lead en tickets GitHub sur le board "Binance Bot Agent"
-            (project #4, compte yousmaaza, repo yousmaaza/agent-binance).
+            `.claude/agents/ticket-manager.md`). Tu dois créer UN SEUL ticket
+            consolidé regroupant toutes les recommandations de la review tech lead,
+            puis déclencher immédiatement `binance-dev-auto` dessus.
+
+            Board cible : "Binance Bot Agent" (project #4, compte yousmaaza,
+            repo yousmaaza/agent-binance).
 
             La review complète est dans `/tmp/review_comment.md` :
             `cat /tmp/review_comment.md`
 
-            Sections à traiter :
-            - `### ⚠️ À simplifier / à clarifier` → tickets [REC] P2
-            - `### 💡 Pour aller plus loin` → tickets [REC] P2
+            ## Étape 1 — Extraire les recommandations
 
-            Si les deux sections contiennent "RAS" ou sont vides → poste un commentaire
+            Lis les deux sections :
+            - `### ⚠️ À simplifier / à clarifier`
+            - `### 💡 Pour aller plus loin`
+
+            Si les deux sont vides ou contiennent "RAS" → poste un commentaire
             "✅ Aucune recommandation à tickétiser." sur la PR et STOP.
 
-            IMPORTANT : `GH_TOKEN` est déjà initialisé avec un PAT qui a le scope `project`.
-            Toutes les commandes `gh` (issue create, project item-add, project item-edit)
-            utilisent ce token automatiquement — pas besoin de le préfixer.
+            Ignore les items triviaux (< 5 min, purement cosmétiques ou marqués "optionnel").
 
-            Pour chaque item :
-            1. Anti-doublon obligatoire (`gh issue list --search "<mot-clé>"`)
-            2. Crée le ticket avec le template standard (Contexte / Objectif /
-               Détails techniques / Critères d'acceptation / Pièges)
-            3. Dans le body, ajoute : "Recommandation issue de la review PR #${{ steps.review.outputs.pr_number }}"
-            4. Ajoute au board (#4) : Status=In progress, Priority=P2,
-               Size selon complexité apparente
-            5. Labels : `enhancement`, `tech-lead-review`, `AUTO`
-            6. **Conserve en mémoire** pour chaque ticket créé : `issue_number` et `item_node_id`
-               (le node_id Project V2 retourné par `addProjectV2ItemById`).
+            ## Étape 2 — Créer UN seul ticket consolidé
 
-            Conventions :
-            - Tag : `[REC]` (recommandation de review)
-            - Tous les textes en français
-            - Pas de ticket si la recommandation dit "optionnel" ou est triviale (<5 min)
+            IMPORTANT : `GH_TOKEN` est initialisé avec un PAT qui a les scopes `project` + `repo`.
 
-            À la fin :
+            Anti-doublon : vérifie d'abord qu'il n'existe pas déjà un ticket
+            `[REC] Recommandations review PR #${{ steps.review.outputs.pr_number }}` :
+            ```bash
+            gh issue list --repo ${{ github.repository }} \
+              --search "[REC] Recommandations review PR #${{ steps.review.outputs.pr_number }}" \
+              --state open
+            ```
+            Si un ticket existe déjà → STOP (ne recrée pas).
 
-            A. Pour chaque ticket créé, déclenche le workflow `binance-dev-auto` :
-               ```bash
-               gh workflow run binance-dev-auto.yml \
-                 --repo ${{ github.repository }} \
-                 --ref main \
-                 -f issue_number=<ISSUE_NUMBER> \
-                 -f item_node_id=<ITEM_NODE_ID>
-               sleep 10   # éviter les races GitHub Actions
-               ```
+            Crée le ticket :
+            ```bash
+            gh issue create \
+              --repo ${{ github.repository }} \
+              --title "[REC] Recommandations review PR #${{ steps.review.outputs.pr_number }}" \
+              --label "enhancement,tech-lead-review,AUTO" \
+              --body "..."
+            ```
 
-            B. Poste un commentaire récap sur la PR :
-               ```
-               gh pr comment ${{ steps.review.outputs.pr_number }} \
-                 --repo ${{ github.repository }} \
-                 --body "### 📋 Tickets créés depuis les recommandations\n<liste avec URLs>\n\n⚡ Workflow binance-dev-auto déclenché pour chaque ticket."
-               ```
+            Body du ticket :
+            ```
+            ## Contexte
+            Recommandations issues de la review tech lead sur la PR #${{ steps.review.outputs.pr_number }}.
+
+            ## Recommandations à implémenter
+
+            (une ligne par item, format `- [ ] <description courte>`)
+
+            ---
+            Généré automatiquement par le pipeline tech-lead-review.
+            ```
+
+            Ajoute le ticket au board (#4) :
+            - Status : **In progress**
+            - Priority : P2
+            - Size : S si ≤ 5 items, M si 6-10 items, L si > 10 items
+
+            Récupère l'`item_node_id` retourné par `addProjectV2ItemById`.
+
+            ## Étape 3 — Déclencher binance-dev-auto immédiatement
+
+            ```bash
+            gh workflow run binance-dev-auto.yml \
+              --repo ${{ github.repository }} \
+              --ref main \
+              -f issue_number=<ISSUE_NUMBER> \
+              -f item_node_id=<ITEM_NODE_ID>
+            ```
+
+            ## Étape 4 — Commentaire récap sur la PR
+
+            ```bash
+            gh pr comment ${{ steps.review.outputs.pr_number }} \
+              --repo ${{ github.repository }} \
+              --body "### 📋 Ticket de recommandations créé\n\n- <URL_TICKET>\n\n⚡ `binance-dev-auto` déclenché — une PR sera ouverte automatiquement."
+            ```
           claude_args: |
             --model claude-haiku-4-5-20251001
             --allowedTools "Bash,Read,Grep,Write"
