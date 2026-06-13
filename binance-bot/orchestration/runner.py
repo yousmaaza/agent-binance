@@ -7,7 +7,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 
-from config.llm import CLAUDE_CLI_FLAGS
+from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
 from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, get_cycle_phases_log_path
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
@@ -195,6 +195,30 @@ def _save_trade_history_atomic(data, path_override=None):
     except Exception as _e:
         try:
             _hb_os.unlink(_th_temp)
+        except OSError:
+            pass
+        raise _e
+
+def _load_config():
+    _cfg_path = f"{{PROJECT_DIR}}/config.json"
+    try:
+        with open(_cfg_path) as _f:
+            return json.load(_f)
+    except Exception:
+        return {{}}
+
+def _save_config_atomic(data):
+    _cfg_path = f"{{PROJECT_DIR}}/config.json"
+    _cfg_parent = _hb_os.path.dirname(_cfg_path)
+    _hb_os.makedirs(_cfg_parent, exist_ok=True)
+    _fd, _cfg_temp = _hb_tempfile.mkstemp(dir=_cfg_parent, text=True, suffix=".tmp")
+    try:
+        with _hb_os.fdopen(_fd, "w") as _f:
+            json.dump(data, _f, indent=2)
+        _hb_os.replace(_cfg_temp, _cfg_path)
+    except Exception as _e:
+        try:
+            _hb_os.unlink(_cfg_temp)
         except OSError:
             pass
         raise _e
