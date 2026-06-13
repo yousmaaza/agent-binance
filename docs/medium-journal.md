@@ -10,6 +10,133 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-13 — Récap quotidien
+
+### PR mergées (3)
+
+#### #217 — Consolidation [REC] AUTO — 6 PRs (créée le 12, mergée ce matin à 07:42 UTC)
+
+- **Branche** : `feat/consolidate-rec-20260612_174455`
+- **PRs consolidées** : #204, #205, #207, #212, #213, #214
+- **Issues fermées** : #25, #123, #136, #137, #138, #139
+
+**Récit**
+
+Six PRs [REC] générées par `binance-dev-auto` sur la journée du 12 juin ont été consolidées en une seule merge. Les changements forment un cluster cohérent autour de `CycleLogger` et de la qualité de code :
+
+- `CycleLogger.debug()` ajoutée : la classe avait `info()`, `error()`, `warning()` mais pas `debug()`. La PR #208 (logging debug Mongo) avait essayé d'appeler cette méthode sans qu'elle existe — les reviews avaient créé le ticket #210 le 12 juin, implémenté ici.
+- Context manager `with open():` remplace `open().close()` dans `env.py` — ticket #123, bonne pratique Python garantissant la fermeture même en cas d'exception.
+- Commentaires explicites Bandit B324 / B603 / Mypy dans `runner.py` et `env.py` — les outils de review CI ne reflagueront plus ces lignes comme problèmes non-résolus.
+- Logs debug MongoDB : chaque mise à jour de coût API ou de mode facturation émet maintenant un `cycle_log.debug()` — traçabilité fine sans polluer le journal INFO principal.
+
+| Fichier | Changement |
+|---|---|
+| `binance-bot/botlogging/cycle_logger.py` | Ajout `CycleLogger.debug()` |
+| `binance-bot/core/env.py` | Context manager + commentaires Bandit |
+| `binance-bot/orchestration/runner.py` | Commentaires Bandit B603, assert Mypy, logs debug Mongo |
+
+- **Doc tech** : [docs/technique/pr-217-consolidation-rec-auto.md](../technique/pr-217-consolidation-rec-auto.md)
+
+---
+
+#### #219 — Consolidation [REC] AUTO — refonte architecture multi-module (07:45 UTC)
+
+- **Branche** : `feat/consolidate-rec-20260613_091111`
+- **PRs consolidées** : #206, #208
+- **Issues fermées** : #138, #139 (déjà fermées par #217 — doublon de clôture)
+
+**Récit**
+
+La PR la plus structurante de la journée. Elle consolide deux PRs [REC] qui, ensemble, formalisent la refonte de `webhook_server.py` monolithique (~1500 lignes) en une architecture multi-module. L'agent `binance-doc-tech` documente la structure complète :
+
+| Module | Fichier | Rôle |
+|---|---|---|
+| orchestration | `runner.py` | Cycle complet : lock → helpers → subprocess Claude → Mongo |
+| orchestration | `stream_parser.py` | Parsing stream-json Claude CLI |
+| orchestration | `watchdog.py` | Monitoring phases via heartbeats JSONL |
+| core | `env.py`, `lock.py`, `telegram.py`, `timing.py`, `state_manager.py` | Infrastructure partagée |
+| storage | `mongo.py` | Client MongoDB (lazy init) |
+| commands | `status.py`, `perf.py`, `eval.py`, `cout.py`, `raisonnement.py` | Handlers Telegram |
+| botlogging | `cycle_logger.py`, `stream_parser.py`, `watchdog.py` | Observabilité |
+
+Deux décisions techniques méritent d'être retenues. D'abord, `_write_helpers_file()` utilise `tempfile.mkstemp()` (permissions 0o600) au lieu d'un chemin `/tmp/` prévisible — les secrets ne sont pas substitués à l'avance dans le fichier, mais lus depuis `os.environ` au runtime dans le fichier helpers. C'est la correction de la race condition TOCTOU Bandit B108 identifiée lors de la PR #187 (30 mai), consolidée dans l'architecture. Ensuite, le timeout watchdog utilise `threading.Timer` au lieu de `subprocess.timeout` directement, ce qui permet un cancel propre dans le bloc `finally`.
+
+La configuration LLM est externalisée dans `binance-bot/config/llm.py` — le modèle Claude utilisé devient un paramètre de config, plus une constante hardcodée dans `runner.py`.
+
+- **Doc tech** : [docs/technique/pr-219-consolidation-auto.md](../technique/pr-219-consolidation-auto.md)
+
+---
+
+#### #225 — Consolidation [REC] AUTO — fiabilité trading & state management (10:40 UTC)
+
+- **Branche** : branche de consolidation auto
+- **PRs consolidées** : #223, #224
+- **Issues fermées** : #220 (Refactoring orchestration & runner), #221 (Fiabilité trading & state management)
+
+**Récit**
+
+La troisième consolidation de la journée, qui clôt les deux épics créées à 07:57 UTC — moins de 3h après les PR #217 et #219. Les épics #220 (25 sous-tickets) et #221 (20 sous-tickets) ont été générées automatiquement par les reviews des PR du matin, implémentées par `binance-dev-auto` dans les PRs #223 et #224, puis consolidées et mergées avant midi.
+
+Les fichiers touchés couvrent : `binance-bot/commands/eval.py`, `binance-bot/commands/status.py`, `binance-bot/core/state_manager.py`, `binance-bot/storage/mongo.py`, `CLAUDE.md`.
+
+Le nouveau workflow `.github/workflows/auto-dispatch-on-auto-label.yml` (livré dans ce batch) change le point de déclenchement de l'automation : dorénavant, le label `AUTO` posé sur une issue suffit à lancer `binance-dev-auto` — sans attendre un trigger post-review. Le workflow résout l'item dans le board GitHub Projects (GraphQL), le passe en "In progress", puis dispatche le workflow d'implémentation. L'ajout de ce workflow ferme le dernier maillon manuel de la chaîne.
+
+---
+
+### Issues fermées (73)
+
+La journée a vu 73 issues clôturées, dont la grande majorité sont des sous-tickets `[REC]` de qualité résolus en cascade par les trois consolidations. Les clôtures marquantes :
+
+| # | Titre | Motif |
+|---|---|---|
+| [#220](https://github.com/yousmaaza/agent-binance/issues/220) | [REC] Consolidation — Refactoring orchestration & runner | Completed via PR #225 |
+| [#221](https://github.com/yousmaaza/agent-binance/issues/221) | [REC] Consolidation — Fiabilité trading & state management | Completed via PR #225 |
+| [#222](https://github.com/yousmaaza/agent-binance/issues/222) | [REC] Consolidation — CycleLogger, daily-recap & outillage | Duplicate — couvert par #217 et #225 |
+| [#210](https://github.com/yousmaaza/agent-binance/issues/210) | Ajouter la méthode `debug()` à `CycleLogger` | Completed — ticket du 12 juin fermé le lendemain |
+| [#209](https://github.com/yousmaaza/agent-binance/issues/209) | Mypy: type guard sur `process.stdout` | Completed |
+| [#167](https://github.com/yousmaaza/agent-binance/issues/167) | Refactor `main_loop()` avec dispatch table | Completed |
+| [#188–#192](https://github.com/yousmaaza/agent-binance/issues/188) | Cluster qualité post-PR #187 (helpers, streaming, tests) | Completed batch |
+| [#196–#197](https://github.com/yousmaaza/agent-binance/issues/196) | Heartbeats Phase 2 + adaptive sleep rate limits | Completed |
+| [#25](https://github.com/yousmaaza/agent-binance/issues/25) | Bandit B324 `hashlib.sha1 usedforsecurity=False` | Completed (ticket ouvert depuis longtemps) |
+
+Vingt sous-tickets de la liste complète ont été collectés par l'outil de recherche (sur 73 au total) — la majorité appartient aux clusters orchestration, state management, et CycleLogger.
+
+---
+
+### Nouveaux tickets créés (3, tous fermés le même jour)
+
+| # | Titre | Créé à | Fermé à | Motif fermeture |
+|---|---|---|---|---|
+| [#220](https://github.com/yousmaaza/agent-binance/issues/220) | [REC] Consolidation — Refactoring orchestration & runner (25 sous-issues) | 07:57 UTC | 10:40 UTC | Completed |
+| [#221](https://github.com/yousmaaza/agent-binance/issues/221) | [REC] Consolidation — Fiabilité trading & state management (20 sous-issues) | 07:57 UTC | 10:40 UTC | Completed |
+| [#222](https://github.com/yousmaaza/agent-binance/issues/222) | [REC] Consolidation — CycleLogger, daily-recap & outillage (18 sous-issues) | 07:58 UTC | 10:42 UTC | Duplicate |
+
+Ces trois épics ont été créées par les reviews des PR #217 et #219 (mergées à 07:42 et 07:45). Elles ont regroupé respectivement 25, 20 et 18 sous-tickets de dette technique accumulée depuis fin mai. L'épic #220 a été implémentée (PR #223), #221 aussi (PR #224), les deux consolidées dans PR #225 et mergées à 10:40. L'épic #222 a été close en duplicate car son contenu était déjà couvert par #217 et #225.
+
+La boucle complète — merge → reviews → épics → implémentation → consolidation → merge — s'est refermée en moins de 3h.
+
+---
+
+### Matériel disponible pour illustrer
+
+- `docs/technique/pr-219-consolidation-auto.md` : tableau complet de l'architecture multi-module (10 modules, rôles) — bon visuel pour illustrer la séparation des responsabilités avant/après.
+- `.github/workflows/auto-dispatch-on-auto-label.yml` (nouveau) : 122 lignes de workflow GitHub Actions — le déclencheur final de l'automation label → board → dispatch. Bonne illustration du fonctionnement interne.
+- `binance-bot/config/llm.py` (nouveau) : externalisation de la config modèle Claude — petit fichier, gros impact sur la maintenabilité.
+- Les épics #220, #221, #222 dans GitHub Issues : chacune liste ses sous-tickets avec coches — bonne matière pour un article sur la structuration de la dette technique.
+- Timeline du jour : PR #217 mergée 07:42 → épics créées 07:57 → PR #225 mergée 10:40. Écart total : 2h58.
+
+### Idée d'angle Medium
+
+**"La boucle qui se ferme en 3h : quand l'automatisation s'auto-alimente"**
+
+Le 13 juin illustre ce que devient le pipeline quand toutes les pièces sont en place. Les PRs du matin déclenchent les reviews qui génèrent des épics, les épics déclenchent `binance-dev-auto` qui implémente, l'implémentation est consolidée et mergée — le tout sans intervention humaine, en moins de 3 heures. Article sur la distinction entre automation "assistée" (un humain décide de chaque étape) et automation "réflexive" (le pipeline déclench le pipeline). La nuance importante : l'humain merge encore les PRs de consolidation. C'est le seul frein conscient dans la chaîne. Pourquoi garder cette friction ? Et jusqu'où peut-on aller sans elle ?
+
+**Angle secondaire — "Refactoring architectural via PR [REC] : comment un agent découpe 1500 lignes sans se perdre"**
+
+La PR #219 n'a pas été planifiée par un humain — elle est sortie d'une review automatique qui a identifié que `webhook_server.py` monolithique était trop complexe. L'agent `binance-dev-auto` a produit une architecture à 10 modules, avec séparation claire des responsabilités, dans une PR de consolidation. Court article sur la question : peut-on déléguer les décisions architecturales à un agent de review ? Avec quelles limites ?
+
+---
+
 ## 2026-06-12 — Récap quotidien
 
 ### PR mergées (0)
