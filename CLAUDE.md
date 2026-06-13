@@ -4,7 +4,7 @@ Bot de trading Binance piloté par Telegram. Architecture polling-only : aucun p
 
 ## Stack
 
-- `scripts/webhook_server.py` : process Python unique qui poll Telegram en long-polling (timeout 30s) ET déclenche un sous-processus Claude (`claude --print --dangerously-skip-permissions <prompt>`) à chaque commande `/trade` ou tous les 4h via l'auto-scheduler.
+- `binance-bot/webhook_server.py` : process Python unique qui poll Telegram en long-polling (timeout 30s) ET déclenche un sous-processus Claude (`claude --print --dangerously-skip-permissions <prompt>`) à chaque commande `/trade` ou tous les 4h via l'auto-scheduler.
 - Le sous-processus Claude reçoit `TRADE_PROMPT` (variable à la racine de `webhook_server.py`) qui décrit 7 phases d'exécution.
 - État persistant dans `state/` (JSON files). Logs dans `logs/`. MongoDB Atlas pour la collection `cycles`.
 
@@ -51,7 +51,7 @@ python --version   # doit afficher Python 3.11.x
 - Le venv `.venv/` est **gitignoré** — chaque machine recrée le sien.
 - `git-perso` est un alias/script perso installé globalement sur le shell de l'utilisateur (zsh). Il configure `user.email`, `user.name`, le `signingkey` et l'index pip pour que les `git commit`, `git push`, `pip install` partent avec la bonne identité et les bons repos. Sans lui, les commits peuvent être attribués au mauvais compte ou un `pip install` peut résoudre des packages depuis un index pro.
 - Toute commande dans la doc qui dit `python3 -c "..."` doit en pratique être lancée **après** `source .venv/bin/activate` (le binaire `python` du venv pointe alors vers le 3.11 attendu).
-- Le `nohup python3 -u scripts/webhook_server.py ...` du daemon doit pointer vers `.venv/bin/python` (chemin absolu) si lancé en dehors d'un shell où le venv est activé.
+- Le `nohup python3 -u binance-bot/webhook_server.py ...` du daemon doit pointer vers `.venv/bin/python` (chemin absolu) si lancé en dehors d'un shell où le venv est activé.
 
 ### 2. `PROJECT_DIR` est dynamique
 
@@ -119,12 +119,12 @@ L'auto-scheduler vit dans `main_loop()` de `webhook_server.py` — il déclenche
    ```bash
    source .venv/bin/activate && git-perso
    ```
-1. **Modifier `scripts/webhook_server.py`** ou `config.json`
-2. **Test syntaxe Python** : `python -c "import ast; ast.parse(open('scripts/webhook_server.py').read())"` (le `python` du venv = 3.11)
+1. **Modifier `binance-bot/webhook_server.py`** ou `config.json`
+2. **Test syntaxe Python** : `python -c "import ast; ast.parse(open('binance-bot/webhook_server.py').read())"` (le `python` du venv = 3.11)
 3. **Redémarrer le bot** :
    ```bash
    pkill -f webhook_server.py
-   nohup .venv/bin/python -u scripts/webhook_server.py >> state/daemon.log 2>&1 &
+   nohup .venv/bin/python -u binance-bot/webhook_server.py >> state/daemon.log 2>&1 &
    ```
 4. **Vérifier le startup** : `tail -10 state/daemon.log` doit montrer "🚀 Bot v2 démarré" et la ligne "Prochain cycle auto"
 5. **Test fonctionnel** : envoyer `/status` depuis Telegram → réponse en < 5s
