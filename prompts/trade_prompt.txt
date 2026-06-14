@@ -312,61 +312,80 @@ Compte open_positions = nombre de trades status="open" dans trade_history.json
 ⏱️ HEARTBEAT END PHASE 0 — appel hb(0) immédiatement ci-dessous
 hb(0, summary=f"Portfolio {portfolio_total:.2f} USDC, {open_positions} positions, PnL jour {daily_pnl:+.2f} USDC")
 
-PHASE 1 — SCAN MARCHÉ (tout en parallèle)
+PHASE 1 — SCAN MARCHÉ
 ⏱️ HEARTBEAT START PHASE 1
 _hb_start(1)
-Lance simultanément :
-- mcp__tradingview__top_gainers (exchange: BINANCE) → top gainers
-- mcp__tradingview__volume_breakout_scanner (exchange: BINANCE) → breakouts volume
-- mcp__tradingview__market_sentiment → sentiment global
-- mcp__tradingview__rating_filter (exchange: BINANCE, rating: BUY) → coins notés BUY
 
-Construis l'univers de candidats :
-1. Inclure systématiquement les portfolio_coins (BTC, STX, XRP, SOL, SUI)
-2. Ajouter les coins qui apparaissent dans AU MOINS 2 des screeners ci-dessus
-3. Filtrer : garder uniquement les paires {COIN}USDC disponibles sur Binance
-4. Limiter à universe_scan_top_n (20) coins au total
-5. Exclure les stablecoins (USDT, BUSD, FDUSD, etc.)
+Exécute les appels TradingView via MCP (outils disponibles : quote_get, data_get_ohlcv, data_get_study_values) :
 
-Vérification de tradabilité USDC — pour chaque coin candidat, exécute :
-binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
-- Si le prix est retourné ET le volume 24h >= 5M USDC → marquer ✓ (tradable)
-- Si la commande échoue ou le symbole est introuvable → marquer ✗ (non tradable)
+1. **Identifier les top gainers et volumes** :
+   - Pour chaque coin du portefeuille (BTC, STX, XRP, SOL, SUI) : appel mcp__tradingview__quote_get (BINANCE)
+   - Récupère : prix, volume 24h, priceChangePercent (variation 24h)
+   - Sélectionne les coins avec priceChangePercent > 0 (haussiers)
+   - Identifie le top gainer (plus haut priceChangePercent) et calcule le sentiment marché global
 
-Filtre définitif : éliminer immédiatement les coins marqués ✗ (paire USDC introuvable ou volume insuffisant). Ces coins ne doivent PAS être inclus dans l'univers final transmis à la Phase 2. Seuls les coins avec ✓ passent à la suite. Cette vérification se fait ici en Phase 1, avant tout appel TradingView, pour éviter d'analyser en vain des coins non tradables sur Binance (ex : STEEM, PEOPLE, etc.).
+2. **Construire l'univers de candidats** :
+   - Inclure systématiquement les portfolio_coins (BTC, STX, XRP, SOL, SUI)
+   - Ajouter les coins avec volume 24h > 20M USDC ET priceChangePercent entre -5% et +20% (screening volume breakout)
+   - Filtrer : garder uniquement les paires {COIN}USDC disponibles sur Binance
+   - Limiter à universe_scan_top_n (20) coins au total
+   - Exclure les stablecoins (USDT, BUSD, FDUSD, etc.)
+
+3. **Vérification de tradabilité USDC** :
+   Pour chaque coin candidat, exécute :
+   binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
+   - Si le prix est retourné ET le volume 24h >= 5M USDC → marquer ✓ (tradable)
+   - Si la commande échoue ou le symbole est introuvable → marquer ✗ (non tradable)
+
+   Filtre définitif : éliminer immédiatement les coins marqués ✗ (paire USDC introuvable ou volume insuffisant). Seuls les coins avec ✓ passent à la Phase 2.
+
+4. **Sentiment global** :
+   - Pourcentage de coins haussiers parmi les portfolio_coins
+   - Sentiment = "Bullish" si > 60% haussiers, "Bearish" si < 40%, "Neutral" sinon
 
 → tg("📡 Phase 1 — Scan marché\\nSentiment : {sentiment}\\n{N} candidats identifiés : {liste}")
 ⏱️ HEARTBEAT END PHASE 1 — appel hb(1) immédiatement ci-dessous
 hb(1, summary=f"Sentiment {sentiment}, {N} candidats")
 
-PHASE 2 — ANALYSE MULTI-TIMEFRAME (couplée par coin, groupes de 4-5 max)
+PHASE 2 — ANALYSE MULTI-TIMEFRAME
 ⏱️ HEARTBEAT START PHASE 2
 _hb_start(2)
 
 Traite l'univers par groupes de 4 coins maximum pour respecter le rate limit TradingView.
-Ne jamais lancer plus de 5 appels coin_analysis simultanément (toutes timeframes confondues).
+Utilise les outils MCP disponibles : chart_set_symbol, chart_set_timeframe, data_get_study_values, data_get_ohlcv.
 
 Pour chaque groupe de 4 coins (ou moins pour le dernier groupe) :
 
   Étape A — Analyse 4h du groupe (en parallèle dans le groupe) :
   Pour chaque coin du groupe, lance en parallèle :
-  - mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 4h)
-  Mémorise pour chaque coin : recommendation (signal_4h) et rsi.
+  1. mcp__tradingview__chart_set_symbol (symbol: "{COIN}USDC", exchange: "BINANCE")
+  2. mcp__tradingview__chart_set_timeframe (timeframe: "4h")
+  3. mcp__tradingview__data_get_study_values (studies: ["RSI", "MACD", "BB"])
+  4. mcp__tradingview__data_get_ohlcv (limit: 50)  — récupère les 50 dernières bougies 4h
+
+  Depuis ces données, calcule :
+  - signal_4h : détermine le signal en analysant RSI (si RSI < 30 → oversold, si > 70 → overbought),
+    MACD (si bullish cross → BUY, si bearish cross → SELL), BB (si prix proche lower band → oversold)
+    → Assigne signal_4h = "BUY" si 2+ indicateurs sont haussiers, "SELL" si 2+ sont baissiers, "NEUTRAL" sinon
+  - rsi = valeur RSI 4h (dernière bougie)
 
   Étape B — Appels 1D couplés, immédiatement après les résultats 4h du groupe :
   Pour les coins du groupe avec signal_4h NEUTRAL, SELL ou STRONG_SELL :
   - Ne pas lancer d'appel 1D. Leur signal_1d = "NEUTRAL" pour le scoring Phase 3.
   Pour chaque coin du groupe dont signal_4h est BUY ou STRONG_BUY :
   - Avant le PREMIER appel 1D du groupe, attendre time.sleep(15) pour laisser le rate limit TradingView se réinitialiser après le burst 4h.
-  - Lancer les appels 1D en SÉQUENTIEL (un par un, jamais en parallèle) : appeler mcp__tradingview__coin_analysis (exchange: BINANCE, screener: crypto, timeframe: 1d), attendre le résultat, puis time.sleep(5) avant le prochain appel 1D.
+  - Lancer les appels 1D en SÉQUENTIEL (un par un, jamais en parallèle) :
+    1. mcp__tradingview__chart_set_timeframe (timeframe: "1d")
+    2. mcp__tradingview__data_get_study_values (studies: ["RSI", "MACD"])
+    3. Analyser les résultats → assigner signal_1d = "BUY" si haussier, "SELL" si baissier, "NEUTRAL" sinon
+    Attendre time.sleep(5) avant le prochain appel 1D.
 
-  Gestion d'erreur 1D (OBLIGATOIRE) : pour chaque appel coin_analysis 1D :
-  - Si le résultat contient une clé "error" → signal_1d = "NEUTRAL", signal_1d_rate_limited = True, logger "1D indisponible (rate limit): {result['error']}", continuer sans bloquer.
-  - Si l'appel lève une exception → signal_1d = "NEUTRAL", signal_1d_rate_limited = True, logger "1D exception: {e}", continuer sans bloquer.
-  - Si l'appel réussit (pas d'erreur) → signal_1d_rate_limited = False.
-  - Stocker signal_1d_rate_limited dans analysis_results[coin] pour que Phase 3 puisse détecter le mode dégradé.
-  - Ne jamais propager l'erreur 1D vers Telegram ni interrompre le cycle.
-  - IMPORTANT scoring : signal_1d = "NEUTRAL" (rate limit) ≠ signal bearish. En Phase 3, ce NEUTRAL donne 0 pts (les +2 ne sont pas comptabilisés) mais aucun malus n'est appliqué. Ne pas assigner skip_type = TYPE_C pour cette raison.
+  Gestion d'erreur 1D (OBLIGATOIRE) :
+  - Si un appel lève une exception ou retourne une erreur → signal_1d = "NEUTRAL", signal_1d_rate_limited = True
+  - Logger "1D indisponible (rate limit ou erreur)", continuer sans bloquer
+  - Stocker signal_1d_rate_limited dans analysis_results[coin] pour Phase 3
+  - Ne jamais interrompre le cycle pour une erreur 1D
+  - IMPORTANT : signal_1d = "NEUTRAL" (rate limit) ≠ signal bearish. En Phase 3, ce NEUTRAL donne 0 pts mais aucun malus.
 
   Attends que tous les appels 4h ET 1D du groupe soient terminés avant de passer au groupe suivant.
 
@@ -409,10 +428,10 @@ Pour chaque coin, calcule un score sur 10 :
 | Signal TradingView 1d = BUY/STRONG_BUY | +2 |
 | RSI 4h entre 30 et 55 (zone d'entrée optimale) | +1 |
 | MACD bullish cross sur 4h | +1 |
-| Coin dans volume_breakout_scanner | +1 |
-| ADX 4h > min_adx (20) | +1 |
+| Volatilité 4h stable (ATR < 5% du prix) | +1 |
 | Sentiment marché haussier (BULL) | +1 |
-| Coin dans top_gainers avec momentum positif | +1 |
+| Variation 24h positive (priceChangePercent > 0) | +1 |
+| Volume 24h > 30M USDC (liquidité forte) | +1 |
 
 DÉCISION par coin :
 - Score >= effective_min_score ET signal_4h = BUY ou STRONG_BUY → BUY CANDIDATE
