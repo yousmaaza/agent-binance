@@ -7,7 +7,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 
-from config.llm import CLAUDE_CLI_FLAGS
+from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
 from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, get_cycle_phases_log_path
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
