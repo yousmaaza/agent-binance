@@ -10,6 +10,74 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-14 — Récap quotidien
+
+### PR mergées (2)
+
+#### #231 — chore: consolidation [REC] AUTO — 2026-06-14
+
+- **Branche** : `feat/consolidate-rec-20260614_191332`
+- **Mergée à** : 19:18 (Europe/Paris)
+- **Volume** : n/a (consolidation de PRs #226, #227, #230)
+- **Issues fermées** : #156, #172, #228
+- **Quoi** : consolidation de trois PRs [REC] générées automatiquement, regroupant un refactoring architectural majeur : extraction du monolithe `webhook_server.py` en modules spécialisés (`orchestration/`, `core/`, `commands/`, `storage/`, `botlogging/`), externalisation du `TRADE_PROMPT` dans `prompts/trade_prompt.txt`, et injection dynamique des helpers via `tempfile.mkstemp()`. Cette PR semble également avoir clos des tickets pendants anciens — #156 (clarification CYCLE_ID dans le prompt, ouvert le 28 mai) et #172 (blacklist auto USDC, ouvert le 29 mai) — via la PR #230 intégrée.
+- **Pourquoi c'est intéressant pour Medium** : c'est le type de PR qui illustre la différence entre un refactoring "humain" (planifié, discuté) et un refactoring "émergent" (déclenché par des reviews automatiques qui accumulent de la dette puis la liquident en une consolidation). Trois PRs [REC] générées par CI, fusionnées en une seule merge.
+- **Doc tech** : [docs/technique/pr-231-consolidation-rec-auto.md](../technique/pr-231-consolidation-rec-auto.md)
+
+---
+
+#### #234 — [M232] Fix outils MCP TradingView — restaurer atilaahmettaner
+
+- **Branche** : `feat/issue-232-fix-tradingview-mcp-tools-v2`
+- **Mergée à** : 21:28 (Europe/Paris)
+- **Volume** : n/a (modifications dans `.mcp.json` et `prompts/trade_prompt.txt`)
+- **Issues fermées** : #232
+- **Quoi** : le `TRADE_PROMPT` référençait les outils MCP du mauvais serveur TradingView. Le serveur configuré était `tradesdontlie` (nécessite l'application desktop via CDP), alors que le serveur déployé est `atilaahmettaner` (API publique). En Phase 1, `quote_get` est remplacé par trois appels : `top_gainers`, `volume_breakout_scanner`, `market_sentiment`. En Phase 2, la séquence `chart_set_symbol + chart_set_timeframe + data_get_study_values + data_get_ohlcv` est remplacée par deux appels `coin_analysis` par coin (4h + optionnellement 1D). En Phase 3, les critères "variation 24h > 3%" et "ADX > 20" — qui dépendaient de données non disponibles via `atilaahmettaner` — sont remplacés par `+1 si top_gainers` et `+1 si volume_breakout_scanner`. La configuration `.mcp.json` est également corrigée pour pointer vers `uvx --from tradingview-mcp-server tradingview-mcp`.
+- **Pourquoi c'est intéressant pour Medium** : ce bug illustre une classe d'erreur spécifique aux projets LLM + MCP : l'agent s'adapte à la volée à l'absence des outils (génère du bruit dans les logs, ralentit les cycles) sans jamais planter clairement — le cycle "fonctionne" mais pas avec les données attendues. La PR #228 (la PR [REC] qui a diagnostiqué le problème) a été créée aujourd'hui même à 17h08, et la correction (PR #234) était mergée à 21:28 — un aller-retour diagnostic → fix → merge en 4h20 sur un problème de configuration silencieux.
+- **Doc tech** : [docs/technique/pr-234-fix-tradingview-mcp-tools-v2.md](../technique/pr-234-fix-tradingview-mcp-tools-v2.md)
+
+---
+
+### Issues fermées (4)
+
+- **#232** — [BUG] TRADE_PROMPT utilise les outils MCP du mauvais serveur TradingView — fermée par PR #234 — [lien](https://github.com/yousmaaza/agent-binance/issues/232)
+- **#228** — [BUG] TRADE_PROMPT référence 4 outils MCP TradingView inexistants — fermée par PR #231 — [lien](https://github.com/yousmaaza/agent-binance/issues/228)
+- **#172** — [AMÉLIORATION] Blacklist auto-mise à jour des coins sans paire USDC — fermée par PR #231 — [lien](https://github.com/yousmaaza/agent-binance/issues/172)
+- **#156** — [REC] Clarifier la notation CYCLE_ID et les phases dans TRADE_PROMPT — fermée par PR #231 — [lien](https://github.com/yousmaaza/agent-binance/issues/156)
+
+---
+
+### Nouveaux tickets (2)
+
+- **#232** — [BUG] TRADE_PROMPT utilise les outils MCP du mauvais serveur TradingView — `bug`, `AUTO` — auteur yousmaaza *(créé à 19:22, fermé à 21:28 le même jour)*
+- **#228** — [BUG] TRADE_PROMPT référence 4 outils MCP TradingView inexistants — `bug`, `AUTO` — auteur yousmaaza *(créé à 17:08, fermé à 17:18 par PR #231)*
+
+Note : les deux tickets sont de nature utilisateur (pas [REC]). Le #228 avait diagnostiqué la mauvaise couche (les outils inexistants dans le mauvais sens), le #232 a reposé le diagnostic correctement après identification du vrai serveur cible (`atilaahmettaner` vs `tradesdontlie`).
+
+---
+
+### Matériel disponible pour illustrer
+
+- **`.mcp.json` avant/après** : `git show <sha> -- .mcp.json` — la diff est minimale (1 entrée JSON) mais l'impact est structurant pour tous les cycles.
+- **`prompts/trade_prompt.txt` diff PR #234** : lignes 329–482, remplacement des trois séquences d'appels MCP. Bon exemple concret de ce que ça change d'un serveur MCP à l'autre en termes d'interface.
+- **Issue #232 complète** : tableau des 4 outils disponibles avec signatures exactes — bon format d'illustration pour un article sur le "contrat d'interface MCP".
+- **Issue #228 complète** : le diagnostic inverse — liste des outils que le prompt appelait en pensant les trouver, avec les vraies commandes disponibles. Bon matériel pour montrer la confusion entre deux serveurs de même nom de domaine.
+- **Timeline du jour** : #228 créée 17:08 → PR #231 mergée 17:18 (ferme #228) → #232 créée 19:22 → PR #234 mergée 21:28. La résolution complète du problème MCP s'est faite en 4h20, avec deux passes de diagnostic successives.
+
+---
+
+### Idée d'angle Medium
+
+**"Deux serveurs MCP, même nom, interface incompatible — le bug silencieux des agents adaptatifs"**
+
+La journée du 14 juin expose une classe de bug propre à l'IA agentique : le `TRADE_PROMPT` appelait des outils qui n'existaient pas. Mais l'agent ne plantait pas — il s'adaptait en silence, réinventait ses propres heuristiques, et continuait le cycle avec des données dégradées. Ce n'est pas un crash, c'est une dérive silencieuse. Le problème sous-jacent : deux serveurs MCP TradingView (tradesdontlie et atilaahmettaner) ont des interfaces radicalement différentes mais partagent le même namespace dans le prompt. Angle narratif : la robustesse d'un agent (continuer malgré les erreurs) peut masquer des incohérences structurelles qu'un crash aurait immédiatement révélées. Et quand le contrat MCP change, qui détecte la rupture ?
+
+**Angle secondaire — "Deux diagnostics pour un bug : quand la première PR rate la cause"**
+
+Le ticket #228 avait bien identifié que le prompt appelait des outils inexistants, mais dans le mauvais sens — il proposait de réécrire le prompt pour appeler les outils `quote_get` du serveur `tradesdontlie`. La PR #231 avait fermé ce ticket dans le batch du matin. Une heure plus tard, le ticket #232 reposait le diagnostic dans l'autre sens : c'est le serveur configuré qui était faux, pas les appels dans le prompt. Court article sur la valeur du "deuxième diagnostic" dans les projets complexes — et sur la différence entre corriger un symptôme et identifier la cause racine quand les deux lectures sont plausibles.
+
+---
+
 ## 2026-06-13 — Récap quotidien
 
 ### PR mergées (3)
