@@ -24,6 +24,8 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#234](pr-234-fix-tradingview-mcp-tools-v2.md) | [M232] Fix outils MCP TradingView — restaurer atilaahmettaner | 2026-06-14 |
+| [#231](pr-231-consolidation-rec-auto.md) | [CONSOLIDATION MAJEURE] Refactoring v2 — modularisation + extraction TRADE_PROMPT + agents CI/CD | 2026-06-14 |
 | [#201](pr-201-enrichir-claude-md.md) | Enrichir CLAUDE.md avec principes généraux de développement | 2026-06-03 |
 | [#194](pr-194-phase-2-1d-rate-limit-handling.md) | Phase 2 : sleep 15s post-batch 4h + gestion erreur 1D silencieuse | 2026-05-31 |
 | [#187](pr-187-consolidate-helpers-security-recs.md) | [CONSOLIDÉ] Helpers partagés par cycle + sécurité + recommandations tech lead | 2026-05-30 |
