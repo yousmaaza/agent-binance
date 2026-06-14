@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-06-14 (PR #231)
+> **Dernière mise à jour** : 2026-06-14 (PR #234)
 > **Commit** : <current>
 
 ---
@@ -275,6 +275,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#234](pr-234-fix-tradingview-mcp-tools-v2.md) | 2026-06-14 | MCP TradingView : remplace outils tradesdontlie inexistants par atilaahmettaner (top_gainers, volume_breakout_scanner, market_sentiment, coin_analysis) — Phase 1 screeners + Phase 2 multi-timeframe + Phase 3 scoring mis à jour |
 | [#201](pr-201-enrichir-claude-md.md) | 2026-06-03 | Documentation : ajout section « Principes généraux de développement » (Think/Simplicity/Surgical) dans CLAUDE.md |
 | Initial release | 2025-xx-xx | Architecture polling-only v1, scripts shell legacy |
 | v2 — 790b83a | 2025-xx-xx | Ajout capture raisonnement : loguru + MongoDB + commande `/raisonnement` |
