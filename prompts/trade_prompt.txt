@@ -335,10 +335,28 @@ Construis l'univers de candidats :
 4. Limiter à universe_scan_top_n (20) coins au total
 5. Exclure les stablecoins (USDT, BUSD, FDUSD, etc.)
 
-Vérification de tradabilité USDC — pour chaque coin candidat, exécute :
-binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
-- Si le prix est retourné ET le volume 24h >= 5M USDC → marquer ✓ (tradable)
-- Si la commande échoue ou le symbole est introuvable → marquer ✗ (non tradable)
+**BLACKLIST USDC** — Logique de chargement et de vérification :
+```python
+config = _load_config()
+usdc_blacklist = config.get("usdc_blacklist", [])
+blacklisted_coins = set()
+```
+Pour chaque coin déjà blacklisté (dans usdc_blacklist), marquer comme ✗ (non tradable) avec motif "coin en blacklist (pas de paire USDC connue)" — aucun appel binance-cli pour ces coins. Stocker dans blacklisted_coins set pour éviter les appels réseau ultérieurs.
+
+Vérification de tradabilité USDC — pour chaque coin candidat NON blacklisté, exécute :
+```python
+try:
+    ticker = binance("spot", "ticker-price", "--symbol", f"{COIN}USDC", "--profile", "agent-profile")
+    # Si le prix est retourné ET le volume 24h >= 5M USDC → marquer ✓ (tradable)
+except ValueError:  # "Invalid symbol" levé par la fonction binance() si "Invalid symbol" dans stdout
+    # Paire non trouvée → marquer ✗ (non tradable) ET ajouter à blacklist
+    if COIN not in usdc_blacklist:
+        config = _load_config()
+        config.setdefault("usdc_blacklist", []).append(COIN)
+        _save_config_atomic(config)
+        usdc_blacklist.append(COIN)
+```
+- Si volume 24h < 5M USDC (détecté via ticker24hr) → marquer ✗ (non tradable) mais NE PAS ajouter à blacklist (c'est une condition temporaire)
 
 Filtre définitif : éliminer immédiatement les coins marqués ✗ (paire USDC introuvable ou volume insuffisant). Ces coins ne doivent PAS être inclus dans l'univers final transmis à la Phase 2. Seuls les coins avec ✓ passent à la suite. Cette vérification se fait ici en Phase 1, avant tout appel TradingView, pour éviter d'analyser en vain des coins non tradables sur Binance (ex : STEEM, PEOPLE, etc.).
 
