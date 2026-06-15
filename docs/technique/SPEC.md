@@ -241,7 +241,7 @@ webhook_server.py (process principal)
 | `order_type` | `"LIMIT"` | Type d'ordre d'entrée (ordre working de l'OTOCO) |
 | `limit_offset_pct` | `0.005` | Décalage du prix limite par rapport au prix actuel (−0.5%) |
 | `min_order_usdc` | `11` | Montant minimum d'un ordre en USDC (contrainte Binance) |
-| `max_single_position_pct` | `0.35` | Part maximale du budget allouable à une seule position (35%) |
+| `max_single_position_pct` | `0.65` | Part maximale du budget allouable à une seule position (65%) |
 | `price_deviation_max_pct` | `0.02` | Drift maximum toléré entre pré-calcul et exécution (2%) — sinon ordre annulé |
 | `approval_timeout_minutes` | `30` | Timeout (minutes) pour une confirmation utilisateur via inline keyboard (legacy) |
 | `risk_per_trade_pct` | `0.01` | Risque fixe par trade en % du portefeuille total (1%) |
@@ -275,6 +275,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#235](pr-235-augmente-max-single-position.md) | 2026-06-15 | Configuration : augmente `max_single_position_pct` de 0.40 à 0.65 pour permettre des ordres au seuil minimum sur portefeuilles en drawdown |
 | [#234](pr-234-fix-tradingview-mcp-tools-v2.md) | 2026-06-14 | MCP TradingView : remplace outils tradesdontlie inexistants par atilaahmettaner (top_gainers, volume_breakout_scanner, market_sentiment, coin_analysis) — Phase 1 screeners + Phase 2 multi-timeframe + Phase 3 scoring mis à jour |
 | [#201](pr-201-enrichir-claude-md.md) | 2026-06-03 | Documentation : ajout section « Principes généraux de développement » (Think/Simplicity/Surgical) dans CLAUDE.md |
 | Initial release | 2025-xx-xx | Architecture polling-only v1, scripts shell legacy |
