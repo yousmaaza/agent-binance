@@ -46,3 +46,4 @@
 {"date": "2026-06-15T12:12:13Z", "cycle_id": "20260615_120500", "top_score": 5, "executed": 0, "skipped": 2, "skip_type": "TYPE_A", "skip_detail": "Score 5/10 < seuil 6/10", "portfolio": 0.0, "sentiment": "Bullish", "open_positions": 3}
 {"date": "2026-06-15T17:28:01Z", "cycle_id": "20260615_171934", "top_score": 5, "executed": 0, "skipped": 2, "skip_type": "TYPE_B", "skip_detail": "Budget 0.00 USDC < seuil 11 USDC", "portfolio": 0.0, "sentiment": "Bullish", "open_positions": 0}
 {"date": "2026-06-15T17:47:54Z", "cycle_id": "20260615_174116", "top_score": 5, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 100.0, "sentiment": "Bullish", "open_positions": 0}
+{"date": "2026-06-15T20:13:29Z", "cycle_id": "20260615_200500", "top_score": 7, "executed": 1, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 100.0, "sentiment": "Bullish", "open_positions": 1}
