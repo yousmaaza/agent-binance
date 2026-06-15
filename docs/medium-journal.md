@@ -10,6 +10,72 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-15 — Récap quotidien
+
+### PR mergées (1)
+
+#### #235 — [M218] Augmente max_single_position_pct de 0.40 à 0.65
+
+- **Branche** : `feat/issue-218-config-max-single-position`
+- **Mergée à** : 22:29 (Europe/Paris)
+- **Volume** : 1 ligne modifiée (`config.json`)
+- **Issues fermées** : #218
+- **Quoi** : modification d'un seul paramètre de configuration — `max_single_position_pct` passe de `0.40` à `0.65`. L'issue #218 avait été créée le 12 juin par l'agent `analyse-config` (cron 20h UTC) après avoir détecté deux cycles TYPE_B consécutifs avec le même calcul bloquant : `17.24 USDC × 0.40 = 6.90 USDC < 11 USDC (seuil min_order_usdc)`. Avec la nouvelle valeur, le calcul donne `17.24 × 0.65 = 11.21 USDC`, juste au-dessus du seuil. Aucun changement de code applicatif — uniquement `config.json`.
+- **Pourquoi c'est intéressant pour Medium** : la PR illustre un cycle de décision complet — de la détection automatique (agent cron) au ticket structuré (#218 avec tableau de 4 cycles, calcul chiffré, conditions d'application, risques), jusqu'au correctif minimaliste (1 ligne) 3 jours plus tard. L'écart entre la date du diagnostic (12 juin) et la date du merge (15 juin) reflète le fait que les conditions d'application posées dans le ticket n'étaient pas encore réunies (capital insuffisant, positions ouvertes en perte).
+- **Doc tech** : [docs/technique/pr-235-augmente-max-single-position.md](../technique/pr-235-augmente-max-single-position.md)
+
+---
+
+### Issues fermées (1)
+
+- **#218** — [CONFIG] TYPE_B récurrent + drawdown -70% : `max_single_position_pct` trop restrictif avec capital résiduel faible — fermée par PR #235 — [lien](https://github.com/yousmaaza/agent-binance/issues/218)
+
+Ticket ouvert le 12 juin à 20:07 UTC par l'agent `analyse-config`. Il avait analysé 4 cycles sur 7 jours, identifié le calcul bloquant, et conditionné l'application du correctif à : BTC sentiment Bullish, top_score ≥ 6, portfolio > 50 USDC. Ces conditions n'étaient pas réunies le 12 juin (portfolio à 24.63 USDC, drawdown -70%). La PR a été ouverte et mergée le 15 juin, après rechargement du capital.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé aujourd'hui.
+
+---
+
+### Comportement du bot en production (5 cycles)
+
+| Heure UTC | Score | Décision | Skip detail | Portfolio | Open pos. |
+|---|---|---|---|---|---|
+| 08:05 | 5/10 | TYPE_A | Score < 6, signaux 1D tous Neutral | 0.02 USDC | 3 |
+| 12:05 | 5/10 | TYPE_A | Score 5/10 < seuil 6/10 | 0.00 USDC | 3 |
+| 17:19 | 5/10 | TYPE_B | Budget 0.00 USDC < seuil 11 | 0.00 USDC | 0 |
+| 17:41 | 5/10 | — | (pas de skip) | 100.00 USDC | 0 |
+| 20:05 | 7/10 | **BUY** ✅ | Premier exécuté | 100.00 USDC | 1 |
+| 20:37 | 7/10 | TYPE_A | WLD déjà en position, autres < 6/10 | 71.73 USDC | 1 |
+
+Les deux premiers cycles de la journée (08:05 et 12:05) tournaient avec 3 positions ouvertes en perte, portfolio quasi nul. Entre 12:05 et 17:19, les stop-losses ont été déclenchés (open_positions 3 → 0), mais le capital résiduel était à zéro. À 17:41, le portfolio est rechargé à 100 USDC (rechargement manuel probable). À 20:05 UTC — 24 minutes avant le merge de PR #235 — le bot exécute son premier BUY de la journée (top_score 7/10, sentiment Bullish). La PR #235 n'a donc pas déclenché ce premier BUY : c'est la remise à 100 USDC qui a débloqué la situation. La PR, elle, protège les prochains cycles contre un reblocage TYPE_B si le capital résiduel redescend autour de 17 USDC.
+
+---
+
+### Matériel disponible pour illustrer
+
+- **`state/cycle_log.jsonl`** : lignes `20260615_*` — les 5 cycles du jour avec progression portfolio (0.02 → 0 → 0 → 100 → 100 → 71.73), bon visualiseur de la journée.
+- **Issue #218 complète** : tableau des 4 cycles analysés le 12 juin avec le calcul bloquant `17.24 × 0.40 = 6.90` — tel quel, sans mise en forme, c'est le dossier brut produit par l'agent d'analyse.
+- **Diff PR #235** : 1 ligne changée dans `config.json` (`0.40` → `0.65`). Bon exemple de correctif minimaliste après un diagnostic long et structuré.
+- **Timeline du ticket** : #218 créée le 12 juin à 20:07 UTC → PR #235 ouverte le 15 juin à 20:25 UTC → mergée le 15 juin à 20:29 UTC. Le ticket a mis 3 jours à passer en PR — non pas par oubli, mais parce que les conditions posées dans le ticket lui-même n'étaient pas réunies plus tôt.
+
+---
+
+### Idée d'angle Medium
+
+**"Le ticket qui pose ses propres conditions de résolution"**
+
+L'issue #218, générée automatiquement le 12 juin, ne dit pas juste "change ce paramètre". Elle liste les conditions précises sous lesquelles appliquer le changement : sentiment Bullish, score ≥ 6, portfolio > 50 USDC. Ces conditions n'étaient pas réunies le 12 juin — le portfolio était à 24.63 USDC, drawdown -70%. La PR n'a été mergée que le 15 juin, après rechargement du capital. Article sur une idée contre-intuitive : un ticket bien rédigé peut contenir sa propre condition de blocage. Quand un agent formule des prérequis d'application, il crée une gate qui empêche l'automatisation aveugle. Le correctif attend le bon contexte plutôt que d'être appliqué immédiatement.
+
+**Angle secondaire — "La journée en creux : 5 cycles, 0 achats avant 22h, 1 vrai BUY"**
+
+La journée du 15 juin est d'abord une journée de liquidation (stop-losses à la chaîne) et de rechargement. Les 3 premiers cycles du jour tournent avec un portfolio à quasi zéro et des positions bloquées. Ce n'est qu'après que le compte repasse à 100 USDC que le bot retrouve sa capacité d'action — et exécute un BUY à 22h05 (Europe/Paris), 24 minutes avant que la PR censée débloquer ses TYPE_B futurs soit mergée. Court article sur la différence entre un bug structurel (le paramètre trop restrictif) et un problème conjoncturel (capital insuffisant) : les deux se ressemblent en surface (le bot ne trade pas), mais les correctifs sont orthogonaux.
+
+---
+
 ## 2026-06-14 — Récap quotidien
 
 ### PR mergées (2)
