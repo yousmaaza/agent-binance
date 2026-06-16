@@ -48,3 +48,4 @@
 {"date": "2026-06-15T17:47:54Z", "cycle_id": "20260615_174116", "top_score": 5, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 100.0, "sentiment": "Bullish", "open_positions": 0}
 {"date": "2026-06-15T20:13:29Z", "cycle_id": "20260615_200500", "top_score": 7, "executed": 1, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 100.0, "sentiment": "Bullish", "open_positions": 1}
 {"date": "2026-06-15T20:37:52Z", "cycle_id": "20260615_203111", "top_score": 7, "executed": 0, "skipped": 5, "skip_type": "TYPE_A", "skip_detail": "Meilleur candidat WLD filtr\u00e9 (position ouverte). Autres coins score < 6/10", "portfolio": 71.72942022, "sentiment": "Bullish", "open_positions": 1}
+{"date": "2026-06-16T00:12:10Z", "cycle_id": "20260616_000508", "top_score": 4, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 71.73439662, "sentiment": "Neutral", "open_positions": 1}
