@@ -59,3 +59,4 @@
 {"date": "2026-06-17T20:13:42Z", "cycle_id": "20260617_200502", "top_score": 4, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 71.78581453, "sentiment": "Bearish", "open_positions": 1}
 {"date": "2026-06-18T00:10:26Z", "cycle_id": "20260618_000500", "top_score": 2, "executed": 0, "skipped": 0, "skip_type": "TYPE_A", "skip_detail": "Aucun signal BUY (tous SELL/NEUTRAL en 4h), sentiment Bearish", "portfolio": 71.78581453, "sentiment": "Bearish", "open_positions": 1}
 {"date": "2026-06-18T04:13:45Z", "cycle_id": "20260618_040503", "top_score": 6, "executed": 1, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 102.25979453, "sentiment": "Bearish", "open_positions": 2}
+{"date": "2026-06-18T08:14:12Z", "cycle_id": "20260618_080503", "top_score": 4, "executed": 1, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 42.62789456, "sentiment": "Bearish", "open_positions": 2}
