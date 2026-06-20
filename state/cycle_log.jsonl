@@ -71,3 +71,4 @@
 {"date": "2026-06-19T20:11:05Z", "cycle_id": "20260619_200504", "top_score": 2, "executed": 0, "skipped": 0, "skip_type": "TYPE_C", "skip_detail": "Sentiment Bearish, aucun signal >= 6/10 (meilleur score: 2/10)", "portfolio": 70.39863413, "sentiment": "Bearish", "open_positions": 0}
 {"date": "2026-06-20T00:12:40Z", "cycle_id": "20260620_000500", "top_score": 2, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 70.4, "sentiment": "Neutral", "open_positions": 0}
 {"date": "2026-06-20T04:10:51Z", "cycle_id": "20260620_040503", "top_score": 4, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 70.39863413, "sentiment": "Bullish", "open_positions": 0}
+{"date": "2026-06-20T08:15:25Z", "cycle_id": "20260620_080508", "top_score": 6, "executed": 1, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 70.42988587, "sentiment": "Bullish", "open_positions": 1}
