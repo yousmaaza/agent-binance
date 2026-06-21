@@ -10,6 +10,31 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-21
+
+### PRs mergées
+
+Aucune PR mergée aujourd'hui.
+
+### Issues fermées
+
+Aucune issue fermée aujourd'hui.
+
+### Nouveaux tickets
+
+- **#236 — [CONFIG] min_order_usdc trop élevé pour le portfolio actuel — 4 TYPE_B en 7 jours** [enhancement · M] : l'agent `analyse-config` (cron 20h UTC) a détecté 4 cycles TYPE_B en 7 jours causés par le même calcul bloquant — avec un portfolio de 30 à 36 USDC et `risk_per_trade_pct = 0.02`, le sizing ATR génère des positions de 8 à 11 USDC, juste sous le seuil actuel de 11 USDC. Il recommande d'abaisser `min_order_usdc` de 11 à 9 USDC (ou 10 USDC en version conservatrice), sous condition que le portfolio soit stable à ≥ 25 USDC et que le minimum notional Binance soit vérifié manuellement sur les paires concernées (BTCUSDC, SOLUSDC).
+
+### Matériel pour Medium
+
+> Angle possible : "Quand le seuil minimum d'ordre devient le plafond de verre du bot" — le ticket #236 illustre une tension précise entre la contrainte Binance (minimum notional ~10 USDC) et la mécanique de risk management par ATR : avec un capital résiduel de 30-36 USDC, le bot génère des signaux valides (score 6, sentiment Bullish) mais ne peut pas les exécuter parce qu'il se censure lui-même via un paramètre de configuration. Un article sur la calibration fine des seuils dans un bot à faible capital — comment un seul entier dans `config.json` change la fréquence d'exécution réelle du bot.
+
+### Chiffres du jour
+- PRs mergées : 0
+- Issues fermées : 0
+- Tickets ouverts : 1
+
+---
+
 ## 2026-06-15 — Récap quotidien
 
 ### PR mergées (1)
