@@ -177,17 +177,24 @@ jobs:
             Lis d'abord la review :
             `cat /tmp/review_comment.md`
 
-            Puis :
-            1. Cherche TOUTES les sections de recommandations — elles peuvent s'appeler :
-               - `### ⚠️ Points d'attention`
-               - `### ⚠️ À simplifier / à clarifier`
-               - `### 💡 Pour aller plus loin`
-               - Toute section marquée "(non bloquant)" ou similaire
-               Si aucune recommandation trouvée (sections vides ou "RAS") → poste :
-               `gh pr comment $PR_NUMBER --repo $REPO --body "✅ Aucune recommandation — pas de ticket [REC] à créer."`
-               et STOP.
+            RÈGLE ABSOLUE : Tu dois créer UN ticket [REC] pour CHAQUE item numéroté
+            (1., 2., 3., ...) trouvé dans les sections suivantes, PEU IMPORTE si
+            l'item semble optionnel, mineur, conditionnel ou facultatif.
+            Ne juge PAS l'importance. Chaque item numéroté = un ticket.
 
-            2. Pour chaque recommandation identifiée, crée une issue GitHub :
+            Sections cibles (cherche ces titres exacts) :
+            - `### ⚠️ Points d'attention`
+            - `### ⚠️ À simplifier / à clarifier`
+            - `### 💡 Pour aller plus loin`
+            - Toute section avec ⚠️ ou 💡
+
+            Seul cas valide pour ne PAS créer de ticket : la section contient
+            uniquement "RAS" ou est complètement vide (aucun item numéroté).
+            Dans ce cas seulement → poste :
+            `gh pr comment $PR_NUMBER --repo $REPO --body "✅ Aucune recommandation — pas de ticket [REC] à créer."`
+            et STOP.
+
+            2. Pour chaque item numéroté identifié, crée une issue GitHub :
                ```bash
                gh issue create \
                  --repo $REPO \
