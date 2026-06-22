@@ -68,7 +68,7 @@ def main_loop():
 
     send_telegram(
         f"🤖 Bot v2 démarré (workflow test 2026-05-28)\n"
-        f"Commandes : /trade /status /perf /raisonnement /cout /eval /reset\n"
+        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /reset\n"
         f"⏰ Prochain cycle auto : {fmt_next()}",
         parse_mode=None,
     )
@@ -139,12 +139,19 @@ def main_loop():
                         target=lambda: send_telegram(run_eval(), parse_mode="HTML"),
                         daemon=True,
                     ).start()
+                elif text.startswith("/calibrage"):
+                    send_telegram("⚙️ Calibrage des positions en cours...")
+                    threading.Thread(
+                        target=run_position_check_workflow,
+                        kwargs={"trigger": "manual"},
+                        daemon=True,
+                    ).start()
                 elif text.startswith("/reset"):
                     release_lock()
                     send_telegram(f"🔓 Lock réinitialisé.\n⏰ Prochain cycle auto : {fmt_next()}")
                 elif text:
                     send_telegram(
-                        f"Commandes : /trade /status /perf /raisonnement /cout /eval /reset\n"
+                        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /reset\n"
                         f"⏰ Prochain cycle : {fmt_next()}"
                     )
 
