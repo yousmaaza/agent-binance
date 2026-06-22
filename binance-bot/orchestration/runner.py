@@ -104,6 +104,8 @@ def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None
     l'heure du prochain cycle position. Si absent, on affiche '--'.
     """
     if is_locked():
+        # Position check is background/automatic; skip silently if a trade cycle is running.
+        # Avoids notification spam. Next hourly check will proceed when lock is released.
         return
 
     acquire_lock()
