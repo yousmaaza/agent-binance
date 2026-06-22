@@ -11,6 +11,14 @@ on:
         description: "node_id de l'item Projects V2 (pour basculer en In review)"
         required: false
         type: string
+      target_branch:
+        description: "Branche cible existante (REC-AUTO uniquement — si vide, crée une nouvelle branche)"
+        required: false
+        type: string
+      pr_number:
+        description: "Numéro de la PR ouverte à référencer (REC-AUTO uniquement)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -24,11 +32,11 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout main
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: main
+          ref: ${{ inputs.target_branch != '' && inputs.target_branch || 'main' }}
           token: ${{ secrets.GH_PAT }}
 
       - name: Set up Python 3.11
@@ -36,22 +44,31 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Fetch issue title and check AUTO label
+      - name: Fetch issue title and check label
         id: issue
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           ISSUE_NUMBER: ${{ inputs.issue_number }}
         run: |
-          RESULT=$(gh issue view "$ISSUE_NUMBER" --repo "${{ github.repository }}" --json title,labels)
+          RESULT=$(gh issue view "$ISSUE_NUMBER" --repo "${{ github.repository }}" --json title,labels,state)
           TITLE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['title'])")
-          HAS_AUTO=$(echo "$RESULT" | python3 -c "import sys,json; labels=[l['name'] for l in json.load(sys.stdin)['labels']]; print('true' if 'AUTO' in labels else 'false')")
+          STATE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['state'])")
+          HAS_VALID=$(echo "$RESULT" | python3 -c "
+          import sys,json
+          labels=[l['name'] for l in json.load(sys.stdin)['labels']]
+          print('true' if 'AUTO' in labels or 'REC-AUTO' in labels else 'false')
+          ")
 
           echo "title=$TITLE" >> $GITHUB_OUTPUT
-          echo "Issue : #$ISSUE_NUMBER — $TITLE (AUTO=$HAS_AUTO)"
+          echo "Issue : #$ISSUE_NUMBER — $TITLE (valid=$HAS_VALID, state=$STATE)"
 
-          if [ "$HAS_AUTO" != "true" ]; then
-            echo "❌ L'issue #$ISSUE_NUMBER n'a pas le label AUTO — workflow annulé."
+          if [ "$HAS_VALID" != "true" ]; then
+            echo "❌ L'issue #$ISSUE_NUMBER n'a pas le label AUTO ni REC-AUTO — workflow annulé."
             exit 1
+          fi
+          if [ "$STATE" == "CLOSED" ]; then
+            echo "⏭️ L'issue #$ISSUE_NUMBER est déjà fermée — workflow annulé."
+            exit 0
           fi
 
       - name: Run binance-dev agent
@@ -61,6 +78,8 @@ jobs:
           ISSUE_NUMBER: ${{ inputs.issue_number }}
           ISSUE_TITLE: ${{ steps.issue.outputs.title }}
           ITEM_NODE_ID: ${{ inputs.item_node_id }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GH_PAT }}
@@ -79,14 +98,22 @@ jobs:
             - Pas de `binance-cli` en CI — pour le syntax check, utilise uniquement :
               `python3 -c "import ast; ast.parse(open('scripts/webhook_server.py').read())"`
 
+            ${{ inputs.target_branch != '' && format('MODE REC-AUTO — branche existante : {0}
+            Tu es sur la branche `{0}` (déjà checkoutée). NE crée PAS de nouvelle branche.
+            Implémente directement sur cette branche et push.
+            Référence la PR #${{ inputs.pr_number }} et l issue $ISSUE_NUMBER dans ton commit.
+            NE crée PAS de nouvelle PR — les changements vont sur la PR #${{ inputs.pr_number }} existante.
+            Après le push, ferme l issue avec : gh issue close $ISSUE_NUMBER --repo ${{ github.repository }} --comment "Implémenté sur la PR #${{ inputs.pr_number }}"', inputs.target_branch) || format('MODE AUTO — nouvelle branche
+            Crée la branche `feat/issue-{0}-<slug>` depuis main.', inputs.issue_number) }}
+
             Étapes :
             1. Lis `.claude/agents/binance-dev.md` en entier.
             2. Lis l'issue : `gh issue view $ISSUE_NUMBER --repo ${{ github.repository }}`
-            3. Lis `CLAUDE.md` et `scripts/webhook_server.py` en entier.
-            4. Crée la branche `feat/issue-$ISSUE_NUMBER-<slug>` depuis main.
-            5. Implémente le ticket (uniquement `scripts/webhook_server.py` et/ou `config.json`).
-            6. Vérifie la syntaxe Python.
-            7. Commit + push + ouvre une PR liée à l'issue #$ISSUE_NUMBER.
+            3. Lis `CLAUDE.md` et les fichiers concernés par le ticket.
+            4. Implémente le ticket.
+            5. Vérifie la syntaxe Python si des fichiers `.py` ont été modifiés.
+            6. Configure git, commit et push.
+            7. Si MODE AUTO : ouvre une PR liée à l'issue #${{ inputs.issue_number }}.
             8. Si $ITEM_NODE_ID est non vide, bascule le ticket en "In review" via GraphQL :
                ```bash
                curl -s -X POST https://api.github.com/graphql \

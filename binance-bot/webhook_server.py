@@ -20,24 +20,40 @@ from commands.status import run_status
 from core.lock import release_lock
 from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
-from core.timing import fmt_local, next_4h_slot
-from orchestration.runner import run_trade_workflow
+from core.timing import fmt_local, next_4h_slot, next_1h_slot
+from orchestration.runner import run_trade_workflow, run_position_check_workflow
 
 NEXT_AUTO_TRADE = None
+NEXT_AUTO_POSITION = None
 
 
 def fmt_next() -> str:
     return fmt_local(NEXT_AUTO_TRADE) if NEXT_AUTO_TRADE else "–"
 
 
+def _check_and_run_scheduled(next_time, slot_fn, workflow_fn, label, fmt_next_fn):
+    """Vérifie et exécute un scheduler si c'est l'heure. Retourne le prochain slot."""
+    if next_time and datetime.now(timezone.utc) >= next_time:
+        next_slot = slot_fn()
+        logger.info(f"[Scheduler] {label} → prochain slot {fmt_next_fn(next_slot)}")
+        threading.Thread(
+            target=workflow_fn,
+            kwargs={"trigger": "auto", "fmt_next_fn": lambda ns=next_slot: fmt_next_fn(ns)},
+            daemon=True,
+        ).start()
+        return next_slot
+    return next_time
+
+
 def main_loop():
-    global NEXT_AUTO_TRADE
+    global NEXT_AUTO_TRADE, NEXT_AUTO_POSITION
 
     tg_post("deleteWebhook", {})
     NEXT_AUTO_TRADE = next_4h_slot()
+    NEXT_AUTO_POSITION = next_1h_slot()
     offset = get_offset()
 
-    from core.env import TRADE_PROMPT  # noqa: F401 — vérifie que le prompt est bien chargé
+    from core.env import TRADE_PROMPT, POSITION_PROMPT  # noqa: F401 — vérifie que les prompts sont bien chargés
 
     is_valid, error = validate_and_repair_boot()
     if not is_valid:
@@ -52,21 +68,19 @@ def main_loop():
 
     send_telegram(
         f"🤖 Bot v2 démarré (workflow test 2026-05-28)\n"
-        f"Commandes : /trade /status /perf /raisonnement /cout /eval /reset\n"
+        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /reset\n"
         f"⏰ Prochain cycle auto : {fmt_next()}",
         parse_mode=None,
     )
 
     while True:
         try:
-            if NEXT_AUTO_TRADE and datetime.now(timezone.utc) >= NEXT_AUTO_TRADE:
-                NEXT_AUTO_TRADE = next_4h_slot()
-                logger.info(f"[Scheduler] Auto-trade → prochain slot {fmt_next()}")
-                threading.Thread(
-                    target=run_trade_workflow,
-                    kwargs={"trigger": "auto", "fmt_next_fn": fmt_next},
-                    daemon=True,
-                ).start()
+            NEXT_AUTO_POSITION = _check_and_run_scheduled(
+                NEXT_AUTO_POSITION, next_1h_slot, run_position_check_workflow, "Auto-position", fmt_local
+            )
+            NEXT_AUTO_TRADE = _check_and_run_scheduled(
+                NEXT_AUTO_TRADE, next_4h_slot, run_trade_workflow, "Auto-trade", fmt_local
+            )
 
             data = tg_post("getUpdates", {
                 "offset": offset,
@@ -125,12 +139,19 @@ def main_loop():
                         target=lambda: send_telegram(run_eval(), parse_mode="HTML"),
                         daemon=True,
                     ).start()
+                elif text.startswith("/calibrage"):
+                    send_telegram("⚙️ Calibrage des positions en cours...")
+                    threading.Thread(
+                        target=run_position_check_workflow,
+                        kwargs={"trigger": "manual"},
+                        daemon=True,
+                    ).start()
                 elif text.startswith("/reset"):
                     release_lock()
                     send_telegram(f"🔓 Lock réinitialisé.\n⏰ Prochain cycle auto : {fmt_next()}")
                 elif text:
                     send_telegram(
-                        f"Commandes : /trade /status /perf /raisonnement /cout /eval /reset\n"
+                        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /reset\n"
                         f"⏰ Prochain cycle : {fmt_next()}"
                     )
 
