@@ -35,63 +35,125 @@ for entry in trade_history.get("entries", []):
         positions.append(entry)
 ```
 
-### 2. Récupère les ordres actifs et prix actuels
+### 2. Récupère les ordres actifs (bot + manuels) et prix actuels
 ```python
-open_orders_json = binance("open-orders")
-open_orders = json.loads(open_orders_json)
-
-current_prices = {}
+# Ordres bot (de trade_history.json)
+open_orders_bot = {}
 for pos in positions:
     coin = pos["symbol"].replace("USDC", "")
-    price_json = binance("get-price", coin, "USDC")
-    price_data = json.loads(price_json)
-    current_prices[coin] = float(price_data.get("price", 0))
+    open_orders_bot[coin] = pos
+
+# Ordres manuels (OCO via binance-cli)
+open_orders_manual_json = binance("spot", "open-orders", "--profile", "agent-profile")
+open_orders_manual_raw = json.loads(open_orders_manual_json) if open_orders_manual_json else []
+
+manual_positions = {}
+for order_group in open_orders_manual_raw:
+    symbol = order_group.get("symbol", "")
+    if symbol.endswith("USDC"):
+        coin = symbol.replace("USDC", "")
+        manual_positions[coin] = order_group
+
+# Merge : tous les coins (bot + manuels)
+all_coins = set(open_orders_bot.keys()) | set(manual_positions.keys())
+
+# Récupère prix actuels pour tous les coins
+current_prices = {}
+for coin in all_coins:
+    try:
+        price_json = binance("get-price", coin, "USDC")
+        price_data = json.loads(price_json)
+        current_prices[coin] = float(price_data.get("price", 0))
+    except:
+        current_prices[coin] = 0
 ```
 
-### 3. Évalue chaque position
+### 3. Évalue chaque position (bot et manuelles)
 ```python
 actions = []
 now = datetime.now(timezone.utc)
 
-for pos in positions:
-    coin = pos["symbol"].replace("USDC", "")
-    entry_price = float(pos.get("entry_price", 0))
-    qty = float(pos.get("qty", 0))
+for coin in all_coins:
+    pos_bot = open_orders_bot.get(coin)
+    pos_manual = manual_positions.get(coin)
     current_price = current_prices.get(coin, 0)
-    entry_time_str = pos.get("entry_time", "")
 
-    if not current_price or not entry_price:
+    if not current_price:
         continue
 
-    pnl_pct = ((current_price - entry_price) / entry_price) * 100
+    # Positions bot : utilise entry_price et entry_time
+    if pos_bot:
+        entry_price = float(pos_bot.get("entry_price", 0))
+        qty = float(pos_bot.get("qty", 0))
+        entry_time_str = pos_bot.get("entry_time", "")
 
-    # Durée depuis l'entrée
-    try:
-        entry_time = datetime.fromisoformat(entry_time_str.replace("Z", "+00:00"))
-        hold_days = (now - entry_time).days
-    except:
-        hold_days = 0
+        if not entry_price:
+            continue
 
-    reason = None
+        pnl_pct = ((current_price - entry_price) / entry_price) * 100
 
-    # Critère 1: Profit seuil atteint
-    if pnl_pct >= min_profit_pct:
-        reason = f"Profit {pnl_pct:.2f}% >= seuil {min_profit_pct}%"
-        actions.append({"coin": coin, "qty": qty, "reason": reason})
+        # Durée depuis l'entrée
+        try:
+            entry_time = datetime.fromisoformat(entry_time_str.replace("Z", "+00:00"))
+            hold_days = (now - entry_time).days
+        except:
+            hold_days = 0
 
-    # Critère 2: Position en perte depuis max_hold_days
-    elif pnl_pct < 0 and hold_days >= max_hold_days:
-        reason = f"Perte {pnl_pct:.2f}%, durée {hold_days}j >= {max_hold_days}j"
-        actions.append({"coin": coin, "qty": qty, "reason": reason, "cut_loss": True})
+        # Critère 1: Profit seuil atteint
+        if pnl_pct >= min_profit_pct:
+            reason = f"Profit {pnl_pct:.2f}% >= seuil {min_profit_pct}% (bot)"
+            actions.append({"coin": coin, "qty": qty, "reason": reason, "source": "bot"})
+
+        # Critère 2: Position en perte depuis max_hold_days
+        elif pnl_pct < 0 and hold_days >= max_hold_days:
+            reason = f"Perte {pnl_pct:.2f}%, durée {hold_days}j >= {max_hold_days}j (bot)"
+            actions.append({"coin": coin, "qty": qty, "reason": reason, "cut_loss": True, "source": "bot"})
+
+    # Positions manuelles (OCO) : calcule P&L depuis le prix d'entrée du BUY
+    if pos_manual and not pos_bot:
+        orders = pos_manual.get("orders", [])
+        buy_order = next((o for o in orders if o.get("side") == "BUY"), None)
+
+        if buy_order:
+            entry_price = float(buy_order.get("price", 0))
+            qty = float(buy_order.get("origQty", 0))
+
+            if entry_price > 0:
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+
+                # OCO manuel : si P&L >= seuil, annuler OCO et vendre
+                if pnl_pct >= min_profit_pct:
+                    reason = f"Profit {pnl_pct:.2f}% >= seuil {min_profit_pct}% (OCO manuel)"
+                    actions.append({"coin": coin, "qty": qty, "reason": reason, "source": "manual", "cancel_oco": True})
+
+                # Sinon, laisser Binance gérer l'OCO actif
 ```
 
-### 4. Exécute les ventes
+### 4. Exécute les ventes (et annule OCO si manuel)
 ```python
 for action in actions:
     coin = action["coin"]
     qty = action["qty"]
     reason = action["reason"]
+    source = action.get("source", "unknown")
+    cancel_oco = action.get("cancel_oco", False)
 
+    # Si OCO manuel : annuler les ordres stop/take-profit d'abord
+    if cancel_oco:
+        try:
+            pos_manual = manual_positions.get(coin)
+            if pos_manual:
+                orders = pos_manual.get("orders", [])
+                for order in orders:
+                    if order.get("side") in ["SELL"]:
+                        try:
+                            binance("cancel-order", coin, "USDC", str(order.get("orderId")))
+                        except:
+                            pass
+        except Exception as e:
+            tg(f"⚠️ Annulation OCO {coin} (partielle): {e}")
+
+    # Vendre au marché
     sell_cmd = ["market-order", "sell", coin, "USDC", str(qty)]
     try:
         sell_result = binance(*sell_cmd)
@@ -102,10 +164,39 @@ for action in actions:
 
 ### 5. Résumé
 ```python
+# Résumé des positions surveillées
+summary_lines = []
+for coin in all_coins:
+    current_price = current_prices.get(coin, 0)
+    if not current_price:
+        continue
+
+    pos_bot = open_orders_bot.get(coin)
+    pos_manual = manual_positions.get(coin)
+
+    if pos_bot:
+        entry_price = float(pos_bot.get("entry_price", 0))
+        qty = float(pos_bot.get("qty", 0))
+        if entry_price > 0:
+            pnl_pct = ((current_price - entry_price) / entry_price) * 100
+            summary_lines.append(f"  {coin}: {qty} @ {entry_price} (cours {current_price:.6f}, P&L {pnl_pct:+.2f}%) [BOT]")
+
+    elif pos_manual:
+        orders = pos_manual.get("orders", [])
+        buy_order = next((o for o in orders if o.get("side") == "BUY"), None)
+        if buy_order:
+            entry_price = float(buy_order.get("price", 0))
+            qty = float(buy_order.get("origQty", 0))
+            if entry_price > 0:
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                summary_lines.append(f"  {coin}: {qty} @ {entry_price} (cours {current_price:.6f}, P&L {pnl_pct:+.2f}%) [OCO]")
+
+summary = "\n".join(summary_lines) if summary_lines else "  (aucune position)"
+
 if actions:
-    tg(f"🎯 Cycle position: {len(actions)} position(s) gérée(s)")
+    tg(f"🎯 Cycle position: {len(actions)} position(s) gérée(s)\n\nPositions surveillées:\n{summary}")
 else:
-    tg(f"📊 Cycle position: aucune action, attente.")
+    tg(f"📊 Cycle position: aucune action, attente.\n\nPositions surveillées:\n{summary}")
 ```
 
 ## Interdit
