@@ -24,6 +24,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#241](pr-241-cycle-position-horaire.md) | [M239] Cycle horaire de gestion des positions ouvertes (POSITION_PROMPT) | 2026-06-22 |
 | [#242](pr-242-rec-auto-workflow.md) | feat: tickets [REC] via REC-AUTO + binance-dev sur branche PR existante | 2026-06-22 |
 | [#238](pr-238-trade-prompt-disallow-skills.md) | [M237] fix: TRADE_PROMPT disallows skill invocation | 2026-06-22 |
 | [#235](pr-235-augmente-max-single-position.md) | [M218] Augmente max_single_position_pct de 0.40 à 0.65 | 2026-06-15 |

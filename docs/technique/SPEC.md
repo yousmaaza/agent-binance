@@ -28,7 +28,16 @@ main_loop()
 │       ├── /raisonnement → run_raisonnement()
 │       ├── /cout     → handle_cout()
 │       └── /reset    → release_lock()
-└── Auto-scheduler (slots 4h UTC : 00:05, 04:05, 08:05, 12:05, 16:05, 20:05)
+├── Auto-scheduler 1h (slots :05 UTC, en sautant les 4h slots)  [NEW #241]
+│   └── run_position_check_workflow(trigger="auto")   [threading.Thread daemon]
+│       ├── acquire_lock()   [agent_lock.json — partagé avec cycle 4h]
+│       ├── sous-processus : claude --print --verbose --output-format stream-json
+│       │   --dangerously-skip-permissions --model claude-sonnet-4-6 <POSITION_PROMPT>
+│       │   └── Tâches 1–5 : charger config, fetch prix, évaluer P&L, exécuter SELL MARKET, résumer
+│       ├── stdout streamé → logs/stdout/position_{cycle_id}.log
+│       ├── stderr capturé → logs/stderr/position_{cycle_id}.log
+│       └── release_lock()   [finally]
+└── Auto-scheduler 4h (slots 4h UTC : 00:05, 04:05, 08:05, 12:05, 16:05, 20:05)
     └── run_trade_workflow(trigger="auto")   [threading.Thread daemon]
         ├── acquire_lock()   [agent_lock.json]
         ├── sous-processus : claude --print --verbose --output-format stream-json
@@ -160,7 +169,14 @@ webhook_server.py (process principal)
 | `_read_last_jsonl_phase()` | :690 | Lit la dernière ligne valide du fichier `cycle_<id>_phases.jsonl` — utilisé par le watchdog pour connaître la dernière phase complétée |
 | `_watchdog_thread()` | :710 | Thread daemon qui surveille le cycle actif via le JSONL des heartbeats : alerte Telegram si aucune phase ne progresse pendant > 15 min |
 | `PROMPT_VERSION` _(constante module)_ | :410 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
-| `run_trade_workflow()` | runner.py:23 | Orchestre un cycle complet : lock → création fichier helpers via `tempfile.mkstemp()` → injection `__HELPERS_PATH__` dans le prompt → sous-processus Claude (sans `ANTHROPIC_API_KEY` — mode abonnement uniquement) → capture logs stdout/stderr → extraction coût API → update Mongo `api_cost_usd` et `billing_mode: "abonnement"` → si erreur ressource détectée, envoie message Telegram explicite → fallback Mongo en cas d'erreur → cleanup fichier helpers en `finally` → unlock |
+| `POSITION_PROMPT` _(constante module)_ | env.py:93–99 | Prompt pour cycle horaire de gestion des positions : template chargé depuis `prompts/position_prompt.txt` avec substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) |
+| `next_1h_slot()` | timing.py:15 | Calcule le prochain slot horaire `:05 UTC` en sautant les slots 4h (00:05, 04:05, ..., 20:05) pour éviter collision avec `next_4h_slot()` — retourne un datetime UTC |
+| `run_trade_workflow()` | runner.py:23 | Orchestre un cycle complet de trading : appelle `_run_workflow_cycle()` avec callbacks spécialisés pour trade (watchdog=True, post-processing avec gestion quota abonnement) |
+| `run_position_check_workflow()` | runner.py:46 | Orchestre un cycle horaire de gestion des positions : appelle `_run_workflow_cycle()` avec cycle_type="position", watchdog=False (cycle léger), post-processing minimaliste |
+| `_run_workflow_cycle()` | runner.py:64 | Fonction commune d'orchestration pour tous les cycles : gère lock, cycle_id, logging, fichier helpers, invocation Claude, watchdog conditionnel, callbacks (on_lock_busy, on_start, on_post_run), cleanup. Permet la réutilisation entre cycles trade et position sans duplication |
+| `_handle_trade_post_run()` | runner.py:157 | Post-processing du cycle trade : détecte erreur ressource Claude, met à jour Mongo (api_cost_usd, billing_mode), gère erreur avec notification Telegram explicite |
+| `_handle_position_post_run()` | runner.py:182 | Post-processing du cycle position : erreur détectée → notification Telegram minimaliste (max 400 chars, HTML) pour éviter spam en arrière-plan |
+| `_check_and_run_scheduled()` | webhook_server.py:34 | Utilitaire de scheduling unifié : vérifie si c'est l'heure, calcule prochain slot, lance workflow en thread daemon, retourne le prochain slot — utilisé pour scheduler 1h (position) et 4h (trade) |
 | `_write_helpers_file()` | runner.py:116 | Génère le fichier temporaire des helpers (tg, binance, hb, _hb_start, _save_trade_history_atomic) via `tempfile.mkstemp()` : permissions 0o600 garanties, secrets lus depuis `os.environ` au runtime (jamais substitués en dur), injectables dans le TRADE_PROMPT |
 | `_send_start_notification()` | runner.py:99 | Envoie la notification Telegram de démarrage d'un cycle : affiche le modèle Claude utilisé (extrait depuis `CLAUDE_CLI_FLAGS`), le mode de facturation (abonnement), et l'heure du prochain cycle auto en heure locale ; différencie cycles manuels vs auto |
 | `_run_claude()` | runner.py:205 | Lance le sous-processus Claude CLI avec flags configurables : streame les événements stream-json depuis stdout, parse chaque ligne via `parse_stream_event()`, écrit les lignes formatées dans le fichier log stdout. Exécution en mode abonnement uniquement (pas de retry fallback API). Timeout 3600s (CLAUDE_PROCESS_TIMEOUT_S) avec timer. |
@@ -254,6 +270,8 @@ webhook_server.py (process principal)
 | `min_adx` | `20` | ADX minimum sur 4h pour valider la tendance (critère de score) |
 | `max_open_positions` | `5` | Nombre maximum de positions ouvertes simultanément |
 | `universe_scan_top_n` | `20` | Nombre maximum de coins dans l'univers de scan par cycle |
+| `min_profit_pct_take` | `2.0` | Seuil de profit (%) pour réaliser les gains via SELL MARKET en cycle position (NEW #241) |
+| `max_hold_days` | `14` | Durée maximale (jours) de détention d'une position en perte avant évaluation de cut-loss en cycle position (NEW #241) |
 
 ---
 
@@ -275,6 +293,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#241](pr-241-cycle-position-horaire.md) | 2026-06-22 | [M239] Cycle horaire de gestion des positions ouvertes : `next_1h_slot()` scheduler 1h (sautant les 4h slots), `POSITION_PROMPT` dédiée, refactor `_run_workflow_cycle()` commune, watchdog optionnel, post-processing séparé — réalise profits dès `min_profit_pct_take` (2%), évalue cut-loss > `max_hold_days` (14j) |
 | [#235](pr-235-augmente-max-single-position.md) | 2026-06-15 | Configuration : augmente `max_single_position_pct` de 0.40 à 0.65 pour permettre des ordres au seuil minimum sur portefeuilles en drawdown |
 | [#234](pr-234-fix-tradingview-mcp-tools-v2.md) | 2026-06-14 | MCP TradingView : remplace outils tradesdontlie inexistants par atilaahmettaner (top_gainers, volume_breakout_scanner, market_sentiment, coin_analysis) — Phase 1 screeners + Phase 2 multi-timeframe + Phase 3 scoring mis à jour |
 | [#201](pr-201-enrichir-claude-md.md) | 2026-06-03 | Documentation : ajout section « Principes généraux de développement » (Think/Simplicity/Surgical) dans CLAUDE.md |
