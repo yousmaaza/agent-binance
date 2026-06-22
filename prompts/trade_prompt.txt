@@ -99,9 +99,66 @@ Référence rapide des commandes employées lors des 7 phases de trading automat
 
 ---
 
-PHASE 0 — VÉRIFICATIONS PRÉALABLES
+PHASE 0 — SNAPSHOT POSITIONS OUVERTES + VÉRIFICATIONS PRÉALABLES
 ⏱️ HEARTBEAT START PHASE 0
 _hb_start(0)
+
+# --- SNAPSHOT POSITIONS OUVERTES ---
+# Afficher un résumé des positions ouvertes et de leur P&L avant de décider de nouveaux achats
+import json, subprocess
+
+try:
+    # Lire les positions ouvertes depuis trade_history.json
+    with open("__PROJECT_DIR__/state/trade_history.json") as f:
+        history = json.load(f)
+    open_positions_list = [t for t in history if t.get("status") == "open"]
+
+    if open_positions_list:
+        # Récupérer les ordres actifs Binance pour tous les coins
+        snapshot_lines = ["📊 SNAPSHOT POSITIONS OUVERTES"]
+        snapshot_lines.append(f"Positions actives : {len(open_positions_list)}")
+        snapshot_lines.append("")
+
+        for pos in open_positions_list:
+            coin = pos.get("coin")
+            entry_price = float(pos.get("entry_price", 0))
+            qty = float(pos.get("quantity", 0))
+            entry_usdc = entry_price * qty
+
+            try:
+                # Récupérer le prix actuel
+                ticker = subprocess.run(
+                    ["binance-cli", "spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if ticker.returncode == 0:
+                    ticker_data = json.loads(ticker.stdout)
+                    current_price = float(ticker_data.get("price", entry_price))
+                else:
+                    current_price = entry_price
+            except:
+                current_price = entry_price
+
+            current_usdc = current_price * qty
+            pnl_usdc = current_usdc - entry_usdc
+            pnl_pct = (pnl_usdc / entry_usdc * 100) if entry_usdc > 0 else 0
+
+            # Déterminer le type de position (bot ou manuel)
+            pos_type = "bot" if pos.get("side") == "BUY" else "unknown"
+            if not pos.get("entry_order_id"):
+                pos_type = "manuel"
+
+            snapshot_lines.append(f"{coin}: entrée {entry_price:.4g} → prix {current_price:.4g} | P&L {pnl_pct:+.1f}% ({pnl_usdc:+.2f} USDC) [{pos_type}]")
+
+        snapshot_summary = "\n".join(snapshot_lines)
+        tg(snapshot_summary)
+    else:
+        tg("📊 Aucune position ouverte actuellement")
+except Exception as e:
+    tg(f"⚠️ Snapshot positions échoué : {e}")
+
+# --- FIN SNAPSHOT ---
+
 Lis config.json pour récupérer TOUS les paramètres.
 Exécute : binance-cli spot get-account --profile agent-profile
 Calcule : portfolio_total = USDC_free + sum(locked USDC de tous les assets)
