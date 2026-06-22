@@ -3,6 +3,12 @@ name: Claude Tech Lead Review
 on:
   pull_request:
     types: [opened, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Numéro de la PR à reviewer (déclenché automatiquement après implémentation des [REC])"
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -16,17 +22,38 @@ jobs:
     # article/* (brouillons d'articles), docs/medium-* (base publiée).
     # Aucune ne contient du code Python à reviewer.
     if: |
-      github.event.pull_request.head.ref != 'doc/medium-report' &&
-      !startsWith(github.event.pull_request.head.ref, 'article/') &&
-      !startsWith(github.event.pull_request.head.ref, 'docs/medium-')
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.pull_request.head.ref != 'doc/medium-report' &&
+       !startsWith(github.event.pull_request.head.ref, 'article/') &&
+       !startsWith(github.event.pull_request.head.ref, 'docs/medium-'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     steps:
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            PR_NUMBER="${{ inputs.pr_number }}"
+            DATA=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json headRefName,headRefOid)
+            PR_REF=$(echo "$DATA" | python3 -c "import sys,json; print(json.load(sys.stdin)['headRefName'])")
+            PR_SHA=$(echo "$DATA" | python3 -c "import sys,json; print(json.load(sys.stdin)['headRefOid'])")
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            PR_REF="${{ github.event.pull_request.head.ref }}"
+            PR_SHA="${{ github.event.pull_request.head.sha }}"
+          fi
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "pr_ref=$PR_REF" >> $GITHUB_OUTPUT
+          echo "pr_sha=$PR_SHA" >> $GITHUB_OUTPUT
+
       - name: Checkout PR
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.pr.outputs.pr_sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -44,17 +71,17 @@ jobs:
       - name: Run tech-lead-reviewer agent
         uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GH_PAT }}
           track_progress: true
           prompt: |
             Tu es l'agent `tech-lead-reviewer` (sa définition complète est dans
             `.claude/agents/tech-lead-reviewer.md` — lis-la et applique-la
-            intégralement). Contexte : PR #${{ github.event.pull_request.number }}
-            sur la branche `${{ github.event.pull_request.head.ref }}` vs `main`.
+            intégralement). Contexte : PR #${{ steps.pr.outputs.pr_number }}
+            sur la branche `${{ steps.pr.outputs.pr_ref }}` vs `main`.
 
             Étapes obligatoires :
               1. `git diff --name-only origin/main...HEAD -- '*.py'` pour la liste des fichiers
@@ -63,7 +90,7 @@ jobs:
               4. calcule la note maintenabilité (0-10) selon le barème de l'agent
               5. compose le commentaire markdown au template strict de l'agent
               6. poste-le sur la PR :
-                 `gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file <fichier>`
+                 `gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body-file <fichier>`
 
             Pas d'édition de fichier source, pas de commit, pas de merge.
           claude_args: |

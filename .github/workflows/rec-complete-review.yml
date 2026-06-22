@@ -1,0 +1,65 @@
+name: Re-review PR after all [REC] tickets implemented
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  pull-requests: write
+  issues: read
+
+jobs:
+  check-and-review:
+    if: |
+      contains(github.event.issue.labels.*.name, 'REC-AUTO')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check if all REC-AUTO issues for this PR are closed
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          ISSUE_BODY=$(gh issue view ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} --json body --jq '.body')
+
+          PR_NUMBER=$(echo "$ISSUE_BODY" | grep -oP '(?<=<!-- pr_number: )\d+(?= -->)' || echo "")
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Pas de pr_number dans le body — skip."
+            echo "should_review=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "PR cible : #$PR_NUMBER"
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+          # Compter les issues REC-AUTO encore ouvertes pour cette PR
+          OPEN_COUNT=$(gh issue list \
+            --repo ${{ github.repository }} \
+            --label "REC-AUTO" \
+            --state open \
+            --json body \
+            --jq "[.[] | select(.body | test(\"<!-- pr_number: ${PR_NUMBER} -->\" ; \"x\"))] | length")
+
+          echo "Issues REC-AUTO encore ouvertes pour PR #$PR_NUMBER : $OPEN_COUNT"
+
+          if [ "$OPEN_COUNT" == "0" ]; then
+            echo "✅ Tous les [REC] sont implémentés — relance de la review."
+            echo "should_review=true" >> $GITHUB_OUTPUT
+          else
+            echo "⏳ $OPEN_COUNT ticket(s) [REC] encore ouverts — pas encore de re-review."
+            echo "should_review=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Dispatch tech-lead review
+        if: steps.check.outputs.should_review == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh workflow run claude-code-review.yml \
+            --repo ${{ github.repository }} \
+            --ref main \
+            -f pr_number=${{ steps.check.outputs.pr_number }}
+          echo "✅ Review tech lead relancée sur PR #${{ steps.check.outputs.pr_number }}"
