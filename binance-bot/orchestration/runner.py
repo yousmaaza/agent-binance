@@ -26,75 +26,21 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     fmt_next_fn : callable() -> str optionnel, fourni par main_loop pour afficher
     l'heure du prochain cycle. Si absent, on affiche '--'.
     """
-    if is_locked():
-        send_telegram("⏳ Un cycle est déjà en cours. Réessaie dans quelques minutes.")
-        return
-
-    acquire_lock()
-    cycle_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    started_at = datetime.now(timezone.utc)
-    cycle_log = CycleLogger(cycle_id)
-    cycle_log.info(f"Démarrage (trigger={trigger})")
-
-    fmt_next = fmt_next_fn() if fmt_next_fn else "–"
-    _send_start_notification(cycle_id, trigger, started_at, fmt_next)
-
-    try:
-        helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"cycle_{cycle_id}_")
-    except OSError as e:
-        send_telegram(f"❌ Cycle {cycle_id} — impossible de créer le fichier helpers (disque plein ?) : {e}")
-        cycle_log.error(f"mkstemp helpers échoué : {e}")
-        release_lock()
-        return
-
-    prompt = (
-        TRADE_PROMPT
-        .replace("__CYCLE_ID__", cycle_id)
-        .replace("__HELPERS_PATH__", helpers_path)
-        .replace("__PROMPT_VERSION__", PROMPT_VERSION)
-        .replace("__TRIGGER__", trigger)
+    _run_workflow_cycle(
+        prompt_template=TRADE_PROMPT,
+        log_prefix="cycle",
+        trigger=trigger,
+        fmt_next_fn=fmt_next_fn,
+        cycle_type="trade",
+        additional_replacements={
+            "__PROMPT_VERSION__": PROMPT_VERSION,
+            "__TRIGGER__": trigger,
+        },
+        use_watchdog=True,
+        on_lock_busy=lambda: send_telegram("⏳ Un cycle est déjà en cours. Réessaie dans quelques minutes."),
+        on_start=_send_start_notification,
+        on_post_run=_handle_trade_post_run,
     )
-
-    _write_helpers_file(helpers_fd, helpers_path, cycle_id, trigger)
-
-    stdout_path = f"{LOGS_DIR}/stdout/cycle_{cycle_id}.log"
-    stderr_path = f"{LOGS_DIR}/stderr/cycle_{cycle_id}.log"
-    exit_code = -1
-
-    watchdog = WatchdogThread(cycle_log)
-    watchdog.start()
-
-    try:
-        exit_code = _run_claude(prompt, stdout_path, stderr_path, cycle_log)
-
-        # Quota abonnement épuisé — pas de fallback API (abonnement uniquement)
-        if exit_code != 0 and is_resource_error(stdout_path):
-            send_telegram(
-                "⛔ Quota abonnement Claude épuisé — cycle annulé.\n"
-                "Réessaie dans quelques heures (reset automatique de l'abonnement)."
-            )
-            cycle_log.error(f"[Cycle {cycle_id}] Quota abonnement épuisé — pas de fallback API configuré")
-
-        duration = (datetime.now(timezone.utc) - started_at).total_seconds()
-        cycle_log.info(f"Terminé exit={exit_code} en {duration:.0f}s")
-
-        _update_cost_in_mongo(cycle_id, stdout_path, cycle_log)
-        _update_billing_mode_in_mongo(cycle_id, "abonnement", cycle_log)
-
-        if exit_code != 0:
-            _handle_error(cycle_id, trigger, started_at, duration, stderr_path, stdout_path, cycle_log)
-
-    except Exception as e:
-        send_telegram(f"❌ Cycle {cycle_id} — erreur inattendue : {e}")
-        cycle_log.error(f"Exception inattendue : {e}")
-    finally:
-        watchdog.stop()
-        watchdog.join(timeout=2)
-        release_lock()
-        try:
-            os.unlink(helpers_path)
-        except OSError:
-            pass
 
 
 def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None:
@@ -103,66 +49,158 @@ def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None
     fmt_next_fn : callable() -> str optionnel, fourni par main_loop pour afficher
     l'heure du prochain cycle position. Si absent, on affiche '--'.
     """
+    _run_workflow_cycle(
+        prompt_template=POSITION_PROMPT,
+        log_prefix="position",
+        trigger=trigger,
+        fmt_next_fn=fmt_next_fn,
+        cycle_type="position",
+        use_watchdog=False,
+        on_start=None,
+        on_post_run=_handle_position_post_run,
+    )
+
+
+def _run_workflow_cycle(
+    prompt_template: str,
+    log_prefix: str,
+    trigger: str,
+    fmt_next_fn,
+    cycle_type: str,
+    additional_replacements: dict = None,
+    use_watchdog: bool = False,
+    on_lock_busy=None,
+    on_start=None,
+    on_post_run=None,
+) -> None:
+    """Exécute un cycle complet avec gestion du lock et du logging.
+
+    Args:
+        prompt_template: Template prompt à injecter dans Claude
+        log_prefix: Préfixe pour les logs (cycle ou position)
+        trigger: Type de déclenchement (auto ou manual)
+        fmt_next_fn: Callable pour formatter l'heure du prochain cycle
+        cycle_type: Type de cycle (trade ou position)
+        additional_replacements: Remplacements prompt supplémentaires
+        use_watchdog: Activer le watchdog
+        on_lock_busy: Callback si le lock est occupé
+        on_start: Callback avant de lancer Claude
+        on_post_run: Callback après l'exécution de Claude
+    """
     if is_locked():
         # Position check is background/automatic; skip silently if a trade cycle is running.
         # Avoids notification spam. Next hourly check will proceed when lock is released.
+        if on_lock_busy:
+            on_lock_busy()
         return
 
     acquire_lock()
     cycle_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     started_at = datetime.now(timezone.utc)
     cycle_log = CycleLogger(cycle_id)
-    cycle_log.info(f"Position check démarrage (trigger={trigger})")
+    log_msg = f"{cycle_type.capitalize()} démarrage (trigger={trigger})"
+    cycle_log.info(log_msg)
 
     fmt_next = fmt_next_fn() if fmt_next_fn else "–"
-    send_telegram(f"🔄 Cycle position horaire démarré ({fmt_local(started_at)})\n⏰ Prochain : {fmt_next}")
+    if on_start:
+        on_start(cycle_id, trigger, started_at, fmt_next)
+    elif cycle_type == "position":
+        send_telegram(f"🔄 Cycle position horaire démarré ({fmt_local(started_at)})\n⏰ Prochain : {fmt_next}")
 
     try:
-        helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"position_{cycle_id}_")
+        helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"{log_prefix}_{cycle_id}_")
     except OSError as e:
+        if cycle_type == "trade":
+            send_telegram(f"❌ Cycle {cycle_id} — impossible de créer le fichier helpers (disque plein ?) : {e}")
         cycle_log.error(f"mkstemp helpers échoué : {e}")
         release_lock()
         return
 
-    prompt = (
-        POSITION_PROMPT
-        .replace("__CYCLE_ID__", cycle_id)
-        .replace("__HELPERS_PATH__", helpers_path)
-    )
+    prompt = prompt_template.replace("__CYCLE_ID__", cycle_id).replace("__HELPERS_PATH__", helpers_path)
+    if additional_replacements:
+        for key, value in additional_replacements.items():
+            prompt = prompt.replace(key, value)
 
     _write_helpers_file(helpers_fd, helpers_path, cycle_id, trigger)
 
-    stdout_path = f"{LOGS_DIR}/stdout/position_{cycle_id}.log"
-    stderr_path = f"{LOGS_DIR}/stderr/position_{cycle_id}.log"
+    stdout_path = f"{LOGS_DIR}/stdout/{log_prefix}_{cycle_id}.log"
+    stderr_path = f"{LOGS_DIR}/stderr/{log_prefix}_{cycle_id}.log"
     exit_code = -1
+
+    watchdog = None
+    if use_watchdog:
+        watchdog = WatchdogThread(cycle_log)
+        watchdog.start()
 
     try:
         exit_code = _run_claude(prompt, stdout_path, stderr_path, cycle_log)
-
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         cycle_log.info(f"Terminé exit={exit_code} en {duration:.0f}s")
 
-        if exit_code != 0:
-            try:
-                with open(stderr_path) as f:
-                    err_extract = f.read()[:400] or "(vide)"
-            except OSError:
-                err_extract = "(illisible)"
-            send_telegram(
-                f"⚠️ Cycle position {cycle_id} — erreur\n"
-                f"<code>{err_extract}</code>",
-                parse_mode="HTML",
-            )
+        if on_post_run:
+            on_post_run(cycle_id, trigger, started_at, duration, exit_code, stderr_path, stdout_path, cycle_log)
 
     except Exception as e:
-        send_telegram(f"❌ Cycle position {cycle_id} — erreur inattendue : {e}")
+        send_telegram(f"❌ Cycle {cycle_id} — erreur inattendue : {e}")
         cycle_log.error(f"Exception inattendue : {e}")
     finally:
+        if watchdog:
+            watchdog.stop()
+            watchdog.join(timeout=2)
         release_lock()
         try:
             os.unlink(helpers_path)
         except OSError:
             pass
+
+
+def _handle_trade_post_run(
+    cycle_id: str,
+    trigger: str,
+    started_at: datetime,
+    duration: float,
+    exit_code: int,
+    stderr_path: str,
+    stdout_path: str,
+    cycle_log: CycleLogger,
+) -> None:
+    """Post-processing pour un cycle de trade."""
+    if exit_code != 0 and is_resource_error(stdout_path):
+        send_telegram(
+            "⛔ Quota abonnement Claude épuisé — cycle annulé.\n"
+            "Réessaie dans quelques heures (reset automatique de l'abonnement)."
+        )
+        cycle_log.error(f"[Cycle {cycle_id}] Quota abonnement épuisé — pas de fallback API configuré")
+
+    _update_cost_in_mongo(cycle_id, stdout_path, cycle_log)
+    _update_billing_mode_in_mongo(cycle_id, "abonnement", cycle_log)
+
+    if exit_code != 0:
+        _handle_error(cycle_id, trigger, started_at, duration, stderr_path, stdout_path, cycle_log)
+
+
+def _handle_position_post_run(
+    cycle_id: str,
+    trigger: str,
+    started_at: datetime,
+    duration: float,
+    exit_code: int,
+    stderr_path: str,
+    stdout_path: str,
+    cycle_log: CycleLogger,
+) -> None:
+    """Post-processing pour un cycle de position check."""
+    if exit_code != 0:
+        try:
+            with open(stderr_path) as f:
+                err_extract = f.read()[:400] or "(vide)"
+        except OSError:
+            err_extract = "(illisible)"
+        send_telegram(
+            f"⚠️ Cycle position {cycle_id} — erreur\n"
+            f"<code>{err_extract}</code>",
+            parse_mode="HTML",
+        )
 
 
 def _send_start_notification(cycle_id: str, trigger: str, started_at: datetime, fmt_next: str) -> None:
