@@ -8,7 +8,7 @@ import threading
 from datetime import datetime, timezone
 
 from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
-from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, get_cycle_phases_log_path
+from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, POSITION_PROMPT, get_cycle_phases_log_path
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
 from core.timing import fmt_local
@@ -90,6 +90,72 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     finally:
         watchdog.stop()
         watchdog.join(timeout=2)
+        release_lock()
+        try:
+            os.unlink(helpers_path)
+        except OSError:
+            pass
+
+
+def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None:
+    """Lance un cycle horaire de gestion des positions ouvertes.
+
+    fmt_next_fn : callable() -> str optionnel, fourni par main_loop pour afficher
+    l'heure du prochain cycle position. Si absent, on affiche '--'.
+    """
+    if is_locked():
+        return
+
+    acquire_lock()
+    cycle_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    started_at = datetime.now(timezone.utc)
+    cycle_log = CycleLogger(cycle_id)
+    cycle_log.info(f"Position check démarrage (trigger={trigger})")
+
+    fmt_next = fmt_next_fn() if fmt_next_fn else "–"
+    send_telegram(f"🔄 Cycle position horaire démarré ({fmt_local(started_at)})\n⏰ Prochain : {fmt_next}")
+
+    try:
+        helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"position_{cycle_id}_")
+    except OSError as e:
+        cycle_log.error(f"mkstemp helpers échoué : {e}")
+        release_lock()
+        return
+
+    prompt = (
+        POSITION_PROMPT
+        .replace("__CYCLE_ID__", cycle_id)
+        .replace("__HELPERS_PATH__", helpers_path)
+    )
+
+    _write_helpers_file(helpers_fd, helpers_path, cycle_id, trigger)
+
+    stdout_path = f"{LOGS_DIR}/stdout/position_{cycle_id}.log"
+    stderr_path = f"{LOGS_DIR}/stderr/position_{cycle_id}.log"
+    exit_code = -1
+
+    try:
+        exit_code = _run_claude(prompt, stdout_path, stderr_path, cycle_log)
+
+        duration = (datetime.now(timezone.utc) - started_at).total_seconds()
+        cycle_log.info(f"Terminé exit={exit_code} en {duration:.0f}s")
+
+        if exit_code != 0:
+            try:
+                with open(stderr_path) as f:
+                    err_extract = f.read()[:400] or "(vide)"
+            except OSError:
+                err_extract = "(illisible)"
+            send_telegram(
+                f"⚠️ Cycle position {cycle_id} — erreur\n"
+                f"<code>{err_extract}</code>",
+                parse_mode="HTML",
+            )
+
+    except Exception as e:
+        send_telegram(f"❌ Cycle position {cycle_id} — erreur inattendue : {e}")
+        cycle_log.error(f"Exception inattendue : {e}")
+    finally:
         release_lock()
         try:
             os.unlink(helpers_path)

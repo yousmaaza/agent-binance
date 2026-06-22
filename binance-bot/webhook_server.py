@@ -20,10 +20,11 @@ from commands.status import run_status
 from core.lock import release_lock
 from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
-from core.timing import fmt_local, next_4h_slot
-from orchestration.runner import run_trade_workflow
+from core.timing import fmt_local, next_4h_slot, next_1h_slot
+from orchestration.runner import run_trade_workflow, run_position_check_workflow
 
 NEXT_AUTO_TRADE = None
+NEXT_AUTO_POSITION = None
 
 
 def fmt_next() -> str:
@@ -31,13 +32,14 @@ def fmt_next() -> str:
 
 
 def main_loop():
-    global NEXT_AUTO_TRADE
+    global NEXT_AUTO_TRADE, NEXT_AUTO_POSITION
 
     tg_post("deleteWebhook", {})
     NEXT_AUTO_TRADE = next_4h_slot()
+    NEXT_AUTO_POSITION = next_1h_slot()
     offset = get_offset()
 
-    from core.env import TRADE_PROMPT  # noqa: F401 — vérifie que le prompt est bien chargé
+    from core.env import TRADE_PROMPT, POSITION_PROMPT  # noqa: F401 — vérifie que les prompts sont bien chargés
 
     is_valid, error = validate_and_repair_boot()
     if not is_valid:
@@ -59,6 +61,15 @@ def main_loop():
 
     while True:
         try:
+            if NEXT_AUTO_POSITION and datetime.now(timezone.utc) >= NEXT_AUTO_POSITION:
+                NEXT_AUTO_POSITION = next_1h_slot()
+                logger.info(f"[Scheduler] Auto-position → prochain slot {fmt_local(NEXT_AUTO_POSITION)}")
+                threading.Thread(
+                    target=run_position_check_workflow,
+                    kwargs={"trigger": "auto", "fmt_next_fn": lambda: fmt_local(NEXT_AUTO_POSITION)},
+                    daemon=True,
+                ).start()
+
             if NEXT_AUTO_TRADE and datetime.now(timezone.utc) >= NEXT_AUTO_TRADE:
                 NEXT_AUTO_TRADE = next_4h_slot()
                 logger.info(f"[Scheduler] Auto-trade → prochain slot {fmt_next()}")
