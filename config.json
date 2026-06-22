@@ -22,5 +22,8 @@
   "max_open_positions": 4,
   "universe_scan_top_n": 20,
 
+  "min_profit_pct_take": 2.0,
+  "max_hold_days": 14,
+
   "usdc_blacklist": []
 }
