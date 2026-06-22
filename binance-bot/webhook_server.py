@@ -31,6 +31,20 @@ def fmt_next() -> str:
     return fmt_local(NEXT_AUTO_TRADE) if NEXT_AUTO_TRADE else "–"
 
 
+def _check_and_run_scheduled(next_time, slot_fn, workflow_fn, label, fmt_next_fn):
+    """Vérifie et exécute un scheduler si c'est l'heure. Retourne le prochain slot."""
+    if next_time and datetime.now(timezone.utc) >= next_time:
+        next_slot = slot_fn()
+        logger.info(f"[Scheduler] {label} → prochain slot {fmt_next_fn(next_slot)}")
+        threading.Thread(
+            target=workflow_fn,
+            kwargs={"trigger": "auto", "fmt_next_fn": lambda ns=next_slot: fmt_next_fn(ns)},
+            daemon=True,
+        ).start()
+        return next_slot
+    return next_time
+
+
 def main_loop():
     global NEXT_AUTO_TRADE, NEXT_AUTO_POSITION
 
@@ -61,23 +75,12 @@ def main_loop():
 
     while True:
         try:
-            if NEXT_AUTO_POSITION and datetime.now(timezone.utc) >= NEXT_AUTO_POSITION:
-                NEXT_AUTO_POSITION = next_1h_slot()
-                logger.info(f"[Scheduler] Auto-position → prochain slot {fmt_local(NEXT_AUTO_POSITION)}")
-                threading.Thread(
-                    target=run_position_check_workflow,
-                    kwargs={"trigger": "auto", "fmt_next_fn": lambda: fmt_local(NEXT_AUTO_POSITION)},
-                    daemon=True,
-                ).start()
-
-            if NEXT_AUTO_TRADE and datetime.now(timezone.utc) >= NEXT_AUTO_TRADE:
-                NEXT_AUTO_TRADE = next_4h_slot()
-                logger.info(f"[Scheduler] Auto-trade → prochain slot {fmt_next()}")
-                threading.Thread(
-                    target=run_trade_workflow,
-                    kwargs={"trigger": "auto", "fmt_next_fn": fmt_next},
-                    daemon=True,
-                ).start()
+            NEXT_AUTO_POSITION = _check_and_run_scheduled(
+                NEXT_AUTO_POSITION, next_1h_slot, run_position_check_workflow, "Auto-position", fmt_local
+            )
+            NEXT_AUTO_TRADE = _check_and_run_scheduled(
+                NEXT_AUTO_TRADE, next_4h_slot, run_trade_workflow, "Auto-trade", fmt_local
+            )
 
             data = tg_post("getUpdates", {
                 "offset": offset,
