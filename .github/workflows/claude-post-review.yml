@@ -121,113 +121,98 @@ jobs:
             --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
             --max-turns 40
 
-  # ── Job 2 : implémenter les recommandations sur la branche PR ───────────
-  implement-recommendations:
+  # ── Job 2 : créer les tickets [REC] depuis les recommandations ──────────
+  create-rec-tickets:
     needs: fix-bloquants
     if: |
       github.event.workflow_run.conclusion == 'success' &&
       toJson(github.event.workflow_run.pull_requests) != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout PR branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.workflow_run.pull_requests[0].head.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install review tooling
-        run: |
-          if [ -f requirements-dev.txt ]; then
-            pip install -r requirements-dev.txt
-          else
-            pip install ruff radon bandit mypy
-          fi
-
       - name: Fetch review comment
         id: review
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
+          PR_BRANCH="${{ github.event.workflow_run.pull_requests[0].head.ref }}"
           REVIEW=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq '[.[] | select(.body | test("Review tech lead"; "i"))] | last | .body // ""')
+            --jq '[.[] | select(.body | test("Review tech lead|tech-lead-reviewer"; "i"))] | last | .body // ""')
           if [ -z "$REVIEW" ] || [ "$REVIEW" == "null" ]; then
             echo "has_review=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           echo "has_review=true" >> $GITHUB_OUTPUT
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "pr_branch=${{ github.event.workflow_run.pull_requests[0].head.ref }}" >> $GITHUB_OUTPUT
+          echo "pr_branch=$PR_BRANCH" >> $GITHUB_OUTPUT
           echo "$REVIEW" > /tmp/review_comment.md
 
-      - name: Implement recommendations (Claude)
+      - name: Create [REC] tickets (Claude)
         if: steps.review.outputs.has_review == 'true'
         uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           PR_NUMBER: ${{ steps.review.outputs.pr_number }}
           PR_BRANCH: ${{ steps.review.outputs.pr_branch }}
+          REPO: ${{ github.repository }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GH_PAT }}
           prompt: |
-            Tu es un développeur Python senior qui doit implémenter les recommandations
-            de la review tech lead directement sur la branche de la PR #${{ steps.review.outputs.pr_number }}
-            (repo agent-binance, bot Telegram de trading Binance, polling-only).
+            Tu dois créer des tickets [REC] GitHub à partir des recommandations
+            de la review tech lead sur la PR #${{ steps.review.outputs.pr_number }}
+            (branche : ${{ steps.review.outputs.pr_branch }}).
 
-            La review complète est dans `/tmp/review_comment.md` — lis-la d'abord :
+            Lis d'abord la review :
             `cat /tmp/review_comment.md`
 
             Puis :
-            1. Localise les sections `### ⚠️ À simplifier / à clarifier` et
-               `### 💡 Pour aller plus loin`.
-               - Si les deux contiennent "RAS" ou sont vides → poste un commentaire
-                 "✅ Aucune recommandation à implémenter." sur la PR et STOP.
-               - Sinon, liste chaque recommandation (fichier:ligne + description).
+            1. Cherche TOUTES les sections de recommandations — elles peuvent s'appeler :
+               - `### ⚠️ Points d'attention`
+               - `### ⚠️ À simplifier / à clarifier`
+               - `### 💡 Pour aller plus loin`
+               - Toute section marquée "(non bloquant)" ou similaire
+               Si aucune recommandation trouvée (sections vides ou "RAS") → poste :
+               `gh pr comment $PR_NUMBER --repo $REPO --body "✅ Aucune recommandation — pas de ticket [REC] à créer."`
+               et STOP.
 
-            2. Pour chaque recommandation :
-               a. Lis le fichier concerné en entier avant d'éditer.
-               b. Implémente la recommandation de façon chirurgicale.
-               c. Respecte CLAUDE.md : curl-only pour Telegram, secrets via .env,
-                  `PROJECT_DIR` dynamique, pas de scipy/pandas.
-               d. Si la recommandation nécessite une décision produit ou est trop
-                  risquée → commente sur la PR et SKIP.
+            2. Pour chaque recommandation identifiée, crée une issue GitHub :
+               ```bash
+               gh issue create \
+                 --repo $REPO \
+                 --title "[REC] <titre court de la recommandation>" \
+                 --label "REC-AUTO" \
+                 --body "## Recommandation tech lead — PR #$PR_NUMBER
 
-            3. Vérifie la syntaxe de chaque fichier Python modifié :
-               `python3 -m py_compile <fichier>`
-               Si échec → reviens corriger avant de commit.
+               <description complète de la recommandation>
 
-            4. Configure git et commit en un seul commit groupant toutes les reco :
+               ## Contexte
+               Issu de la review tech lead sur la PR #$PR_NUMBER.
+
+               <!-- pr_branch: $PR_BRANCH -->
+               <!-- pr_number: $PR_NUMBER -->"
                ```
-               git config user.email "claude-bot@github.com"
-               git config user.name "claude[bot]"
-               git pull origin ${{ steps.review.outputs.pr_branch }}
-               git add <fichiers modifiés — nominatifs, jamais git add -A>
-               git commit -m "refactor: apply tech-lead recommendations from PR #${{ steps.review.outputs.pr_number }}"
-               git push origin ${{ steps.review.outputs.pr_branch }}
+               Note : les balises `<!-- pr_branch -->` et `<!-- pr_number -->` sont obligatoires
+               — elles permettent à binance-dev de retrouver la branche cible.
+
+            3. Ajoute chaque issue au board projet :
+               `gh project item-add 4 --owner yousmaaza --url <issue_url>`
+
+            4. Poste un commentaire récap sur la PR listant les tickets créés :
+               ```
+               gh pr comment $PR_NUMBER --repo $REPO --body "### 📋 Tickets [REC] créés
+               - #<N> : <titre>
+               - #<N> : <titre>
+               binance-dev va les implémenter sur cette branche."
                ```
 
-            5. Poste un commentaire récap sur la PR :
-               ```
-               gh pr comment ${{ steps.review.outputs.pr_number }} \
-                 --repo ${{ github.repository }} \
-                 --body "### ✅ Recommandations implémentées\n<liste avec fichier:ligne pour chaque reco appliquée>"
-               ```
-
-            Garde-fous absolus :
-            - Jamais `git add -A` ni `git add .`
-            - Jamais `--force` ni `--no-verify`
-            - Jamais modifier `.env`, `state/trade_history.json`, `CLAUDE.md`
-            - Jamais merger la PR
+            Garde-fous :
+            - Ne modifie aucun fichier source
+            - Ne crée pas de ticket pour les bloquants (déjà traités par job 1)
+            - Maximum 5 tickets par PR
           claude_args: |
             --model claude-haiku-4-5-20251001
-            --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
-            --max-turns 40
+            --allowedTools "Bash,Read"
+            --max-turns 30
