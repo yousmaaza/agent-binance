@@ -197,8 +197,11 @@ jobs:
                Note : les balises `<!-- pr_branch -->` et `<!-- pr_number -->` sont obligatoires
                — elles permettent à binance-dev de retrouver la branche cible.
 
-            3. Ajoute chaque issue au board projet :
-               `gh project item-add 4 --owner yousmaaza --url <issue_url>`
+            3. Ajoute chaque issue au board projet en récupérant d'abord l'URL :
+               ```bash
+               ISSUE_URL=$(gh issue view <ISSUE_NUM> --repo $REPO --json url --jq '.url')
+               gh project item-add 4 --owner yousmaaza --url "$ISSUE_URL"
+               ```
 
             4. Poste un commentaire récap sur la PR listant les tickets créés :
                ```

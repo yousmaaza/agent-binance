@@ -101,9 +101,9 @@ jobs:
             ${{ inputs.target_branch != '' && format('MODE REC-AUTO — branche existante : {0}
             Tu es sur la branche `{0}` (déjà checkoutée). NE crée PAS de nouvelle branche.
             Implémente directement sur cette branche et push.
-            Référence la PR #${{ inputs.pr_number }} et l issue #{0} dans ton commit.
+            Référence la PR #${{ inputs.pr_number }} et l issue $ISSUE_NUMBER dans ton commit.
             NE crée PAS de nouvelle PR — les changements vont sur la PR #${{ inputs.pr_number }} existante.
-            Après le push, ferme l issue #{1} avec : gh issue close {1} --repo ${{ github.repository }} --comment "Implémenté sur la PR #${{ inputs.pr_number }}"', inputs.target_branch, inputs.issue_number) || format('MODE AUTO — nouvelle branche
+            Après le push, ferme l issue avec : gh issue close $ISSUE_NUMBER --repo ${{ github.repository }} --comment "Implémenté sur la PR #${{ inputs.pr_number }}"', inputs.target_branch) || format('MODE AUTO — nouvelle branche
             Crée la branche `feat/issue-{0}-<slug>` depuis main.', inputs.issue_number) }}
 
             Étapes :
