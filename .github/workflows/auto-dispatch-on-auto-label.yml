@@ -1,4 +1,4 @@
-name: Auto-dispatch binance-dev on AUTO label
+name: Auto-dispatch binance-dev on AUTO/REC-AUTO label
 
 on:
   issues:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   dispatch:
-    if: github.event.label.name == 'AUTO'
+    if: github.event.label.name == 'AUTO' || github.event.label.name == 'REC-AUTO'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -20,13 +20,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           python3 - <<'PYEOF'
-          import subprocess, json, os, sys
+          import subprocess, json, os, sys, re
 
           PROJECT_ID   = "PVT_kwHOC0Dy0s4BYYhT"
           STATUS_FIELD = "PVTSSF_lAHOC0Dy0s4BYYhTzhTexN4"
           IN_PROGRESS  = "47fc9ee4"
           ISSUE_NUM    = int("${{ github.event.issue.number }}")
           ISSUE_NODE   = "${{ github.event.issue.node_id }}"
+          LABEL        = "${{ github.event.label.name }}"
 
           FIND_QUERY = """
           query($projectId: ID!, $cursor: String) {
@@ -100,10 +101,28 @@ jobs:
               print(f"Erreur status: {data['errors'][0]['message']}", file=sys.stderr)
               sys.exit(1)
 
+          # Pour REC-AUTO : extraire pr_branch et pr_number du body de l'issue
+          target_branch = ""
+          pr_number = ""
+          if LABEL == "REC-AUTO":
+              r = subprocess.run(
+                  ["gh", "issue", "view", str(ISSUE_NUM), "--repo", "${{ github.repository }}", "--json", "body"],
+                  capture_output=True, text=True
+              )
+              body = json.loads(r.stdout).get("body", "")
+              m_branch = re.search(r'<!-- pr_branch: (.+?) -->', body)
+              m_pr = re.search(r'<!-- pr_number: (\d+) -->', body)
+              target_branch = m_branch.group(1).strip() if m_branch else ""
+              pr_number = m_pr.group(1).strip() if m_pr else ""
+              print(f"REC-AUTO → target_branch={target_branch} pr_number={pr_number}")
+
           # Exporter pour le step suivant
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"item_id={item_id}\n")
               f.write("item_found=true\n")
+              f.write(f"target_branch={target_branch}\n")
+              f.write(f"pr_number={pr_number}\n")
+              f.write(f"label={LABEL}\n")
 
           print(f"✓ #{ISSUE_NUM} → In progress (item_id: {item_id})")
           PYEOF
@@ -113,9 +132,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          gh workflow run binance-dev-auto.yml \
-            --repo ${{ github.repository }} \
-            --ref main \
-            -f issue_number=${{ github.event.issue.number }} \
-            -f item_node_id=${{ steps.project.outputs.item_id }}
-          echo "✓ binance-dev-auto dispatché pour #${{ github.event.issue.number }}"
+          if [ "${{ github.event.label.name }}" == "REC-AUTO" ]; then
+            gh workflow run binance-dev-auto.yml \
+              --repo ${{ github.repository }} \
+              --ref main \
+              -f issue_number=${{ github.event.issue.number }} \
+              -f item_node_id=${{ steps.project.outputs.item_id }} \
+              -f target_branch=${{ steps.project.outputs.target_branch }} \
+              -f pr_number=${{ steps.project.outputs.pr_number }}
+            echo "✓ binance-dev-auto dispatché (REC-AUTO) pour #${{ github.event.issue.number }} → branche ${{ steps.project.outputs.target_branch }}"
+          else
+            gh workflow run binance-dev-auto.yml \
+              --repo ${{ github.repository }} \
+              --ref main \
+              -f issue_number=${{ github.event.issue.number }} \
+              -f item_node_id=${{ steps.project.outputs.item_id }}
+            echo "✓ binance-dev-auto dispatché (AUTO) pour #${{ github.event.issue.number }}"
+          fi
