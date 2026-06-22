@@ -76,7 +76,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GH_PAT }}
-          track_progress: true
+          track_progress: ${{ github.event_name == 'pull_request' }}
           prompt: |
             Tu es l'agent `tech-lead-reviewer` (sa définition complète est dans
             `.claude/agents/tech-lead-reviewer.md` — lis-la et applique-la
