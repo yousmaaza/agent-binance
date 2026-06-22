@@ -10,6 +10,112 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-22
+
+### PRs mergées (5)
+
+#### #238 — fix: TRADE_PROMPT disallows skill invocation
+
+- **Mergée à** : 10:25 UTC
+- **Branche** : `feat/issue-237-trade-prompt-disallow-skills`
+- **Issues fermées** : #237
+- **Quoi** : correction d'un bug de comportement découvert le matin même. Le cycle auto du 22 juin à 08:05 UTC n'avait duré que 57 secondes au lieu des 400-600 secondes normales. Explication : le sous-processus Claude, voyant le skill `start-agent` disponible dans la session, l'avait invoqué à la place d'exécuter les phases 1 à 7. Résultat : aucune analyse de trading, zéro décision, un CronCreate qui pointait vers un mauvais répertoire. Le fix ajoute un bloc d'instruction explicite en tête de `prompts/trade_prompt.txt` : interdiction de tout skill, interdiction de CronCreate/CronDelete, obligation d'exécuter les phases directement via Bash/Read/Write.
+- **Quoi c'est intéressant** : aucune ligne de code Python touchée. Un problème de comportement LLM résolu par de la clarification de prompt.
+- **Doc tech** : [docs/technique/pr-238-trade-prompt-disallow-skills.md](../technique/pr-238-trade-prompt-disallow-skills.md)
+
+---
+
+#### #241 — [M1] feat: cycle horaire de gestion des positions ouvertes (POSITION_PROMPT)
+
+- **Mergée à** : 19:46 UTC
+- **Branche** : `feat/issue-239-position-prompt`
+- **Issues fermées** : #239
+- **Quoi** : ajout d'un deuxième cycle Claude — un cycle horaire léger dédié à la prise de profit automatique sur les positions ouvertes. Jusqu'ici, le bot ne regardait ses positions que lors des cycles 4h de trading. Désormais, 23 fois par jour (toutes les heures à :05 UTC, sauf les 6 slots 4h pour éviter les collisions), un sous-processus Claude distinct lit `trade_history.json`, récupère les prix en live sur Binance, calcule le P&L de chaque position, et vend immédiatement si le profit atteint `min_profit_pct_take` (2,0% par défaut). La logique de scheduling est intégrée dans `main_loop()` via un helper unifié `_check_and_run_scheduled()`. Le cycle position partage le lock du cycle trade — si un cycle 4h est en cours, le cycle position attend silencieusement.
+- **Scope du changement** : 7 fichiers (`timing.py`, `env.py`, `runner.py`, `webhook_server.py`, `config.json`, `prompts/position_prompt.txt` nouveau, `scripts/test_next_1h_slot_weekly.py` nouveau). Refactor de `runner.py` avec extraction de `_run_workflow_cycle()` pour éliminer la duplication entre les deux types de cycles.
+- **Coût estimé** : ~0,10-0,20 USD/heure (vs ~1,50 USD pour cycle 4h).
+- **Doc tech** : [docs/technique/pr-241-cycle-position-horaire.md](../technique/pr-241-cycle-position-horaire.md)
+
+---
+
+#### #242 — feat: tickets [REC] via REC-AUTO + binance-dev sur branche PR existante
+
+- **Mergée à** : 19:21 UTC
+- **Branche** : `feat/fix-rec-auto-workflow`
+- **Issues fermées** : N/A (amélioration CI/CD)
+- **Quoi** : finalisation du pipeline d'auto-implémentation des recommandations tech lead. Avant cette PR, le workflow `claude-post-review` créait des issues [REC] mais sans associer la branche source — elles étaient orphelines. `binance-dev-auto` ne savait pas non plus travailler sur une branche existante, seulement créer une nouvelle branche depuis `main`. Après cette PR, le flux complet fonctionne : tech lead review → issue [REC] créée avec métadonnées de branche (`<!-- pr_branch -->` / `<!-- pr_number -->`) → `auto-dispatch` détecte le label `REC-AUTO` et extrait ces métadonnées → `binance-dev-auto` checkout la branche existante de la PR, implémente, commit, ferme l'issue. Trois workflows GitHub Actions révisés en coordination.
+- **Doc tech** : [docs/technique/pr-242-rec-auto-workflow.md](../technique/pr-242-rec-auto-workflow.md)
+
+---
+
+#### #256 — feat: commande Telegram /calibrage pour déclencher le cycle position
+
+- **Mergée à** : 20:20 UTC
+- **Branche** : `feat/issue-254-calibrage-command`
+- **Issues fermées** : #254
+- **Quoi** : expose `/calibrage` comme commande Telegram manuelle pour déclencher le cycle de gestion des positions à la demande. Avant cette PR, le cycle position ne se déclenchait qu'automatiquement toutes les heures. Le handler suit le même pattern que `/trade` : confirmation immédiate (`"⚙️ Calibrage des positions en cours..."`), puis lancement en thread daemon. 7 lignes de code, 2 lignes de mise à jour des messages d'aide.
+- **Doc tech** : [docs/technique/pr-256-calibrage-command.md](../technique/pr-256-calibrage-command.md)
+
+---
+
+#### #257 — feat: position_prompt.txt — inclure les OCO manuels Binance (open-orders)
+
+- **Mergée à** : 20:20 UTC
+- **Branche** : `feat/issue-255-position-oco-manuels`
+- **Issues fermées** : #255
+- **Quoi** : enrichissement du prompt de gestion des positions pour qu'il voie aussi les ordres OCO placés manuellement sur Binance (XRP, HBAR, STX, SUI, etc.), pas seulement les positions du bot. Le cycle position appelle désormais `binance-cli spot open-orders`, merge les deux sources (bot + manuels), calcule le P&L de chaque coin exposé quelle que soit son origine, et réalise le profit si le seuil est atteint — y compris sur les OCO manuels (annulation OCO, puis SELL MARKET). Champ `source` ("bot" vs "manual") ajouté pour tracer l'origine dans les rapports.
+- **Impact utilisateur** : les positions ouvertes manuellement sur Binance sont désormais sous surveillance automatique du bot.
+- **Doc tech** : [docs/technique/pr-257-position-oco-manuels.md](../technique/pr-257-position-oco-manuels.md)
+
+---
+
+### Issues fermées (16)
+
+**Issues features :**
+
+- **#237** — bug: TRADE_PROMPT invoque skill start-agent au lieu d'exécuter les phases — fermée par PR #238
+- **#239** — feat: cycle horaire de gestion des positions ouvertes (POSITION_PROMPT) — fermée par PR #241
+- **#254** — feat: commande Telegram /calibrage pour déclencher le cycle position manuellement — fermée par PR #256
+- **#255** — feat: position_prompt.txt — inclure les OCO manuels Binance (open-orders) — fermée par PR #257
+
+**Tickets [REC] auto-implémentés sur PR #241 (pipeline REC-AUTO) :**
+
+- **#249, #250** — Extraire `_run_workflow_cycle()` et `_check_and_run_scheduled()` pour réduire la duplication — implémentés dans PR #241
+- **#251** — Documenter le comportement silencieux du position check (lock occupé) — implémenté dans PR #241
+- **#252** — Clarifier Bandit B101 (assert comme type guard mypy) — implémenté dans PR #241
+- **#253** — Tester `next_1h_slot()` sur une semaine UTC (anti-collision) — script de test ajouté dans PR #241
+- **#243, #244, #245, #246, #247** — Duplicatas des tickets ci-dessus (issues créées en doublon lors du premier run du pipeline REC-AUTO avant correction de PR #242)
+- **#248** — [REC] Test extraction numéro (issue de test fonctionnel du pipeline, fermée manuellement)
+
+**Issue fermée comme non planifiée :**
+- **#158** — [REC] Ajouter un exemple minimal au TRADE_PROMPT — fermée comme `not_planned`
+
+---
+
+### Nouveaux tickets créés
+
+- **#240 — feat: Phase 0 TRADE_PROMPT — résumé positions ouvertes avant nouveaux achats** [enhancement · AUTO] : avant chaque cycle de trading 4h, Claude lirait `trade_history.json` + appellerait `binance-cli open-orders` pour avoir une vue consolidée des expositions en cours (bot + manuelles) avec P&L actuels. Ce contexte permettrait d'éviter d'ouvrir une position sur un coin déjà exposé via OCO manuel, et d'ajuster dynamiquement `max_open_positions` en tenant compte du capital réellement disponible. Ticket ouvert, pas encore assigné.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "Un bot qui apprend à surveiller ses positions — et celles qu'on place à sa place". La journée du 22 juin raconte une évolution en deux temps : d'abord on donne au bot un cycle autonome de gestion des positions (PR #241, 7 fichiers, refactor majeur) ; puis, en soirée, on lui montre qu'il y a des positions qu'il ne voyait pas — les OCO manuels (PR #257). En quelques heures, le bot passe d'un système qui ne regardait ses positions que 6 fois par jour à un système qui surveille 23 fois par jour toutes les expositions du compte, bot ou manuelles. La commande `/calibrage` (PR #256) complète le tableau en donnant à l'utilisateur un levier d'intervention manuel.
+
+> **Angle secondaire** : "Un cycle auto qui s'emballe — et le prompt qui l'a corrigé". Le bug du 22 juin matin (PR #238) illustre un problème propre aux LLM orchestrateurs : Claude voit un skill `start-agent` et l'invoque à la place d'exécuter les 7 phases de trading. Résultat : cycle de 57s, aucune analyse, aucun trade. Fix : une ligne d'instruction en tête du prompt. Pas de code Python, pas de tests. Un problème de comportement LLM résolu par de la clarification textuelle.
+
+> **Angle système** : "Comment on a câblé le feedback loop des recommandations tech lead" (PR #242) — le pipeline REC-AUTO qui permet aux recommandations du tech lead reviewer de devenir des commits directement sur la branche de la PR d'origine, sans intervention humaine. Les 12 tickets [REC] fermés aujourd'hui sont la première démonstration en conditions réelles de ce pipeline.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 5
+- Issues fermées : 16 (4 features + 12 [REC]/doublons)
+- Tickets créés : ~16 (dont 1 ouvert : #240)
+- Fichiers modifiés au total (PRs features) : ~12 fichiers
+
+---
+
 ## 2026-06-21
 
 ### PRs mergées
