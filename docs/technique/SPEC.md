@@ -34,7 +34,7 @@ main_loop()
 │       ├── acquire_lock()   [agent_lock.json — partagé avec cycle 4h]
 │       ├── sous-processus : claude --print --verbose --output-format stream-json
 │       │   --dangerously-skip-permissions --model claude-sonnet-4-6 <POSITION_PROMPT>
-│       │   └── Tâches 1–5 : charger config, fetch prix, évaluer P&L, exécuter SELL MARKET, résumer
+│       │   └── Tâches 1–5 : charger config, fetch prix (bot + OCO manuels), évaluer P&L, exécuter SELL MARKET, résumer
 │       ├── stdout streamé → logs/stdout/position_{cycle_id}.log
 │       ├── stderr capturé → logs/stderr/position_{cycle_id}.log
 │       └── release_lock()   [finally]
@@ -294,6 +294,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#257](pr-257-position-oco-manuels.md) | 2026-06-22 | [M255] Étendre cycle position : fusion ordres bot + OCO manuels Binance via `binance-cli spot open-orders`, évaluation P&L manuel, annulation OCO au profit + SELL MARKET |
 | [#241](pr-241-cycle-position-horaire.md) | 2026-06-22 | [M239] Cycle horaire de gestion des positions ouvertes : `next_1h_slot()` scheduler 1h (sautant les 4h slots), `POSITION_PROMPT` dédiée, refactor `_run_workflow_cycle()` commune, watchdog optionnel, post-processing séparé — réalise profits dès `min_profit_pct_take` (2%), évalue cut-loss > `max_hold_days` (14j) |
 | [#235](pr-235-augmente-max-single-position.md) | 2026-06-15 | Configuration : augmente `max_single_position_pct` de 0.40 à 0.65 pour permettre des ordres au seuil minimum sur portefeuilles en drawdown |
 | [#234](pr-234-fix-tradingview-mcp-tools-v2.md) | 2026-06-14 | MCP TradingView : remplace outils tradesdontlie inexistants par atilaahmettaner (top_gainers, volume_breakout_scanner, market_sentiment, coin_analysis) — Phase 1 screeners + Phase 2 multi-timeframe + Phase 3 scoring mis à jour |

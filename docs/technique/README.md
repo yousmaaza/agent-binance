@@ -24,6 +24,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#257](pr-257-position-oco-manuels.md) | [M255] Inclure les OCO manuels Binance dans le cycle position | 2026-06-22 |
 | [#256](pr-256-calibrage-command.md) | feat: commande Telegram /calibrage pour déclencher le cycle position | 2026-06-22 |
 | [#241](pr-241-cycle-position-horaire.md) | [M239] Cycle horaire de gestion des positions ouvertes (POSITION_PROMPT) | 2026-06-22 |
 | [#242](pr-242-rec-auto-workflow.md) | feat: tickets [REC] via REC-AUTO + binance-dev sur branche PR existante | 2026-06-22 |
