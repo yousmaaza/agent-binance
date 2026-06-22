@@ -149,6 +149,15 @@ jobs:
           echo "pr_branch=$PR_BRANCH" >> $GITHUB_OUTPUT
           echo "$REVIEW" > /tmp/review_comment.md
 
+      - name: Ensure REC-AUTO label exists
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh label create "REC-AUTO" \
+            --repo ${{ github.repository }} \
+            --description "Recommandation tech lead — implémentée par binance-dev sur la branche PR" \
+            --color "#e4e669" 2>/dev/null || true
+
       - name: Create [REC] tickets (Claude)
         if: steps.review.outputs.has_review == 'true'
         uses: anthropics/claude-code-action@v1
