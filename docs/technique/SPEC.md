@@ -23,6 +23,7 @@ main_loop()
 │   ├── dispatch callback_query → handle_callback()
 │   └── dispatch commande texte → threading.Thread(target=handle_*)
 │       ├── /trade    → run_trade_workflow(trigger="manual")
+│       ├── /calibrage → run_position_check_workflow(trigger="manual")   [NEW #256]
 │       ├── /status   → run_status()
 │       ├── /perf     → run_perf()
 │       ├── /raisonnement → run_raisonnement()
@@ -340,4 +341,5 @@ webhook_server.py (process principal)
 | [#219](pr-219-consolidation-auto.md) | 2026-06-13 | [CONSOLIDATION] Refonte architecture : séparation logique orchestration cycle dans `binance-bot/orchestration/runner.py` (modules core, storage, botlogging, commands, models) ; classe `runner.run_trade_workflow()` remplace la logique monolithique dans webhook_server.py ; helpers via tempfile sécurisé (Bandit B108) |
 | [#231](pr-231-consolidation-rec-auto.md) | 2026-06-14 | [CONSOLIDATION MAJEURE] Refactoring complet v2 → modularisation (orchestration, commands, core, storage, botlogging, models) + extraction TRADE_PROMPT dans `prompts/trade_prompt.txt` + injection helpers via tempfile + création agents CI/CD (binance-dev, doc-tech, tech-lead-reviewer, ticket-manager) + workflows GitHub Actions (binance-dev-auto, claude-code-review, claude-doc-tech, claude-post-review) + intégration 14 skills Binance/Finance + documentation technique complète (PRs historiques) |
 | [#238](pr-238-trade-prompt-disallow-skills.md) | 2026-06-22 | Disallow skill invocation en TRADE_PROMPT : bloc "RÈGLES D'EXÉCUTION CRITIQUES" placé au début du prompt interdisant explicitement tous les skills (start-agent, start-trading, Workflow, Agent, etc.) et clarifiiant que seuls Bash/Read/Write/Edit/Grep sont autorisés → prévient invocation involontaire de skill au lieu d'exécution des phases |
+| [#256](pr-256-calibrage-command.md) | 2026-06-22 | feat: commande Telegram `/calibrage` pour déclencher manuellement le cycle de gestion des positions (ajout handler dispatcher + mise à jour message aide) |
 | [#242](pr-242-rec-auto-workflow.md) | 2026-06-22 | Workflow [REC] automation : refactoring complet post-review CI/CD — job `create-rec-tickets` détecte 3 formats recommandations + crée issues avec étiquettes `<!-- pr_branch -->` / `<!-- pr_number -->`; `auto-dispatch-on-auto-label` extrait métadonnées du body issue ; `binance-dev-auto` accepte mode REC-AUTO (implémente sur branche existante, ferme issue après commit) → recommandations tech lead intégrées au workflow PR existant |
