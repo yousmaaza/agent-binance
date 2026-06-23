@@ -99,9 +99,66 @@ Référence rapide des commandes employées lors des 7 phases de trading automat
 
 ---
 
-PHASE 0 — VÉRIFICATIONS PRÉALABLES
+PHASE 0 — SNAPSHOT POSITIONS OUVERTES + VÉRIFICATIONS PRÉALABLES
 ⏱️ HEARTBEAT START PHASE 0
 _hb_start(0)
+
+# --- SNAPSHOT POSITIONS OUVERTES ---
+# Afficher un résumé des positions ouvertes et de leur P&L avant de décider de nouveaux achats
+import json, subprocess
+
+try:
+    # Lire les positions ouvertes depuis trade_history.json
+    with open("__PROJECT_DIR__/state/trade_history.json") as f:
+        history = json.load(f)
+    open_positions_list = [t for t in history if t.get("status") == "open"]
+
+    if open_positions_list:
+        # Récupérer les ordres actifs Binance pour tous les coins
+        snapshot_lines = ["📊 SNAPSHOT POSITIONS OUVERTES"]
+        snapshot_lines.append(f"Positions actives : {len(open_positions_list)}")
+        snapshot_lines.append("")
+
+        for pos in open_positions_list:
+            coin = pos.get("coin")
+            entry_price = float(pos.get("entry_price", 0))
+            qty = float(pos.get("quantity", 0))
+            entry_usdc = entry_price * qty
+
+            try:
+                # Récupérer le prix actuel
+                ticker = subprocess.run(
+                    ["binance-cli", "spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if ticker.returncode == 0:
+                    ticker_data = json.loads(ticker.stdout)
+                    current_price = float(ticker_data.get("price", entry_price))
+                else:
+                    current_price = entry_price
+            except:
+                current_price = entry_price
+
+            current_usdc = current_price * qty
+            pnl_usdc = current_usdc - entry_usdc
+            pnl_pct = (pnl_usdc / entry_usdc * 100) if entry_usdc > 0 else 0
+
+            # Déterminer le type de position (bot ou manuel)
+            pos_type = "bot" if pos.get("side") == "BUY" else "unknown"
+            if not pos.get("entry_order_id"):
+                pos_type = "manuel"
+
+            snapshot_lines.append(f"{coin}: entrée {entry_price:.4g} → prix {current_price:.4g} | P&L {pnl_pct:+.1f}% ({pnl_usdc:+.2f} USDC) [{pos_type}]")
+
+        snapshot_summary = "\n".join(snapshot_lines)
+        tg(snapshot_summary)
+    else:
+        tg("📊 Aucune position ouverte actuellement")
+except Exception as e:
+    tg(f"⚠️ Snapshot positions échoué : {e}")
+
+# --- FIN SNAPSHOT ---
+
 Lis config.json pour récupérer TOUS les paramètres.
 Exécute : binance-cli spot get-account --profile agent-profile
 Calcule : portfolio_total = USDC_free + sum(locked USDC de tous les assets)
@@ -336,6 +393,71 @@ for _t in _history:
 if _ts_updates:
     tg("🔄 Trailing stops mis à jour ce cycle :\n" + "\n".join(_ts_updates))
 # --- FIN TRAILING STOP ---
+
+# --- RÉALISATION DE PROFITS (Calibrage intégré Phase 0) ---
+# Évaluer chaque position ouverte : vendre si P&L >= min_profit_pct_take
+_profit_summary = []
+_min_profit = _load_config().get("min_profit_pct_take", 2.0)
+_max_hold = _load_config().get("max_hold_days", 14)
+
+for _pos in _history:
+    if _pos.get("status") != "open":
+        continue
+    _coin = _pos.get("coin")
+    _entry_price = float(_pos.get("entry_price", 0))
+    _qty = float(_pos.get("quantity", 0))
+    if not _entry_price or not _qty:
+        continue
+
+    try:
+        # Récupérer prix actuel
+        _ticker_raw = subprocess.run(
+            ["binance-cli", "spot", "ticker-price", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
+            capture_output=True, text=True, timeout=5
+        )
+        if _ticker_raw.returncode != 0:
+            continue
+        _ticker_data = json.loads(_ticker_raw.stdout)
+        _current_price = float(_ticker_data.get("price", _entry_price))
+    except:
+        continue
+
+    _pnl_pct = ((_current_price - _entry_price) / _entry_price) * 100
+    _pnl_usdc = (_current_price - _entry_price) * _qty
+
+    # Critère 1 : profit seuil atteint
+    if _pnl_pct >= _min_profit:
+        # Vendre à market
+        try:
+            _sell_raw = subprocess.run(
+                ["binance-cli", "spot", "new-order", "--symbol", f"{_coin}USDC",
+                 "--side", "SELL", "--type", "MARKET", "--quantity", str(_qty), "--profile", "agent-profile"],
+                capture_output=True, text=True, timeout=10
+            )
+            if _sell_raw.returncode == 0:
+                _sell_resp = json.loads(_sell_raw.stdout)
+                if _sell_resp.get("orderId"):
+                    _exit_price = float(_sell_resp.get("cummulativeQuoteQty", 0)) / float(_sell_resp.get("executedQty", _qty))
+                    _actual_pnl_usdc = (_exit_price - _entry_price) * _qty
+                    _actual_pnl_pct = (_exit_price - _entry_price) / _entry_price * 100
+                    # Mettre à jour position fermée
+                    _pos.update({
+                        "status": "closed",
+                        "exit_price": _exit_price,
+                        "pnl_usdc": _actual_pnl_usdc,
+                        "pnl_pct": _actual_pnl_pct,
+                        "exit_date": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                        "close_reason": "profit_target_phase0"
+                    })
+                    _profit_summary.append(f"✅ {_coin} : {_actual_pnl_pct:+.1f}% ({_actual_pnl_usdc:+.2f} USDC)")
+                    tg(f"✅ Phase 0 — {_coin} vendu (P&L cible)\n{_actual_pnl_pct:+.1f}% | {_actual_pnl_usdc:+.2f} USDC")
+        except Exception as _e:
+            tg(f"⚠️ Fermeture P&L {_coin} échouée : {_e}")
+
+if _profit_summary:
+    _save_trade_history_atomic(_history)
+    tg("📊 Phase 0 — Positions fermées (profit cible) :\n" + "\n".join(_profit_summary))
+# --- FIN RÉALISATION DE PROFITS ---
 
 Compte open_positions = nombre de trades status="open" dans trade_history.json
 → tg("📋 Phase 0 — Vérifications\\nPortfolio : {portfolio_total:.2f} USDC\\nBudget dispo : {budget_disponible:.2f} USDC\\nPositions ouvertes : {open_positions}/{max_open_positions}\\nPnL du jour : {daily_pnl:+.2f} USDC")
