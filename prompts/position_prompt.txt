@@ -176,7 +176,7 @@ for coin in all_coins:
 
     if pos_bot:
         entry_price = float(pos_bot.get("entry_price", 0))
-        qty = float(pos_bot.get("qty", 0))
+        qty = float(pos_bot.get("quantity", 0))
         if entry_price > 0:
             pnl_pct = ((current_price - entry_price) / entry_price) * 100
             summary_lines.append(f"  {coin}: {qty} @ {entry_price} (cours {current_price:.6f}, P&L {pnl_pct:+.2f}%) [BOT]")
