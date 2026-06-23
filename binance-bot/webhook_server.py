@@ -21,7 +21,7 @@ from core.lock import release_lock
 from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
 from core.timing import fmt_local, next_4h_slot
-from orchestration.runner import run_trade_workflow
+from orchestration.runner import run_trade_workflow, run_position_check_workflow
 
 NEXT_AUTO_TRADE = None
 
@@ -66,7 +66,7 @@ def main_loop():
 
     send_telegram(
         f"🤖 Bot v2 démarré (workflow test 2026-05-28)\n"
-        f"Commandes : /trade /status /perf /raisonnement /cout /eval /reset\n"
+        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /reset\n"
         f"⏰ Prochain cycle auto : {fmt_next()}",
         parse_mode=None,
     )
@@ -134,12 +134,19 @@ def main_loop():
                         target=lambda: send_telegram(run_eval(), parse_mode="HTML"),
                         daemon=True,
                     ).start()
+                elif text.startswith("/calibrage"):
+                    send_telegram("⚙️ Calibrage des positions en cours...")
+                    threading.Thread(
+                        target=run_position_check_workflow,
+                        kwargs={"trigger": "manual"},
+                        daemon=True,
+                    ).start()
                 elif text.startswith("/reset"):
                     release_lock()
                     send_telegram(f"🔓 Lock réinitialisé.\n⏰ Prochain cycle auto : {fmt_next()}")
                 elif text:
                     send_telegram(
-                        f"Commandes : /trade /status /perf /raisonnement /cout /eval /reset\n"
+                        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /reset\n"
                         f"⏰ Prochain cycle : {fmt_next()}"
                     )
 
