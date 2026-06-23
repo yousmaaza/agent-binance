@@ -30,8 +30,8 @@ min_profit_pct = cfg.get("min_profit_pct_take", 2.0)
 max_hold_days = cfg.get("max_hold_days", 14)
 
 positions = []
-for entry in trade_history.get("entries", []):
-    if entry.get("status") == "OPEN":
+for entry in trade_history:
+    if entry.get("status") == "open":
         positions.append(entry)
 ```
 
@@ -40,11 +40,11 @@ for entry in trade_history.get("entries", []):
 # Ordres bot (de trade_history.json)
 open_orders_bot = {}
 for pos in positions:
-    coin = pos["symbol"].replace("USDC", "")
+    coin = pos["coin"]
     open_orders_bot[coin] = pos
 
 # Ordres manuels (OCO via binance-cli)
-open_orders_manual_json = binance("spot", "open-orders", "--profile", "agent-profile")
+open_orders_manual_json = binance("spot", "get-open-orders", "--profile", "agent-profile")
 open_orders_manual_raw = json.loads(open_orders_manual_json) if open_orders_manual_json else []
 
 manual_positions = {}
@@ -61,7 +61,7 @@ all_coins = set(open_orders_bot.keys()) | set(manual_positions.keys())
 current_prices = {}
 for coin in all_coins:
     try:
-        price_json = binance("get-price", coin, "USDC")
+        price_json = binance("spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
         price_data = json.loads(price_json)
         current_prices[coin] = float(price_data.get("price", 0))
     except:
@@ -84,8 +84,8 @@ for coin in all_coins:
     # Positions bot : utilise entry_price et entry_time
     if pos_bot:
         entry_price = float(pos_bot.get("entry_price", 0))
-        qty = float(pos_bot.get("qty", 0))
-        entry_time_str = pos_bot.get("entry_time", "")
+        qty = float(pos_bot.get("quantity", 0))
+        entry_time_str = pos_bot.get("date", "")
 
         if not entry_price:
             continue
