@@ -10,6 +10,67 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-23
+
+### PRs mergées (1)
+
+#### #260 — refactor: supprimer le cycle horaire position, intégrer calibrage en Phase 0
+
+- **Mergée à** : 07:39 UTC
+- **Branche** : `feat/issue-259-supprimer-cycle-position-phase0`
+- **Issues fermées** : #259
+- **Quoi** : le cycle horaire de gestion des positions (PR #241, mergée la veille à 19:46 UTC) est retiré moins de 12h après son introduction en production. Le scheduler 1h (`NEXT_AUTO_POSITION`, `next_1h_slot()`) disparaît de `main_loop()`. La commande Telegram `/calibrage` est supprimée. La logique de prise de profit est intégrée directement dans la Phase 0 du cycle trade 4h : au début de chaque cycle, Claude parcourt `trade_history.json`, récupère le prix live de chaque position ouverte via `binance-cli spot ticker-price`, et vend à MARKET si le P&L atteint `min_profit_pct_take`. L'architecture revient à un seul scheduler actif — 6 cycles par jour à 00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC.
+- **Scope du changement** : 2 fichiers (`prompts/trade_prompt.txt` +64 lignes en Phase 0, `binance-bot/webhook_server.py` suppression du handler `/calibrage` et du scheduler 1h). `run_position_check_workflow()` et `POSITION_PROMPT` restent dans le code comme legacy non invoqué — rollback facile si besoin.
+- **Pourquoi c'est intéressant** : la PR #241 (cycle horaire) a vécu moins de 12h en production avant d'être refactorisée. Non pas parce qu'elle était fausse, mais parce que l'architecture à deux schedulers coûtait plus en complexité qu'elle ne gagnait en réactivité — passer de 23 vérifications par heure à 6 vérifications par jour représente une dégradation au pire cas (1h → 4h), acceptable puisque le bot ne trade pas sur des horizons inférieurs à 4h.
+- **Doc tech** : [docs/technique/pr-260-refactor-phase0-calibrage.md](../technique/pr-260-refactor-phase0-calibrage.md)
+
+---
+
+### Issues fermées (1)
+
+- **#259** — `refactor: supprimer le cycle horaire position, intégrer calibrage bot en Phase 0 du TRADE_PROMPT` — fermée par PR #260 à 07:39 UTC. Issue créée le même matin à 07:13 UTC, implémentée et mergée en 26 minutes.
+
+---
+
+### Nouveaux tickets créés (1)
+
+- **#261** — `[BUG] position_prompt.txt : mauvaises commandes binance-cli et mauvais noms de champs` [AUTO] — créé à 10:38 UTC, toujours ouvert. Documente 7 bugs dans `prompts/position_prompt.txt` : mauvaise commande `open-orders` (→ `get-open-orders`), mauvaise structure `ticker-price`, champ `status` en majuscule au lieu de minuscule, `trade_history` incorrectement accédé comme dict avec clé `"entries"`, `pos["symbol"]` au lieu de `pos["coin"]`, `pos["qty"]` au lieu de `pos["quantity"]`, `pos["entry_time"]` au lieu de `pos["date"]`. Ces bugs signifient que le cycle position (PR #241) et `/calibrage` (PR #256), supprimés ce matin par PR #260, ne fonctionnaient probablement pas correctement depuis leur introduction le 22 juin. L'issue reste ouverte pour corriger `position_prompt.txt` en vue d'un éventuel rollback — mais le code bugué n'est plus appelé en production.
+
+---
+
+### Comportement du bot en production (4 cycles)
+
+| Heure UTC | Score | Skip | Portfolio | Sentiment | Open pos. |
+|---|---|---|---|---|---|
+| 08:05 | 2/10 | TYPE_A | 77.50 USDC | Bearish | 1 |
+| 12:05 | 3/10 | — | 64.31 USDC | Bullish | 1 |
+| 16:05 | 2/10 | TYPE_C | 77.44 USDC | Bearish | 1 |
+| 20:05 | 2/10 | TYPE_A | 77.42 USDC | Bearish | 1 |
+
+Journée entièrement bearish : top_score maximum à 3/10 sur 4 cycles. Aucun BUY exécuté. 1 position ouverte stable. Le cycle 12:05 (skip_type null, top_score 3, sentiment Bullish) correspond à une évaluation HOLD — le bot a analysé les coins mais n'a pas produit de skip catégorisé, score insuffisant pour acheter. Le portfolio oscille entre 64 et 77 USDC selon le mark-to-market de la position ouverte.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "La feature qui a vécu 12 heures". La PR #241 (cycle position 1h) est mergée le 22 juin à 19:46 UTC. La PR #260 (suppression du même cycle) est mergée le 23 juin à 07:39 UTC. Écart : 11h53. Pas un bug, pas un rollback d'urgence — une décision délibérée de simplification après avoir constaté que deux schedulers coûtaient plus en état à gérer qu'ils ne gagnaient en réactivité. Ce type de cycle court (feature → prod → retrait conscient) est rare dans les projets humains parce qu'il est gênant de "défaire" ce qu'on vient de faire. Avec des agents, le code n'a pas d'ego.
+
+> **Angle secondaire** : "Le code mort découvert après la suppression". L'issue #261 (10:38 UTC) documente 7 bugs dans `position_prompt.txt` — exactement le fichier du cycle position supprimé 3h plus tôt. Les bugs signifient que le cycle ne fonctionnait probablement pas comme prévu depuis son introduction. Le fait que personne ne l'ait détecté en 12h de production illustre un problème propre aux agents adaptatifs : Claude corrige à la volée les appels qui échouent (`--help`, retry) sans planter — le cycle "tourne" en surface mais avec des données dégradées, sans signal d'alarme clair.
+
+> **Angle système** : "Deux schedulers ou un seul ?" La tension architecturale sous-jacente : surveiller les positions toutes les heures (23 cycles/jour, coût ~0.10-0.20 USD/h) ou intégrer la vérification dans le cycle trade existant (6 cycles/jour, coût marginal nul) ? Pour un bot à 77 USDC et un seuil `min_profit_pct_take` à 2%, la deuxième option est raisonnable. Ce n'est pas une réponse universelle — c'est une réponse calibrée à un contexte de capital faible.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 1
+- Issues fermées : 1
+- Tickets créés : 1 (ouvert)
+- BUY exécutés en production : 0
+- Cycles bearish : 4/4
+
+---
+
 ## 2026-06-22
 
 ### PRs mergées (5)
