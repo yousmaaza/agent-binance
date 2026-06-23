@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-06-22 (PR #242)
+> **Dernière mise à jour** : 2026-06-23 (PR #260)
 > **Commit** : <current>
 
 ---
@@ -23,27 +23,17 @@ main_loop()
 │   ├── dispatch callback_query → handle_callback()
 │   └── dispatch commande texte → threading.Thread(target=handle_*)
 │       ├── /trade    → run_trade_workflow(trigger="manual")
-│       ├── /calibrage → run_position_check_workflow(trigger="manual")   [NEW #256]
 │       ├── /status   → run_status()
 │       ├── /perf     → run_perf()
 │       ├── /raisonnement → run_raisonnement()
 │       ├── /cout     → handle_cout()
 │       └── /reset    → release_lock()
-├── Auto-scheduler 1h (slots :05 UTC, en sautant les 4h slots)  [NEW #241]
-│   └── run_position_check_workflow(trigger="auto")   [threading.Thread daemon]
-│       ├── acquire_lock()   [agent_lock.json — partagé avec cycle 4h]
-│       ├── sous-processus : claude --print --verbose --output-format stream-json
-│       │   --dangerously-skip-permissions --model claude-sonnet-4-6 <POSITION_PROMPT>
-│       │   └── Tâches 1–5 : charger config, fetch prix (bot + OCO manuels), évaluer P&L, exécuter SELL MARKET, résumer
-│       ├── stdout streamé → logs/stdout/position_{cycle_id}.log
-│       ├── stderr capturé → logs/stderr/position_{cycle_id}.log
-│       └── release_lock()   [finally]
-└── Auto-scheduler 4h (slots 4h UTC : 00:05, 04:05, 08:05, 12:05, 16:05, 20:05)
+└── Auto-scheduler 4h (slots 4h UTC : 00:05, 04:05, 08:05, 12:05, 16:05, 20:05)  [SUPPRESSION #260 : scheduler 1h]
     └── run_trade_workflow(trigger="auto")   [threading.Thread daemon]
         ├── acquire_lock()   [agent_lock.json]
         ├── sous-processus : claude --print --verbose --output-format stream-json
         │   --dangerously-skip-permissions --model claude-sonnet-4-6 <TRADE_PROMPT>
-        │   ├── Phase 0 — Vérifications préalables (solde, daily loss limit, trades ouverts)
+        │   ├── Phase 0 — Vérifications préalables + calibrage (solde, daily loss limit, trades ouverts, réalisation de profits)  [INTÉGRATION #260]
         │   ├── Phase 1 — Scan marché (top_gainers, volume_breakout, sentiment, rating_filter)
         │   ├── Phase 2 — Analyse multi-timeframe (A: coin_analysis 4h sur tous, B: filtrage BUY 4h, C: coin_analysis 1d filtrée)
         │   ├── Phase 3 — Scoring 0-10 et sélection des candidats
@@ -196,7 +186,7 @@ webhook_server.py (process principal)
 
 | Commande | Fonction handler | Description |
 |---|---|---|
-| `/trade` | `run_trade_workflow(trigger="manual")` | Déclenche immédiatement un cycle complet d'analyse et de trading (7 phases) dans un thread daemon |
+| `/trade` | `run_trade_workflow(trigger="manual")` | Déclenche immédiatement un cycle complet d'analyse et de trading (9 phases, avec calibrage en Phase 0) dans un thread daemon |
 | `/status` | `run_status()` | Affiche le portefeuille Binance actuel (soldes, positions lockées, ordres ouverts, trades agent actifs) et l'heure du prochain cycle |
 | `/perf` | `run_perf()` | Affiche les statistiques de performance sur les trades fermés : win rate, expectancy, profit factor, Sharpe annualisé, max drawdown, p-value (t-test) |
 | `/raisonnement` | `run_raisonnement()` | Affiche l'explication vulgarisée en français du dernier cycle (lue depuis MongoDB, champ `explanation_fr`) |
@@ -294,6 +284,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#260](pr-260-refactor-phase0-calibrage.md) | 2026-06-23 | [M259] Refactoriser : supprimer cycle horaire position (scheduler 1h), intégrer calibrage directement en Phase 0 du cycle 4h — réalisation de profits pour positions P&L ≥ `min_profit_pct_take`, simplification architecture (un seul scheduler) |
 | [#257](pr-257-position-oco-manuels.md) | 2026-06-22 | [M255] Étendre cycle position : fusion ordres bot + OCO manuels Binance via `binance-cli spot open-orders`, évaluation P&L manuel, annulation OCO au profit + SELL MARKET |
 | [#241](pr-241-cycle-position-horaire.md) | 2026-06-22 | [M239] Cycle horaire de gestion des positions ouvertes : `next_1h_slot()` scheduler 1h (sautant les 4h slots), `POSITION_PROMPT` dédiée, refactor `_run_workflow_cycle()` commune, watchdog optionnel, post-processing séparé — réalise profits dès `min_profit_pct_take` (2%), évalue cut-loss > `max_hold_days` (14j) |
 | [#235](pr-235-augmente-max-single-position.md) | 2026-06-15 | Configuration : augmente `max_single_position_pct` de 0.40 à 0.65 pour permettre des ordres au seuil minimum sur portefeuilles en drawdown |
