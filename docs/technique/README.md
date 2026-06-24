@@ -24,6 +24,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#265](pr-265-supprimer-vars-claude-code.md) | [BUG] Supprimer vars CLAUDE_CODE_* du sous-processus claude | 2026-06-24 |
 | [#260](pr-260-refactor-phase0-calibrage.md) | [M259] Refactoriser : supprimer cycle horaire position, intégrer calibrage en Phase 0 | 2026-06-23 |
 | [#257](pr-257-position-oco-manuels.md) | [M255] Inclure les OCO manuels Binance dans le cycle position | 2026-06-22 |
 | [#256](pr-256-calibrage-command.md) | feat: commande Telegram /calibrage pour déclencher le cycle position | 2026-06-22 |

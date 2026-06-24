@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-06-23 (PR #260)
+> **Dernière mise à jour** : 2026-06-24 (PR #265)
 > **Commit** : <current>
 
 ---
@@ -170,7 +170,7 @@ webhook_server.py (process principal)
 | `_check_and_run_scheduled()` | webhook_server.py:34 | Utilitaire de scheduling unifié : vérifie si c'est l'heure, calcule prochain slot, lance workflow en thread daemon, retourne le prochain slot — utilisé pour scheduler 1h (position) et 4h (trade) |
 | `_write_helpers_file()` | runner.py:116 | Génère le fichier temporaire des helpers (tg, binance, hb, _hb_start, _save_trade_history_atomic) via `tempfile.mkstemp()` : permissions 0o600 garanties, secrets lus depuis `os.environ` au runtime (jamais substitués en dur), injectables dans le TRADE_PROMPT |
 | `_send_start_notification()` | runner.py:99 | Envoie la notification Telegram de démarrage d'un cycle : affiche le modèle Claude utilisé (extrait depuis `CLAUDE_CLI_FLAGS`), le mode de facturation (abonnement), et l'heure du prochain cycle auto en heure locale ; différencie cycles manuels vs auto |
-| `_run_claude()` | runner.py:205 | Lance le sous-processus Claude CLI avec flags configurables : streame les événements stream-json depuis stdout, parse chaque ligne via `parse_stream_event()`, écrit les lignes formatées dans le fichier log stdout. Exécution en mode abonnement uniquement (pas de retry fallback API). Timeout 3600s (CLAUDE_PROCESS_TIMEOUT_S) avec timer. |
+| `_run_claude()` | runner.py:336 | Lance le sous-processus Claude CLI avec flags configurables : nettoie d'abord l'env en supprimant les 5 variables `CLAUDE_CODE_*` héritées du daemon parent (évite que l'enfant réutilise une session parente expirée) ; streame les événements stream-json depuis stdout, parse chaque ligne via `parse_stream_event()`, écrit les lignes formatées dans le fichier log stdout. Exécution en mode abonnement uniquement (pas de retry fallback API). Timeout 3600s (CLAUDE_PROCESS_TIMEOUT_S) avec timer. |
 | `parse_stream_event()` | stream_parser.py:8 | Parse une ligne stream-json de Claude CLI en log humain lisible, sans paramètre `session_cb` (mécanisme supprimé avec le fallback API). Transforme : `system/init` → log d'init, `assistant` → blocs texte + tool_use, `user` → tool_result, `result` → résumé + durée + coût. |
 | `_update_billing_mode_in_mongo()` | runner.py:156 | Enregistre le mode de facturation (`"abonnement"` ou `"api"`) dans Mongo après chaque cycle (distinction primaire vs fallback API) |
 | `run_raisonnement()` | :864 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
@@ -335,3 +335,4 @@ webhook_server.py (process principal)
 | [#238](pr-238-trade-prompt-disallow-skills.md) | 2026-06-22 | Disallow skill invocation en TRADE_PROMPT : bloc "RÈGLES D'EXÉCUTION CRITIQUES" placé au début du prompt interdisant explicitement tous les skills (start-agent, start-trading, Workflow, Agent, etc.) et clarifiiant que seuls Bash/Read/Write/Edit/Grep sont autorisés → prévient invocation involontaire de skill au lieu d'exécution des phases |
 | [#256](pr-256-calibrage-command.md) | 2026-06-22 | feat: commande Telegram `/calibrage` pour déclencher manuellement le cycle de gestion des positions (ajout handler dispatcher + mise à jour message aide) |
 | [#242](pr-242-rec-auto-workflow.md) | 2026-06-22 | Workflow [REC] automation : refactoring complet post-review CI/CD — job `create-rec-tickets` détecte 3 formats recommandations + crée issues avec étiquettes `<!-- pr_branch -->` / `<!-- pr_number -->`; `auto-dispatch-on-auto-label` extrait métadonnées du body issue ; `binance-dev-auto` accepte mode REC-AUTO (implémente sur branche existante, ferme issue après commit) → recommandations tech lead intégrées au workflow PR existant |
+| [#265](pr-265-supprimer-vars-claude-code.md) | 2026-06-24 | Fix : supprime les 5 variables `CLAUDE_CODE_*` du sous-processus Claude (`_run_claude()`) — empêche la réutilisation d'une session parent expirée en nettoyant l'env avant le lancement du CLI enfant (issue #264) |
