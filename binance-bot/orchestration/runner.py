@@ -342,6 +342,11 @@ def _run_claude(
     """Lance le sous-processus claude et streame stdout vers stdout_path. Retourne l'exit code."""
     flags = CLAUDE_CLI_FLAGS
     env = os.environ.copy()
+    # Strip Claude Code parent-session vars so the child claude process authenticates
+    # independently instead of trying to reuse an expired parent session.
+    for _k in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID",
+               "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH"):
+        env.pop(_k, None)
 
     with open(stdout_path, "w", buffering=1) as out_f, open(stderr_path, "w", buffering=1) as err_f:
         # flags from CLAUDE_CLI_FLAGS (config), prompt from TRADE_PROMPT (env) — no user input
