@@ -10,6 +10,54 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-24
+
+### PRs mergées (1)
+
+#### #265 — fix: supprimer les vars CLAUDE_CODE_* du sous-processus claude
+
+- **Mergée à** : 18:39 UTC (20:39 Europe/Paris)
+- **Branche** : `fix/issue-264-claude-child-session-env`
+- **Issues fermées** : #264
+- **Quoi** : correction d'un bug de pollution d'environnement entre le daemon et ses sous-processus Claude. Quand `webhook_server.py` était lancé depuis une session Claude Code active (typiquement via `nohup` dans un terminal IDE), il héritait cinq variables de session — `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_EXECPATH` — et les transmettait intactes au sous-processus `claude --print` lancé pour chaque cycle de trading. Le CLI enfant tentait de réutiliser la session parente. Si cette session avait expiré entre le démarrage du daemon et le lancement du cycle, `claude` répondait "Not logged in" en 1-2 secondes et sortait avec exit=1, cassant le cycle avant même d'exécuter la Phase 1 du TRADE_PROMPT. Le fix : 5 lignes dans `_run_claude()` de `binance-bot/orchestration/runner.py`, juste après `env = os.environ.copy()`, une boucle `env.pop()` qui purge les cinq vars fautives avant `subprocess.Popen`. Le sous-processus s'authentifie désormais indépendamment via ses propres credentials locaux.
+- **Scope du changement** : 1 fichier (`binance-bot/orchestration/runner.py`, lignes 343–349). Aucun autre fichier modifié.
+- **Pourquoi c'est intéressant** : le bug n'était pas visible en dehors d'un contexte spécifique (daemon lancé depuis une session Claude Code, puis session expirée avant le prochain cycle). Les cycles "fonctionnaient" quand la session parente était encore active — le problème n'apparaissait qu'après une déconnexion ou un redémarrage IDE. Diagnostic subtil pour un fix de 5 lignes.
+- **Doc tech** : [docs/technique/pr-265-supprimer-vars-claude-code.md](../technique/pr-265-supprimer-vars-claude-code.md)
+
+---
+
+### Issues fermées (1)
+
+- **#264** — `[BUG] Cycles cassés : CLAUDE_CODE_CHILD_SESSION hérité par le sous-processus claude` — créée à 17:19 UTC, fermée à 18:39 UTC par PR #265. Cycle de vie : 1h20. L'issue incluait les 5 variables fautives identifiées, le fichier et la ligne exacte à modifier, et le snippet de fix — format ultra-prescriptif qui a permis à `binance-dev` d'ouvrir la PR 2 minutes après la création du ticket.
+
+---
+
+### Nouveaux tickets créés (1)
+
+- **#264** — `[BUG] Cycles cassés : CLAUDE_CODE_CHILD_SESSION hérité par le sous-processus claude` [bug] — créé à 17:19 UTC, fermé le même soir à 18:39 UTC. Voir ci-dessus.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "L'outil qui se retourne contre lui-même". La chaîne d'imbrication est à la fois élégante et piégeuse : Claude Code (l'IDE) lance le daemon → le daemon lance un sous-processus `claude` pour chaque cycle → le sous-processus hérite de la session Claude Code qui avait lancé le daemon. C'est l'orchestrateur qui empoisonne son propre enfant. Le bug n'était reproductible que dans un contexte précis (session expirée entre le démarrage et le premier cycle), ce qui explique qu'il ait pu passer inaperçu pendant un certain temps — les cycles tournaient bien quand la session était fraîche.
+
+> **Angle secondaire** : "Le diagnostic minimal comme art". L'issue #264 ne dit pas "quelque chose ne fonctionne pas avec Claude". Elle liste les 5 variables exactes, le fichier exact (`runner.py`), la ligne exacte (~336), et le snippet Python de correction. Cette précision a réduit le temps implémentation → merge à 1h20. Courte réflexion sur la différence entre un bug report qui ouvre une investigation et un bug report qui ouvre un ticket d'implémentation — les deux sont légitimes, mais seul le second peut être délégué directement à un agent.
+
+> **Angle système** : "La frontière d'isolation des processus". La purge des vars `CLAUDE_CODE_*` pose une question plus large : quelles variables d'environnement un process parent devrait-il transmettre à ses enfants, et lesquelles devrait-il taire ? Dans un bot de trading qui tourne en daemon longue durée, l'environnement de lancement (session IDE, terminal, cron) ne devrait pas influencer le comportement des cycles. La règle implicite de ce fix : tout ce qui appartient à la session de l'opérateur doit être nettoyé avant la délégation au sous-processus autonome.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 1
+- Issues fermées : 1
+- Tickets créés : 1 (fermé le même jour)
+- Fichiers modifiés : 1 (`runner.py`, +5 lignes)
+- Délai ticket → merge : 1h20
+
+---
+
 ## 2026-06-23
 
 ### PRs mergées (1)
