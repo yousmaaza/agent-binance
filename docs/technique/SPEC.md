@@ -284,6 +284,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#263](pr-263-position-prompt-binance-cli-fix.md) | 2026-06-28 | [BUG #261] position_prompt.txt : corrections syntaxe binance-cli (`open-orders` → `get-open-orders`, `get-price` → `spot ticker-price`) et noms de champs trade_history.json (`status` minuscule, `coin`, `quantity`, `date`) |
 | [#260](pr-260-refactor-phase0-calibrage.md) | 2026-06-23 | [M259] Refactoriser : supprimer cycle horaire position (scheduler 1h), intégrer calibrage directement en Phase 0 du cycle 4h — réalisation de profits pour positions P&L ≥ `min_profit_pct_take`, simplification architecture (un seul scheduler) |
 | [#257](pr-257-position-oco-manuels.md) | 2026-06-22 | [M255] Étendre cycle position : fusion ordres bot + OCO manuels Binance via `binance-cli spot open-orders`, évaluation P&L manuel, annulation OCO au profit + SELL MARKET |
 | [#241](pr-241-cycle-position-horaire.md) | 2026-06-22 | [M239] Cycle horaire de gestion des positions ouvertes : `next_1h_slot()` scheduler 1h (sautant les 4h slots), `POSITION_PROMPT` dédiée, refactor `_run_workflow_cycle()` commune, watchdog optionnel, post-processing séparé — réalise profits dès `min_profit_pct_take` (2%), évalue cut-loss > `max_hold_days` (14j) |
