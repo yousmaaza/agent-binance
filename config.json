@@ -24,6 +24,7 @@
 
   "min_profit_pct_take": 2.0,
   "max_hold_days": 14,
+  "max_oco_retry": 3,
 
   "usdc_blacklist": []
 }
