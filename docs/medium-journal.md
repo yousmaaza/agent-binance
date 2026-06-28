@@ -10,6 +10,68 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-28
+
+### PRs mergées (2)
+
+#### #263 — [BUG] position_prompt.txt : mauvaises commandes binance-cli et mauvais noms de champs
+
+- **Mergée à** : 18:12 UTC (20:12 Europe/Paris)
+- **Branche** : `feat/issue-261-fix-position-prompt-binance-cli`
+- **Issues fermées** : #261
+- **Quoi** : correction de 7 incompatibilités dans `prompts/position_prompt.txt`, le prompt de gestion des positions créé lors des PR #241/#256 (22 juin). Deux commandes `binance-cli` étaient erronées : `open-orders` (inexistante → `spot get-open-orders`) et `get-price` (inexistante → `spot ticker-price --symbol`). Cinq noms de champs de `state/trade_history.json` étaient également faux : le statut en majuscule `"OPEN"` au lieu de `"open"`, `pos["symbol"]` au lieu de `pos["coin"]`, `pos["qty"]` au lieu de `pos["quantity"]`, `pos["entry_time"]` au lieu de `pos["date"]`, et l'accès `trade_history.get("entries", [])` au lieu de `trade_history` directement (la valeur est déjà une liste). Ces bugs faisaient échouer le prompt à chaque appel — Claude s'auto-corrigeait à la volée via `--help`, avec un coût estimé de ~1,5 minute et ~0,50 USD supplémentaires par cycle.
+- **Scope du changement** : 1 fichier uniquement (`prompts/position_prompt.txt`), 8 lignes modifiées sur 8 corrigées — changements chirurgicaux, sans restructuration du prompt.
+- **Pourquoi c'est intéressant** : le prompt avait été créé et mergé le 22 juin, l'issue #261 avait été créée le 23 juin. La PR a attendu 5 jours avant d'être mergée — non pas par oubli, mais parce que le code bugué n'était plus appelé en production (le cycle position avait été supprimé par PR #260 le 23 juin). La correction s'est faite en vue d'un éventuel rollback et pour nettoyer la dette visible.
+- **Doc tech** : [docs/technique/pr-263-position-prompt-binance-cli-fix.md](../technique/pr-263-position-prompt-binance-cli-fix.md)
+
+---
+
+#### #267 — [M1] fix(Phase 0) — comptage open_positions, retry OCO + close_reason
+
+- **Mergée à** : 18:22 UTC (20:22 Europe/Paris)
+- **Branche** : `feat/issue-266-phase-0-bugs`
+- **Issues fermées** : #266
+- **Quoi** : correction de trois bugs critiques détectés en production entre le 26 et le 28 juin dans la Phase 0 du cycle de trading. **Bug 1 — surallocation** : le comptage `open_positions` excluait les positions avec `protection_failed=True`. Lors du cycle `20260626_200505`, Phase 0 avait retourné `open_positions=0` alors qu'une position AAVE était ouverte — résultat : 3 positions ouvertes simultanément au lieu de 2 max. Le fix : une liste compréhension explicite `len([t for t in _op_history if t.get("status") == "open"])`, sans condition sur `protection_failed`. **Bug 2 — positions sans protection** : le rattrapage OCO échouait silencieusement en boucle infinie (3 cycles consécutifs les 26 juin 08:05, 12:05, 16:05 UTC) car la quantité était calculée depuis `qty_requested` plutôt que `qty_filled` (après déduction des frais Binance). AAVE est restée sans protection OCO pendant ~4 jours (26/06 04:05 → 28/06 08:05). Le fix : compteur `oco_retry_count` persisté dans `trade_history.json`, incrémenté à chaque tentative échouée, remis à zéro si l'OCO réussit — et fallback SELL MARKET automatique si `max_oco_retry` (défaut 3, paramètre `config.json`) est atteint, avec `close_reason="protection_exhausted"`. **Bug 3 — traçabilité** : les valeurs de `close_reason` inventées ad-hoc cycle par cycle (ex : `"oco_not_found"`) rendaient le debug impossible. Le fix standardise trois valeurs autorisées en Phase 0 : `market_above_tp`, `profit_target_phase0`, `protection_exhausted`.
+- **Scope du changement** : 2 fichiers (`config.json` : ajout de `max_oco_retry: 3` ; `prompts/trade_prompt.txt` : +98/-41 lignes dans la section Phase 0).
+- **Pourquoi c'est intéressant** : les trois bugs forment un effet cascade. L'OCO échoue → le trade est marqué `protection_failed=True` → ce flag exclut la position du comptage → le bot croit le portfolio sous-alloué → un nouveau BUY est autorisé → surallocation réelle. Aucun des trois comportements pris individuellement ne produit d'erreur visible ; c'est leur combinaison qui viole la règle `max_open_positions`. Le bug 1 était une condition quasi-permanente dès que le bug 2 se produisait une seule fois.
+- **Doc tech** : [docs/technique/pr-267-fix-phase0-bugs.md](../technique/pr-267-fix-phase0-bugs.md)
+
+---
+
+### Issues fermées (2)
+
+- **#261** — `[BUG] position_prompt.txt : mauvaises commandes binance-cli et mauvais noms de champs` [AUTO] — créée le 23 juin à 10:38 UTC, fermée le 28 juin à 18:12 UTC par PR #263. Issue prescriptive : listait les 7 bugs avec les lignes exactes et les corrections attendues — format qui a permis à `binance-dev` d'implémenter directement sans investigation préalable. Délai ticket → merge : 5 jours (le code n'était plus appelé en production depuis la PR #260 du 23 juin).
+
+- **#266** — `[BUG] Phase 0 — comptage open_positions, retry OCO infini et close_reason libre` [bug · enhancement · AUTO] — créée le 28 juin à 18:02 UTC, fermée à 18:22 UTC le même jour par PR #267. Issue la plus rapide de l'historique du projet : 20 minutes de cycle de vie ticket → merge. Elle documentait les trois bugs avec les cycles exacts affectés (`20260626_200505`), les comportements observés et les corrections attendues, ainsi que les pièges d'implémentation : `oco_retry_count` doit être incrémenté avant la tentative (pas après), et la quantité OCO doit utiliser `qty_filled` (pas `qty_requested`).
+
+---
+
+### Nouveaux tickets créés (1)
+
+- **#266** — `[BUG] Phase 0 — comptage open_positions, retry OCO infini et close_reason libre` [bug · enhancement · AUTO] — créé à 18:02 UTC, fermé à 18:22 UTC le même jour. Voir ci-dessus.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "L'effet cascade du flag silencieux". Le 28 juin illustre comment un bug de classement (`protection_failed` exclu du comptage) peut déclencher une chaîne d'événements non prévus : OCO échoue → trade marqué `protection_failed=True` → exclu du comptage `open_positions` → bot considère le portfolio sous-alloué → nouveau BUY lancé → surallocation réelle. Aucun de ces enchaînements n'est visible individuellement — chaque composant fait ce qu'il est supposé faire, mais le résultat global est une violation de la règle `max_open_positions`. Article sur la différence entre les bugs "directs" (une valeur fausse qui cause une erreur) et les bugs "de classement" (une valeur correcte interprétée dans le mauvais contexte), dans les systèmes à état persistant comme `trade_history.json`.
+
+> **Angle secondaire** : "4 jours sans filet de sécurité — le coût d'une boucle infinie silencieuse". AAVE a été exposée sans protection OCO du 26 juin 04:05 au 28 juin 08:05 UTC. Chaque cycle tentait le rattrapage, notifiait l'échec sur Telegram, et recommençait au prochain slot. Aucun fallback. La PR #267 répond à la question implicite : combien de cycles d'échec consécutifs sont acceptables avant de vendre à market ? La réponse : 3 (`max_oco_retry`). Court article sur le principe du circuit-breaker dans un bot de trading — pas pour les erreurs techniques, mais pour les états de marché dégradés persistants.
+
+> **Angle timeline** : "Ticket créé à 18:02, PR mergée à 18:22". L'issue #266 a mis 20 minutes de la création au merge. Non pas parce que le bug était simple (trois comportements distincts, deux fichiers), mais parce que l'issue avait documenté le problème de façon exhaustive : cycles affectés, comportements observés, corrections attendues, pièges d'implémentation. Cette journée complète une série : ticket → merge en 1h20 (PR #265, 24 juin), en 26 minutes (PR #260, 23 juin), en 20 minutes (PR #267, 28 juin). À chaque fois, la variable qui raccourcit le délai est la précision du ticket, pas la vitesse de l'agent.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 2
+- Issues fermées : 2 (#261 vieille de 5 jours, #266 fermée le jour même)
+- Tickets créés : 1 (#266, fermé dans les 20 minutes)
+- Fichiers modifiés au total : 3 (`prompts/position_prompt.txt`, `prompts/trade_prompt.txt`, `config.json`)
+- Délai record ticket → merge : 20 minutes (#266 → #267)
+
+---
+
 ## 2026-06-24
 
 ### PRs mergées (1)
