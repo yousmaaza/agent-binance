@@ -103,6 +103,12 @@ PHASE 0 — SNAPSHOT POSITIONS OUVERTES + VÉRIFICATIONS PRÉALABLES
 ⏱️ HEARTBEAT START PHASE 0
 _hb_start(0)
 
+# ⚠️ Valeurs autorisées pour close_reason en Phase 0 (et seulement en Phase 0) :
+# - "market_above_tp" : prix marché au-dessus du TP lors du rattrapage OCO
+# - "profit_target_phase0" : position fermée en Phase 0 pour prise de profit (>= min_profit_pct_take)
+# - "protection_exhausted" : SELL MARKET après max_oco_retry échecs de rattrapage OCO
+# Aucune autre valeur n'est permise en Phase 0. Les autres close_reason (tp_hit, sl_hit, etc.) appartiennent aux autres phases.
+
 # --- SNAPSHOT POSITIONS OUVERTES ---
 # Afficher un résumé des positions ouvertes et de leur P&L avant de décider de nouveaux achats
 import json, subprocess
@@ -190,6 +196,9 @@ import subprocess as _pf_sub
 try:
     with open("__PROJECT_DIR__/state/trade_history.json") as _f:
         _history = json.load(_f)
+    with open("__PROJECT_DIR__/config.json") as _cf:
+        _cfg = json.load(_cf)
+    _max_oco_retry = _cfg.get("max_oco_retry", 3)
     _unprotected = [t for t in _history if t.get("status") == "open" and t.get("protection_failed") is True]
 
     for _t in _unprotected:
@@ -244,47 +253,80 @@ try:
             else:
                 tg(f"⚠️ {_coin} : fermeture market échouée — {_sell_raw.stdout[:200]}")
         else:
-            # Prix sous le TP → replacer un OCO de rattrapage
-            # Vérifier filtres LOT_SIZE via exchange-info
-            _ei_raw = _pf_sub.run(
-                ["binance-cli", "spot", "exchange-info", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
-                capture_output=True, text=True
-            )
-            _ei = json.loads(_ei_raw.stdout) if _ei_raw.stdout.strip() else {}
-            _filters = {f["filterType"]: f for sym in _ei.get("symbols", []) for f in sym.get("filters", [])}
-            _step = float(_filters.get("LOT_SIZE", {}).get("stepSize", "1"))
-            import math as _math
-            _qty_adj = _math.floor(_qty / _step) * _step
+            # Prix sous le TP → rattrapage OCO ou fallback SELL MARKET
+            # Lire le compteur de tentatives OCO échouées
+            _oco_retry_count = _t.get("oco_retry_count", 0)
 
-            # S'assurer que le TP est strictement au-dessus du prix actuel
-            _tp_oco = max(_tp_calc, _prix_actuel * 1.001)
-            _oco_raw = _pf_sub.run(
-                ["binance-cli", "spot", "order-list-oco",
-                 "--symbol", f"{_coin}USDC",
-                 "--side", "SELL",
-                 "--quantity", str(_qty_adj),
-                 "--above-type", "LIMIT_MAKER",
-                 "--above-price", str(round(_tp_oco, 8)),
-                 "--below-type", "STOP_LOSS_LIMIT",
-                 "--below-price", str(round(_stop_calc, 8)),
-                 "--below-stop-price", str(round(_stop_calc * 1.002, 8)),
-                 "--below-time-in-force", "GTC",
-                 "--profile", "agent-profile"],
-                capture_output=True, text=True
-            )
-            _oco_resp = json.loads(_oco_raw.stdout) if _oco_raw.stdout.strip() else {}
-            if _oco_resp.get("orderListId"):
-                _reports = {r["type"]: r for r in _oco_resp.get("orderReports", [])}
-                _tp_id = _reports.get("LIMIT_MAKER", {}).get("orderId")
-                _sl_id = _reports.get("STOP_LOSS_LIMIT", {}).get("orderId")
+            # Vérifier si le seuil max_oco_retry est atteint
+            if _oco_retry_count >= _max_oco_retry:
+                # Fallback : SELL MARKET avec close_reason="protection_exhausted"
+                _sell_raw = _pf_sub.run(
+                    ["binance-cli", "spot", "new-order", "--symbol", f"{_coin}USDC",
+                     "--side", "SELL", "--type", "MARKET", "--quantity", str(_qty), "--profile", "agent-profile"],
+                    capture_output=True, text=True
+                )
+                _sell_resp = json.loads(_sell_raw.stdout) if _sell_raw.stdout.strip() else {}
+                if _sell_resp.get("orderId"):
+                    _fill_exit = float(_sell_resp.get("cummulativeQuoteQty", 0)) / float(_sell_resp.get("executedQty", _qty))
+                    _pnl_usdc = (_fill_exit - _entry) * _qty
+                    _pnl_pct = (_fill_exit - _entry) / _entry * 100
+                    for _item in _history:
+                        if _item.get("trade_id") == _t.get("trade_id"):
+                            _item.update({"status": "closed", "exit_price": _fill_exit,
+                                          "pnl_usdc": _pnl_usdc, "pnl_pct": _pnl_pct,
+                                          "exit_date": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                                          "protection_failed": False, "close_reason": "protection_exhausted",
+                                          "oco_retry_count": 0})
+                    tg(f"🚨 {_coin} : OCO rattrapage échoué {_max_oco_retry} fois. Fermeture SELL MARKET forcée.\n{_pnl_usdc:+.2f} USDC ({_pnl_pct:+.1f}%)")
+                else:
+                    tg(f"⚠️ {_coin} : fermeture SELL MARKET (fallback protection_exhausted) échouée — {_sell_raw.stdout[:200]}")
+            else:
+                # Incrémenter le compteur, sauvegarder, puis tenter OCO
                 for _item in _history:
                     if _item.get("trade_id") == _t.get("trade_id"):
-                        _item.update({"protection_failed": False, "tp_order_id": _tp_id,
-                                      "stop_order_id": _sl_id, "order_list_id": _oco_resp["orderListId"],
-                                      "tp_price": _tp_oco, "stop_price": _stop_calc})
-                tg(f"🛡️ {_coin} : OCO de rattrapage placé — TP {_tp_oco:.4g} / SL {_stop_calc:.4g}")
-            else:
-                tg(f"⚠️ {_coin} : OCO rattrapage échoué — {_oco_raw.stdout[:200]}")
+                        _item["oco_retry_count"] = _oco_retry_count + 1
+                _save_trade_history_atomic(_history)
+
+                # Vérifier filtres LOT_SIZE via exchange-info
+                _ei_raw = _pf_sub.run(
+                    ["binance-cli", "spot", "exchange-info", "--symbol", f"{_coin}USDC", "--profile", "agent-profile"],
+                    capture_output=True, text=True
+                )
+                _ei = json.loads(_ei_raw.stdout) if _ei_raw.stdout.strip() else {}
+                _filters = {f["filterType"]: f for sym in _ei.get("symbols", []) for f in sym.get("filters", [])}
+                _step = float(_filters.get("LOT_SIZE", {}).get("stepSize", "1"))
+                import math as _math
+                _qty_adj = _math.floor(_qty / _step) * _step
+
+                # S'assurer que le TP est strictement au-dessus du prix actuel
+                _tp_oco = max(_tp_calc, _prix_actuel * 1.001)
+                _oco_raw = _pf_sub.run(
+                    ["binance-cli", "spot", "order-list-oco",
+                     "--symbol", f"{_coin}USDC",
+                     "--side", "SELL",
+                     "--quantity", str(_qty_adj),
+                     "--above-type", "LIMIT_MAKER",
+                     "--above-price", str(round(_tp_oco, 8)),
+                     "--below-type", "STOP_LOSS_LIMIT",
+                     "--below-price", str(round(_stop_calc, 8)),
+                     "--below-stop-price", str(round(_stop_calc * 1.002, 8)),
+                     "--below-time-in-force", "GTC",
+                     "--profile", "agent-profile"],
+                    capture_output=True, text=True
+                )
+                _oco_resp = json.loads(_oco_raw.stdout) if _oco_raw.stdout.strip() else {}
+                if _oco_resp.get("orderListId"):
+                    _reports = {r["type"]: r for r in _oco_resp.get("orderReports", [])}
+                    _tp_id = _reports.get("LIMIT_MAKER", {}).get("orderId")
+                    _sl_id = _reports.get("STOP_LOSS_LIMIT", {}).get("orderId")
+                    for _item in _history:
+                        if _item.get("trade_id") == _t.get("trade_id"):
+                            _item.update({"protection_failed": False, "tp_order_id": _tp_id,
+                                          "stop_order_id": _sl_id, "order_list_id": _oco_resp["orderListId"],
+                                          "tp_price": _tp_oco, "stop_price": _stop_calc, "oco_retry_count": 0})
+                    tg(f"🛡️ {_coin} : OCO de rattrapage placé (tentative {_oco_retry_count + 1}) — TP {_tp_oco:.4g} / SL {_stop_calc:.4g}")
+                else:
+                    tg(f"⚠️ {_coin} : OCO rattrapage échoué (tentative {_oco_retry_count + 1}/{_max_oco_retry})")
 
     _save_trade_history_atomic(_history)
 except Exception as _pf_err:
@@ -459,8 +501,23 @@ if _profit_summary:
     tg("📊 Phase 0 — Positions fermées (profit cible) :\n" + "\n".join(_profit_summary))
 # --- FIN RÉALISATION DE PROFITS ---
 
-Compte open_positions = nombre de trades status="open" dans trade_history.json
-→ tg("📋 Phase 0 — Vérifications\\nPortfolio : {portfolio_total:.2f} USDC\\nBudget dispo : {budget_disponible:.2f} USDC\\nPositions ouvertes : {open_positions}/{max_open_positions}\\nPnL du jour : {daily_pnl:+.2f} USDC")
+# Compter open_positions : TOUTES les positions status="open", y compris protection_failed=True
+try:
+    with open("__PROJECT_DIR__/state/trade_history.json") as _op_f:
+        _op_history = json.load(_op_f)
+    open_positions = len([t for t in _op_history if t.get("status") == "open"])
+except:
+    open_positions = 0
+
+# Charger max_open_positions depuis config
+try:
+    with open("__PROJECT_DIR__/config.json") as _cfg_f:
+        _config = json.load(_cfg_f)
+    _max_open = _config.get("max_open_positions", 4)
+except:
+    _max_open = 4
+
+tg(f"📋 Phase 0 — Vérifications\nPortfolio : {portfolio_total:.2f} USDC\nBudget dispo : {budget_disponible:.2f} USDC\nPositions ouvertes : {open_positions}/{_max_open}\nPnL du jour : {daily_pnl:+.2f} USDC")
 ⏱️ HEARTBEAT END PHASE 0 — appel hb(0) immédiatement ci-dessous
 hb(0, summary=f"Portfolio {portfolio_total:.2f} USDC, {open_positions} positions, PnL jour {daily_pnl:+.2f} USDC")
 
