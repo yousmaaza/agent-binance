@@ -37,6 +37,7 @@ def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
             "__TRIGGER__": trigger,
         },
         use_watchdog=True,
+        use_helpers=False,  # trade utilise les modules core.trade_helpers / core.heartbeat
         on_lock_busy=lambda: send_telegram("⏳ Un cycle est déjà en cours. Réessaie dans quelques minutes."),
         on_start=_send_start_notification,
         on_post_run=_handle_trade_post_run,
@@ -56,6 +57,7 @@ def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None
         fmt_next_fn=fmt_next_fn,
         cycle_type="position",
         use_watchdog=False,
+        use_helpers=True,  # position_prompt utilise encore exec(open(__HELPERS_PATH__).read())
         on_start=None,
         on_post_run=_handle_position_post_run,
     )
@@ -69,6 +71,7 @@ def _run_workflow_cycle(
     cycle_type: str,
     additional_replacements: dict = None,
     use_watchdog: bool = False,
+    use_helpers: bool = False,
     on_lock_busy=None,
     on_start=None,
     on_post_run=None,
@@ -83,6 +86,7 @@ def _run_workflow_cycle(
         cycle_type: Type de cycle (trade ou position)
         additional_replacements: Remplacements prompt supplémentaires
         use_watchdog: Activer le watchdog
+        use_helpers: Générer le fichier helpers temp (True pour position, False pour trade)
         on_lock_busy: Callback si le lock est occupé
         on_start: Callback avant de lancer Claude
         on_post_run: Callback après l'exécution de Claude
@@ -107,21 +111,22 @@ def _run_workflow_cycle(
     elif cycle_type == "position":
         send_telegram(f"🔄 Cycle position horaire démarré ({fmt_local(started_at)})\n⏰ Prochain : {fmt_next}")
 
-    try:
-        helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"{log_prefix}_{cycle_id}_")
-    except OSError as e:
-        if cycle_type == "trade":
-            send_telegram(f"❌ Cycle {cycle_id} — impossible de créer le fichier helpers (disque plein ?) : {e}")
-        cycle_log.error(f"mkstemp helpers échoué : {e}")
-        release_lock()
-        return
+    helpers_path = None
+    if use_helpers:
+        try:
+            helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"{log_prefix}_{cycle_id}_")
+        except OSError as e:
+            cycle_log.error(f"mkstemp helpers échoué : {e}")
+            release_lock()
+            return
+        _write_helpers_file(helpers_fd, helpers_path, cycle_id, trigger)
+        prompt = prompt_template.replace("__CYCLE_ID__", cycle_id).replace("__HELPERS_PATH__", helpers_path)
+    else:
+        prompt = prompt_template.replace("__CYCLE_ID__", cycle_id)
 
-    prompt = prompt_template.replace("__CYCLE_ID__", cycle_id).replace("__HELPERS_PATH__", helpers_path)
     if additional_replacements:
         for key, value in additional_replacements.items():
             prompt = prompt.replace(key, value)
-
-    _write_helpers_file(helpers_fd, helpers_path, cycle_id, trigger)
 
     stdout_path = f"{LOGS_DIR}/stdout/{log_prefix}_{cycle_id}.log"
     stderr_path = f"{LOGS_DIR}/stderr/{log_prefix}_{cycle_id}.log"
@@ -148,10 +153,11 @@ def _run_workflow_cycle(
             watchdog.stop()
             watchdog.join(timeout=2)
         release_lock()
-        try:
-            os.unlink(helpers_path)
-        except OSError:
-            pass
+        if helpers_path:
+            try:
+                os.unlink(helpers_path)
+            except OSError:
+                pass
 
 
 def _handle_trade_post_run(
