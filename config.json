@@ -5,7 +5,7 @@
   "quote_asset": "USDC",
   "order_type": "LIMIT",
   "limit_offset_pct": 0.005,
-  "min_order_usdc": 11,
+  "min_order_usdc": 9,
   "max_single_position_pct": 0.65,
   "price_deviation_max_pct": 0.02,
   "approval_timeout_minutes": 30,
