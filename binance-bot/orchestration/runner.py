@@ -69,7 +69,7 @@ def _run_workflow_cycle(
     trigger: str,
     fmt_next_fn,
     cycle_type: str,
-    additional_replacements: dict = None,
+    additional_replacements: dict | None = None,
     use_watchdog: bool = False,
     use_helpers: bool = False,
     on_lock_busy=None,
