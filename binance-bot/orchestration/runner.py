@@ -67,7 +67,7 @@ def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None
     """
     config = WorkflowConfig(
         use_watchdog=False,
-        use_helpers=True,
+        use_helpers=False,  # position_prompt importe les helpers depuis core.position_helpers
         on_post_run=_handle_position_post_run,
     )
     _run_workflow_cycle(
