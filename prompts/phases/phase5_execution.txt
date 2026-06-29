@@ -78,33 +78,15 @@ Pour chaque ordre préparé, dans l'ordre de score décroissant :
      Enregistrer trade avec protection_failed=True (sera repris en Phase 0 du prochain cycle).
 
 7. Enregistre dans state/trade_history.json (APPEND, ne pas écraser) :
-import json, uuid
-from datetime import datetime, timezone
-with open("__PROJECT_DIR__/state/trade_history.json") as f:
-    history = json.load(f)
-history.append({
-    "trade_id": str(uuid.uuid4())[:8],
-    "date": datetime.now(timezone.utc).isoformat(),
-    "coin": "{COIN}",
-    "side": "BUY",
-    "signal_score": {score},
-    "entry_price": {actual_entry},
-    "stop_price": {actual_stop},
-    "tp_price": {actual_tp},
-    "quantity": {actual_qty},
-    "risk_usdc": {risk_usdc},
-    "entry_order_id": {entry_order_id},
-    "stop_order_id": {stop_order_id},
-    "tp_order_id": {tp_order_id},
-    "order_list_id": {order_list_id},
-    "protection_failed": {True if oco_failed else False},
-    "status": "open",
-    "exit_price": None,
-    "exit_date": None,
-    "pnl_usdc": None,
-    "pnl_pct": None
-})
-_save_trade_history_atomic(history)
+   Écris d'abord le trade dans /tmp/cycle___CYCLE_ID___phase5_input.json :
+   {"trade": {"coin": "{COIN}", "signal_score": {score}, "actual_entry": {actual_entry},
+              "actual_stop": {actual_stop}, "actual_tp": {actual_tp}, "actual_qty": {actual_qty},
+              "risk_usdc": {risk_usdc}, "entry_order_id": {entry_order_id},
+              "stop_order_id": {stop_order_id}, "tp_order_id": {tp_order_id},
+              "order_list_id": {order_list_id}, "protection_failed": {True if oco_failed else False}}}
+   Puis exécute :
+       python3 __PROJECT_DIR__/prompts/code/phase5_execution.py __CYCLE_ID__
+   Le script affiche sur stdout : PHASE5_SAVE_DONE|coin={COIN}|trade_id=XXXXXXXX
 
 8. Notification immédiate :
    tg("⚡ BUY MARKET {COIN}\n{actual_qty} @ {actual_entry:.4g} USDC (fill réel)\n🛑 Stop : {actual_stop:.4g}\n🎯 TP : {actual_tp:.4g}\nScore : {score}/10")
