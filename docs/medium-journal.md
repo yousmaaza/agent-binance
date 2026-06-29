@@ -10,6 +10,84 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-06-29
+
+### PRs mergées (1)
+
+#### #268 — [M1] Réduire min_order_usdc de 11 à 9 USDC
+
+- **Mergée à** : 07:50 UTC (09:50 Europe/Paris)
+- **Branche** : `feat/issue-236-config-min-order-usdc`
+- **Issues fermées** : #236
+- **Quoi** : abaissement du seuil minimum d'ordre de 11 USDC à 9 USDC dans `config.json`. La modification est chirurgicale : une ligne, un nombre. Ce seuil contrôle la Phase 4 (Sizing) : tout dimensionnement ATR produisant un montant inférieur à `min_order_usdc` est rejeté en TYPE_B. À 11 USDC, 4 opportunités ont été manquées en 7 jours (15–21 juin) parce que l'ATR sizing générait des montants de 8 à 11 USDC sur des coins avec des signaux valides (top_score ≥ 5, sentiment Bullish). Le passage à 9 USDC couvre ces cas sans violer le minimum Binance de facto (~10 USDC strict, mais 9 USDC passe en pratique sur les paires LIMIT + offset des majeurs BTC/SOL/XRP).
+- **Durée ticket → merge** : 8 jours. L'issue #236 avait été créée le 21 juin à 20:07 UTC par l'agent analyse-config automatique (cron 20h UTC) — après avoir détecté le pattern TYPE_B structurel sur une fenêtre de 7 jours. Elle documentait le tableau des 11 cycles, la mécanique exacte (`portfolio × risk_per_trade_pct / stop_distance = montant`), et présentait 9 USDC comme recommandation conservatrice versus 10 USDC (alternative). La PR a attendu 8 jours avant d'être mergée, vraisemblablement par prudence sur le minimum Binance.
+- **Twist narratif** : mergée à 07:50 UTC, le même jour à 20:07 UTC l'agent d'analyse automatique rouvre un ticket #283 signalant que le fix est incomplet — `config.json` dit bien 9, mais les `skip_detail TYPE_B` continuent de mentionner "seuil 11 USDC" dans les logs. Le TRADE_PROMPT contient probablement encore un 11 hardcodé. Le bot ignore donc la valeur config. Voir section "Nouveaux tickets" ci-dessous.
+- **Doc tech** : [docs/technique/pr-268-config-min-order-usdc.md](../technique/pr-268-config-min-order-usdc.md)
+
+---
+
+### PRs ouvertes (en attente de merge)
+
+#### #270 — [REFACTO] Externaliser helpers Python en modules et découper trade_prompt par phase
+
+- **Ouverte à** : 15:25 UTC (17:25 Europe/Paris) — état : `open`, mergeable (`clean`)
+- **Branche** : `feat/issue-269-factoriser-trade-helpers-modules-phase`
+- **Implémente** : issue #269 (créée le même jour à 14:56 UTC)
+- **Scope** : 28 fichiers modifiés, +1 924 / -1 124 lignes, 8 commits
+- **Quoi** : refactorisation structurelle du cœur du bot. `prompts/trade_prompt.txt` passe de ~900 lignes à 56 lignes (header uniquement) — le reste est découpé en 9 sous-fichiers par phase dans `prompts/phases/`, assemblés dynamiquement par `core/env.py::assemble_prompt()`. Les fonctions utilitaires Python `tg()`, `binance()`, `_load_config()`, `_save_trade_history_atomic()` quittent le fichier texte et deviennent de vrais modules importables dans `binance-bot/core/trade_helpers.py` et `binance-bot/core/heartbeat.py`. Douze scripts Python autonomes créés dans `prompts/code/` (un par bloc de code de phase), chacun lit `CYCLE_ID` depuis `sys.argv[1]`. La génération du fichier temporaire `/tmp/cycle_XXX_helpers.py` dans `webhook_server.py` est supprimée.
+- **Pourquoi important** : c'est la première fois qu'on sort du paradigme "prompt géant monolithique en texte". Le code qui tournait dans un fichier `.txt` est maintenant testable unitairement, visible dans l'IDE avec coloration syntaxique, et modifiable sans risque de casser l'indentation du texte environnant. La dette accumulée depuis le PR #23 (heartbeats JSONL, mai 2026) est soldée.
+- **Note** : `position_prompt.txt` conserve l'ancien mécanisme `exec()` — migration prévue dans un ticket séparé.
+
+---
+
+### Issues fermées (10)
+
+- **#236** — `[CONFIG] min_order_usdc trop élevé pour le portfolio actuel — 4 TYPE_B en 7 jours` — créée le 21 juin à 20:07 UTC, fermée le 29 juin à 07:50 UTC par merge PR #268. Durée de vie : 8 jours. Issue créée automatiquement par le cron analyse-config ; elle fournissait le diagnostic complet, le tableau des cycles affectés et la recommandation chiffrée — l'agent `binance-dev` a pu implémenter directement.
+
+- **#271, #277** — `[REC] Corriger le type de additional_replacements pour mypy` — doublon créé deux fois (vraisemblablement deux passages du tech lead reviewer). Le paramètre `additional_replacements: dict = None` dans `runner.py:72` est incohérent pour mypy (dict ne peut pas être None). Suggestion : `dict | None = None`. Créées et fermées le même jour, entre 15:31 et 15:33 UTC.
+
+- **#272, #278** — `[REC] Refactoriser les fonctions _save_*_atomic()` — doublon. `_save_trade_history_atomic()` et `_save_config_atomic()` dans `core/trade_helpers.py:55-88` sont identiques à 70%, seul le chemin de fichier diffère. Suggestion : extraire `_save_json_atomic(data, path)`. Créées et fermées le même jour.
+
+- **#273, #279** — `[REC] Réduire la complexité de _run_workflow_cycle()` — doublon. `_run_workflow_cycle()` atteint CC=16 (grade C) dans `runner.py`. 8 paramètres, 5 callbacks optionnels. Suggestion : passer un dataclass pour les callbacks. Créées et fermées le même jour.
+
+- **#275, #281** — `[REC] Importer la config depuis env.py au lieu de la redéfinir localement` — doublon. `trade_helpers.py:13-14` redéfinit `_BINANCE_CLI` et `_PROJECT_DIR` au lieu d'importer depuis `core.env`. Risque : si `BINANCE_CLI_PATH` change dans env.py, trade_helpers voit l'ancienne valeur jusqu'au restart. Créées et fermées le même jour.
+
+- **#280** — `[REC] Migrer les helpers position vers un module symétrique` — `_write_helpers_file()` dans `runner.py:228-337` génère ~110 lignes de code Python inline comme f-string (doubles backslashes, confus à maintenir). Suggestion : migrer `position_prompt.txt` vers le même pattern que `trade_prompt.txt`. Créée et fermée le même jour.
+
+---
+
+### Nouveaux tickets créés (significatifs)
+
+- **#269** — `[REFACTO] Factoriser trade_prompt.txt en modules par phase et externaliser le code Python inline` — créée à 14:56 UTC (OPEN). Le ticket le plus détaillé de la journée : décrit l'architecture cible en deux parties (modules Python dans `core/`, découpage du prompt en sous-fichiers par phase), liste les 6 fichiers impactés, les tests d'acceptance et les critères de taille (trade_prompt.txt ≤ 50 lignes, chaque phase ≤ 150 lignes). Implémenté dans la journée par PR #270.
+
+- **#283** — `[CONFIG] Incohérence min_order_usdc (config 9 vs code 11) + TYPE_B structurel ATR élevé` — créée à 20:07 UTC (OPEN), par l'agent analyse-config automatique. Deux problèmes distincts. **Problème 1 (bug)** : `config.json` déclare `min_order_usdc: 9` depuis la PR #268 mergée ce matin, mais tous les `skip_detail TYPE_B` continuent de mentionner "seuil 11 USDC". Le TRADE_PROMPT contient probablement une valeur hardcodée `11` au lieu de lire `config["min_order_usdc"]`. Le fix d'aujourd'hui était donc cosmétique. **Problème 2 (structurel)** : le cycle 04:14 UTC aujourd'hui a bloqué SYN avec top_score 7/10 malgré 145 USDC de portfolio — ATR de 14% × `atr_stop_multiplier` de 3.5 = stop distance de 49%, ce qui ramène la position calculée à ~4 USDC, soit bien sous tout seuil raisonnable. Recommandation : corriger le bug de substitution immédiatement (priorité technique) ; discuter la réduction d'`atr_stop_multiplier` de 3.5 à 2.5 ou l'ajout d'un cap `max_stop_distance_pct = 25%` uniquement quand le sentiment redevient Bullish sur 2 cycles consécutifs.
+
+- **#276** — `[TEST] Vérification extraction numéro` — ticket de test bruit, body "Test", sans intérêt fonctionnel (OPEN).
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "Le fix qui ne fixe rien". La PR #268 a modifié `config.json` pour passer `min_order_usdc` de 11 à 9 USDC. Mergée à 07:50 UTC. Le même soir, le cron d'analyse détecte que le bot continue de rejeter des ordres "sous le seuil 11 USDC" — 12h après le merge. La config est bien à 9, mais le TRADE_PROMPT lit probablement un 11 hardcodé dans le texte du prompt, pas la valeur config. Architecture intéressante à explorer : quand le "code" est du texte et que l'exécutant est un LLM, où vit la vérité d'un paramètre ? Dans `config.json` ? Dans le prompt ? Dans les deux ? Article sur le problème de l'unique source de vérité dans les bots LLM-driven, où la logique est distribuée entre du code Python et du texte de prompt.
+
+> **Angle secondaire** : "De 900 lignes de texte à 56". La PR #270 illustre ce que "refactoriser un prompt" veut dire concrètement. `trade_prompt.txt` contenait des fonctions Python `def tg(...)` dans un fichier `.txt`, chargées à runtime via `exec(open(...).read())`. Aucune coloration syntaxique, aucun test unitaire, aucune autocomplétion possible. 28 fichiers modifiés et +1900 lignes plus tard, le code est dans de vrais modules Python, testables et éditables normalement. Article sur le continuum entre "prompt engineering" et "software engineering" — et le moment où un LLM piloté par un fichier texte commence à ressembler à un vrai programme.
+
+> **Angle analyse-config** : "L'agent qui se surveille lui-même". Deux fois aujourd'hui, le cron analyse-config (20h UTC) a créé des issues. La première fois (#236, le 21 juin) : diagnostic de 4 TYPE_B en 7 jours. La deuxième fois (#283, ce soir) : le diagnostic signale que le fix du #236 était incomplet, que le problème persiste, et qu'un nouveau problème structurel est apparu. Le bot génère lui-même ses propres tickets de bug, observe ses propres logs, et s'auto-corrige en boucle. Article sur l'architecture d'un système d'auto-monitoring : quelles conditions déclencher, comment formuler le diagnostic, et les limites de cette approche (faux positifs, cycles de feedback trop courts).
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 1 (#268)
+- PRs ouvertes (en attente de merge) : 1 (#270, état clean)
+- Issues fermées : 10 (#236 + 9 REC-AUTO sur PR #270)
+- Tickets créés (significatifs) : 2 (#269 — REFACTO, #283 — bug config)
+- Fichiers modifiés au total : 1 fichier config (PR #268) + 28 fichiers code (PR #270, non mergée)
+- Délai anomalie détectée → issue créée : ~12h (#283 — le bug persistait depuis le matin, détecté par le cron 20h UTC)
+- Doublons REC-AUTO : 5 issues dupliquées (#271/#277, #272/#278, #273/#279, #275/#281 — le runner tech lead a tourné deux fois)
+
+---
+
 ## 2026-06-28
 
 ### PRs mergées (2)
