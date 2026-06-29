@@ -247,7 +247,7 @@ webhook_server.py (process principal)
 | `quote_asset` | `"USDC"` | Asset de cotation pour toutes les paires tradées |
 | `order_type` | `"LIMIT"` | Type d'ordre d'entrée (ordre working de l'OTOCO) |
 | `limit_offset_pct` | `0.005` | Décalage du prix limite par rapport au prix actuel (−0.5%) |
-| `min_order_usdc` | `11` | Montant minimum d'un ordre en USDC (contrainte Binance) |
+| `min_order_usdc` | `9` | Montant minimum d'un ordre en USDC (contrainte Binance) — abaissé de 11 à 9 via PR #268 pour couvrir dimensionnements ATR légitimes (8–11 USDC) |
 | `max_single_position_pct` | `0.65` | Part maximale du budget allouable à une seule position (65%) |
 | `price_deviation_max_pct` | `0.02` | Drift maximum toléré entre pré-calcul et exécution (2%) — sinon ordre annulé |
 | `approval_timeout_minutes` | `30` | Timeout (minutes) pour une confirmation utilisateur via inline keyboard (legacy) |
@@ -337,4 +337,5 @@ webhook_server.py (process principal)
 | [#238](pr-238-trade-prompt-disallow-skills.md) | 2026-06-22 | Disallow skill invocation en TRADE_PROMPT : bloc "RÈGLES D'EXÉCUTION CRITIQUES" placé au début du prompt interdisant explicitement tous les skills (start-agent, start-trading, Workflow, Agent, etc.) et clarifiiant que seuls Bash/Read/Write/Edit/Grep sont autorisés → prévient invocation involontaire de skill au lieu d'exécution des phases |
 | [#256](pr-256-calibrage-command.md) | 2026-06-22 | feat: commande Telegram `/calibrage` pour déclencher manuellement le cycle de gestion des positions (ajout handler dispatcher + mise à jour message aide) |
 | [#242](pr-242-rec-auto-workflow.md) | 2026-06-22 | Workflow [REC] automation : refactoring complet post-review CI/CD — job `create-rec-tickets` détecte 3 formats recommandations + crée issues avec étiquettes `<!-- pr_branch -->` / `<!-- pr_number -->`; `auto-dispatch-on-auto-label` extrait métadonnées du body issue ; `binance-dev-auto` accepte mode REC-AUTO (implémente sur branche existante, ferme issue après commit) → recommandations tech lead intégrées au workflow PR existant |
+| [#268](pr-268-config-min-order-usdc.md) | 2026-06-29 | Configuration : abaissement de `min_order_usdc` de 11 à 9 USDC pour réduire les rejets TYPE_B dus aux dimensionnements ATR légitimes (8–11 USDC) — résout 4 skips/7j observés |
 | [#265](pr-265-supprimer-vars-claude-code.md) | 2026-06-24 | Fix : supprime les 5 variables `CLAUDE_CODE_*` du sous-processus Claude (`_run_claude()`) — empêche la réutilisation d'une session parent expirée en nettoyant l'env avant le lancement du CLI enfant (issue #264) |
