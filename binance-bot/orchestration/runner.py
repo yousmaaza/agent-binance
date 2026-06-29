@@ -5,7 +5,9 @@ import subprocess
 import sys
 import tempfile
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Callable
 
 from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
 from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, POSITION_PROMPT, get_cycle_phases_log_path
@@ -20,27 +22,40 @@ from storage.mongo import mongo_repo
 CLAUDE_PROCESS_TIMEOUT_S = 3600  # 1h max par cycle — tuer le processus si dépassé
 
 
+@dataclass
+class WorkflowConfig:
+    """Configuration et callbacks pour un cycle de workflow."""
+    use_watchdog: bool = False
+    use_helpers: bool = False
+    on_lock_busy: Callable[[], None] | None = None
+    on_start: Callable[[str, str, datetime, str], None] | None = None
+    on_post_run: Callable[[str, str, datetime, float, int, str, str, CycleLogger], None] | None = None
+
+
 def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     """Lance un cycle complet d'analyse et d'exécution.
 
     fmt_next_fn : callable() -> str optionnel, fourni par main_loop pour afficher
     l'heure du prochain cycle. Si absent, on affiche '--'.
     """
+    config = WorkflowConfig(
+        use_watchdog=True,
+        use_helpers=False,
+        on_lock_busy=lambda: send_telegram("⏳ Un cycle est déjà en cours. Réessaie dans quelques minutes."),
+        on_start=_send_start_notification,
+        on_post_run=_handle_trade_post_run,
+    )
     _run_workflow_cycle(
         prompt_template=TRADE_PROMPT,
         log_prefix="cycle",
         trigger=trigger,
         fmt_next_fn=fmt_next_fn,
         cycle_type="trade",
+        config=config,
         additional_replacements={
             "__PROMPT_VERSION__": PROMPT_VERSION,
             "__TRIGGER__": trigger,
         },
-        use_watchdog=True,
-        use_helpers=False,  # trade utilise les modules core.trade_helpers / core.heartbeat
-        on_lock_busy=lambda: send_telegram("⏳ Un cycle est déjà en cours. Réessaie dans quelques minutes."),
-        on_start=_send_start_notification,
-        on_post_run=_handle_trade_post_run,
     )
 
 
@@ -50,16 +65,18 @@ def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None
     fmt_next_fn : callable() -> str optionnel, fourni par main_loop pour afficher
     l'heure du prochain cycle position. Si absent, on affiche '--'.
     """
+    config = WorkflowConfig(
+        use_watchdog=False,
+        use_helpers=True,
+        on_post_run=_handle_position_post_run,
+    )
     _run_workflow_cycle(
         prompt_template=POSITION_PROMPT,
         log_prefix="position",
         trigger=trigger,
         fmt_next_fn=fmt_next_fn,
         cycle_type="position",
-        use_watchdog=False,
-        use_helpers=True,  # position_prompt utilise encore exec(open(__HELPERS_PATH__).read())
-        on_start=None,
-        on_post_run=_handle_position_post_run,
+        config=config,
     )
 
 
@@ -69,12 +86,8 @@ def _run_workflow_cycle(
     trigger: str,
     fmt_next_fn,
     cycle_type: str,
+    config: WorkflowConfig,
     additional_replacements: dict | None = None,
-    use_watchdog: bool = False,
-    use_helpers: bool = False,
-    on_lock_busy=None,
-    on_start=None,
-    on_post_run=None,
 ) -> None:
     """Exécute un cycle complet avec gestion du lock et du logging.
 
@@ -84,18 +97,12 @@ def _run_workflow_cycle(
         trigger: Type de déclenchement (auto ou manual)
         fmt_next_fn: Callable pour formatter l'heure du prochain cycle
         cycle_type: Type de cycle (trade ou position)
+        config: WorkflowConfig avec callbacks et options (watchdog, helpers)
         additional_replacements: Remplacements prompt supplémentaires
-        use_watchdog: Activer le watchdog
-        use_helpers: Générer le fichier helpers temp (True pour position, False pour trade)
-        on_lock_busy: Callback si le lock est occupé
-        on_start: Callback avant de lancer Claude
-        on_post_run: Callback après l'exécution de Claude
     """
     if is_locked():
-        # Position check is background/automatic; skip silently if a trade cycle is running.
-        # Avoids notification spam. Next hourly check will proceed when lock is released.
-        if on_lock_busy:
-            on_lock_busy()
+        if config.on_lock_busy:
+            config.on_lock_busy()
         return
 
     acquire_lock()
@@ -106,13 +113,13 @@ def _run_workflow_cycle(
     cycle_log.info(log_msg)
 
     fmt_next = fmt_next_fn() if fmt_next_fn else "–"
-    if on_start:
-        on_start(cycle_id, trigger, started_at, fmt_next)
+    if config.on_start:
+        config.on_start(cycle_id, trigger, started_at, fmt_next)
     elif cycle_type == "position":
         send_telegram(f"🔄 Cycle position horaire démarré ({fmt_local(started_at)})\n⏰ Prochain : {fmt_next}")
 
     helpers_path = None
-    if use_helpers:
+    if config.use_helpers:
         try:
             helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"{log_prefix}_{cycle_id}_")
         except OSError as e:
@@ -133,7 +140,7 @@ def _run_workflow_cycle(
     exit_code = -1
 
     watchdog = None
-    if use_watchdog:
+    if config.use_watchdog:
         watchdog = WatchdogThread(cycle_log)
         watchdog.start()
 
@@ -142,8 +149,8 @@ def _run_workflow_cycle(
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         cycle_log.info(f"Terminé exit={exit_code} en {duration:.0f}s")
 
-        if on_post_run:
-            on_post_run(cycle_id, trigger, started_at, duration, exit_code, stderr_path, stdout_path, cycle_log)
+        if config.on_post_run:
+            config.on_post_run(cycle_id, trigger, started_at, duration, exit_code, stderr_path, stdout_path, cycle_log)
 
     except Exception as e:
         send_telegram(f"❌ Cycle {cycle_id} — erreur inattendue : {e}")
