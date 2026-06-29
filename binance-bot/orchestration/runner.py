@@ -297,19 +297,7 @@ def hb(phase, status="ok", summary=""):
 
 def _save_trade_history_atomic(data, path_override=None):
     _th_path = path_override or f"{{PROJECT_DIR}}/state/trade_history.json"
-    _th_parent = _hb_os.path.dirname(_th_path)
-    _hb_os.makedirs(_th_parent, exist_ok=True)
-    _fd, _th_temp = _hb_tempfile.mkstemp(dir=_th_parent, text=True, suffix=".tmp")
-    try:
-        with _hb_os.fdopen(_fd, "w") as _f:
-            json.dump(data, _f, indent=2)
-        _hb_os.replace(_th_temp, _th_path)
-    except Exception as _e:
-        try:
-            _hb_os.unlink(_th_temp)
-        except OSError:
-            pass
-        raise _e
+    _save_json_atomic(data, _th_path)
 
 def _load_config():
     _cfg_path = f"{{PROJECT_DIR}}/config.json"
@@ -319,21 +307,24 @@ def _load_config():
     except Exception:
         return {{}}
 
-def _save_config_atomic(data):
-    _cfg_path = f"{{PROJECT_DIR}}/config.json"
-    _cfg_parent = _hb_os.path.dirname(_cfg_path)
-    _hb_os.makedirs(_cfg_parent, exist_ok=True)
-    _fd, _cfg_temp = _hb_tempfile.mkstemp(dir=_cfg_parent, text=True, suffix=".tmp")
+def _save_json_atomic(_data, _path):
+    _parent = _hb_os.path.dirname(_path)
+    _hb_os.makedirs(_parent, exist_ok=True)
+    _fd, _temp = _hb_tempfile.mkstemp(dir=_parent, text=True, suffix=".tmp")
     try:
         with _hb_os.fdopen(_fd, "w") as _f:
-            json.dump(data, _f, indent=2)
-        _hb_os.replace(_cfg_temp, _cfg_path)
+            json.dump(_data, _f, indent=2)
+        _hb_os.replace(_temp, _path)
     except Exception as _e:
         try:
-            _hb_os.unlink(_cfg_temp)
+            _hb_os.unlink(_temp)
         except OSError:
             pass
         raise _e
+
+def _save_config_atomic(data):
+    _cfg_path = f"{{PROJECT_DIR}}/config.json"
+    _save_json_atomic(data, _cfg_path)
 """
     with os.fdopen(fd, "w") as f:
         f.write(helpers_content)

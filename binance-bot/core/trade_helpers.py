@@ -52,37 +52,30 @@ def _load_config(project_dir: str = "") -> dict:
         return {}
 
 
-def _save_trade_history_atomic(data: list, path_override: str = "") -> None:
-    """Écriture atomique de trade_history.json via fichier temporaire + os.replace."""
-    th_path = path_override or os.path.join(_PROJECT_DIR, "state", "trade_history.json")
-    parent = os.path.dirname(th_path)
+def _save_json_atomic(data: dict | list, path: str) -> None:
+    """Écriture atomique via fichier temporaire + os.replace."""
+    parent = os.path.dirname(path)
     os.makedirs(parent, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=parent, text=True, suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2)
-        os.replace(tmp, th_path)
+        os.replace(tmp, path)
     except Exception as e:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise e
+
+
+def _save_trade_history_atomic(data: list, path_override: str = "") -> None:
+    """Écriture atomique de trade_history.json via fichier temporaire + os.replace."""
+    th_path = path_override or os.path.join(_PROJECT_DIR, "state", "trade_history.json")
+    _save_json_atomic(data, th_path)
 
 
 def _save_config_atomic(data: dict, project_dir: str = "") -> None:
     """Écriture atomique de config.json via fichier temporaire + os.replace."""
     cfg_path = os.path.join(project_dir or _PROJECT_DIR, "config.json")
-    parent = os.path.dirname(cfg_path)
-    os.makedirs(parent, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=parent, text=True, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, cfg_path)
-    except Exception as e:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise e
+    _save_json_atomic(data, cfg_path)
