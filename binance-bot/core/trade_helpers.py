@@ -5,13 +5,11 @@ Importé par chaque script de phase via :
 """
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 import time
 
-_BINANCE_CLI: str = shutil.which("binance-cli") or "binance-cli"
-_PROJECT_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.env import BINANCE_CLI_PATH as _BINANCE_CLI, PROJECT_DIR as _PROJECT_DIR
 
 
 def tg(text: str) -> None:
