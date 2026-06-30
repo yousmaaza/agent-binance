@@ -92,7 +92,9 @@ for coin, data in analysis_results.items():
     top_score = max(top_score, score)
 
     if score >= effective_min_score and signal_4h in ("BUY", "STRONG_BUY"):
-        if open_positions >= max_open_positions:
+        if data.get("in_portfolio"):
+            pass  # HOLD implicite — pas de renforcement de position existante
+        elif open_positions >= max_open_positions:
             skip_coins_detail[coin] = {
                 "skip_type": "TYPE_A",
                 "skip_detail": f"Positions max atteintes ({open_positions}/{max_open_positions})",
