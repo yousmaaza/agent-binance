@@ -1,7 +1,7 @@
 """Calcul de l'heure du prochain cycle 4h — extrait de phases6_8.txt Phase 6.
 
 Exécuté par Claude en Phase 6 :
-    python3 __PROJECT_DIR__/prompts/code/phase6_next_cycle.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase6_next_cycle.py __CYCLE_ID__
 
 Stdout : PHASE6_NEXT_CYCLE_DONE|next=DD/MM HH:MM (heure locale)
 Output : /tmp/cycle_{CYCLE_ID}_phase6_next_output.json

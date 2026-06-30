@@ -85,7 +85,7 @@ Pour chaque ordre préparé, dans l'ordre de score décroissant :
               "stop_order_id": {stop_order_id}, "tp_order_id": {tp_order_id},
               "order_list_id": {order_list_id}, "protection_failed": {True if oco_failed else False}}}
    Puis exécute :
-       python3 __PROJECT_DIR__/prompts/code/phase5_execution.py __CYCLE_ID__
+       python3 __PROJECT_DIR__/binance-bot/core/phases/phase5_execution.py __CYCLE_ID__
    Le script affiche sur stdout : PHASE5_SAVE_DONE|coin={COIN}|trade_id=XXXXXXXX
 
 8. Notification immédiate :

@@ -1,7 +1,7 @@
 """Rattrapage protection_failed + oco_retry_count — extrait de phase0_snapshot.txt.
 
 Exécuté par Claude en Phase 0 après le snapshot :
-    python3 __PROJECT_DIR__/prompts/code/phase0_oco_retry.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_oco_retry.py __CYCLE_ID__
 
 Stdout : PHASE0_OCO_DONE|retried=N
 """

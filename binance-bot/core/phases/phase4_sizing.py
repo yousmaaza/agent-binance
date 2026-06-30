@@ -9,7 +9,7 @@ Lit les buy_candidates depuis /tmp/cycle_{CYCLE_ID}_phase4_input.json :
 }
 
 Exécuté par Claude en Phase 4 :
-    python3 __PROJECT_DIR__/prompts/code/phase4_sizing.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase4_sizing.py __CYCLE_ID__
 
 Stdout : PHASE4_DONE|orders=N|skipped=M
 Output : /tmp/cycle_{CYCLE_ID}_phase4_output.json

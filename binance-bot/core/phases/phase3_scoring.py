@@ -13,7 +13,7 @@ Lit les données d'analyse depuis /tmp/cycle_{CYCLE_ID}_phase3_input.json :
 }
 
 Exécuté par Claude en Phase 3 :
-    python3 __PROJECT_DIR__/prompts/code/phase3_scoring.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase3_scoring.py __CYCLE_ID__
 
 Stdout : PHASE3_DONE|N_buy=X|skipped=Y|top_score=Z
 Output : /tmp/cycle_{CYCLE_ID}_phase3_output.json

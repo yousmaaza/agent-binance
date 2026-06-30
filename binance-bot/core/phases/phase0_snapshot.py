@@ -1,7 +1,7 @@
 """Snapshot des positions ouvertes et leur P&L — extrait de phase0_snapshot.txt.
 
 Exécuté par Claude en début de Phase 0 :
-    python3 __PROJECT_DIR__/prompts/code/phase0_snapshot.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_snapshot.py __CYCLE_ID__
 
 Stdout : PHASE0_SNAPSHOT_DONE|open_positions=N
 Output : /tmp/cycle_{CYCLE_ID}_phase0_snapshot_output.json

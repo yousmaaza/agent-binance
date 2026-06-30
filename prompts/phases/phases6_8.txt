@@ -15,7 +15,7 @@ top_score = top_score if 'top_score' in locals() and top_score else 0
   * Positions ouvertes totales (depuis trade_history.json)
 
 - Calcule l'heure du prochain cycle automatique (slot 4h UTC + 5 min, affiché en heure locale) :
-  Exécute : python3 __PROJECT_DIR__/prompts/code/phase6_next_cycle.py __CYCLE_ID__
+  Exécute : python3 __PROJECT_DIR__/binance-bot/core/phases/phase6_next_cycle.py __CYCLE_ID__
   Le script affiche sur stdout : PHASE6_NEXT_CYCLE_DONE|next=DD/MM HH:MM (heure locale)
   Utilise la valeur retournée comme _next_str pour les appels hb() et tg() qui suivent.
 ⏱️ HEARTBEAT END PHASE 6 — appel hb(6) immédiatement ci-dessous
@@ -94,7 +94,7 @@ doc = {
 
 Écris ce document en Mongo via le script dédié :
 Écris d'abord le document dans /tmp/cycle___CYCLE_ID___phase7_input.json : {"doc": doc}
-Puis exécute : python3 __PROJECT_DIR__/prompts/code/phase7_mongo.py __CYCLE_ID__
+Puis exécute : python3 __PROJECT_DIR__/binance-bot/core/phases/phase7_mongo.py __CYCLE_ID__
 Le script affiche sur stdout : PHASE7_MONGO_DONE|status=ok (ou skipped si MONGODB_URI absent)
 
 - Notification de synthèse (DOIT inclure le cycle_id) :
@@ -104,7 +104,7 @@ Le script affiche sur stdout : PHASE7_MONGO_DONE|status=ok (ou skipped si MONGOD
 
 ⏱️ HEARTBEAT VERIFICATION — VÉRIFIER QUE TOUTES LES PHASES SONT PRÉSENTES
 Avant d'appeler hb(7), vérifier que le fichier JSONL de heartbeats contient bien une ligne pour chaque phase 0-6.
-Exécute : python3 __PROJECT_DIR__/prompts/code/phase7_hb_check.py __CYCLE_ID__
+Exécute : python3 __PROJECT_DIR__/binance-bot/core/phases/phase7_hb_check.py __CYCLE_ID__
 Le script affiche sur stdout : PHASE7_HB_CHECK_DONE|missing=[...]
 
 ⏱️ HEARTBEAT END PHASE 7 — appel hb(7) immédiatement ci-dessous
@@ -146,7 +146,7 @@ Utilise ces variables pour écrire un document JSON dans state/cycle_log.jsonl :
  "skip_type": skip_type, "skip_detail": skip_detail,
  "portfolio": portfolio_total, "sentiment": sentiment, "open_positions": open_positions}
 Puis exécute :
-    python3 __PROJECT_DIR__/prompts/code/phase8_cycle_log.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase8_cycle_log.py __CYCLE_ID__
 Le script écrit state/cycle_log.jsonl et pousse sur git.
 Il affiche sur stdout : PHASE8_CYCLE_LOG_DONE|status=ok
 

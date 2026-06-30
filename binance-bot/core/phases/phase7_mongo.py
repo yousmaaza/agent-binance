@@ -4,7 +4,7 @@ Lit le document à persister depuis /tmp/cycle_{CYCLE_ID}_phase7_input.json :
 {"doc": {...}}
 
 Exécuté par Claude en Phase 7 :
-    python3 __PROJECT_DIR__/prompts/code/phase7_mongo.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase7_mongo.py __CYCLE_ID__
 
 Stdout : PHASE7_MONGO_DONE|status=ok ou PHASE7_MONGO_DONE|status=skipped
 """

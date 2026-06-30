@@ -4,7 +4,7 @@ Lit la liste de candidats depuis /tmp/cycle_{CYCLE_ID}_phase1_input.json
 (champ "candidates") ou depuis config.json si le fichier est absent.
 
 Exécuté par Claude en Phase 1 :
-    python3 __PROJECT_DIR__/prompts/code/phase1_scan.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase1_scan.py __CYCLE_ID__
 
 Stdout : PHASE1_SCAN_DONE|tradable=N|coins=BTC,SOL,...
 Output : /tmp/cycle_{CYCLE_ID}_phase1_output.json

@@ -11,7 +11,7 @@ _hb_start(0)
 
 # --- SNAPSHOT POSITIONS OUVERTES ---
 # Exécute le script de snapshot (P&L boucle, ticker-price) :
-#   python3 __PROJECT_DIR__/prompts/code/phase0_snapshot.py __CYCLE_ID__
+#   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_snapshot.py __CYCLE_ID__
 # Le script envoie la notification Telegram et affiche sur stdout :
 #   PHASE0_SNAPSHOT_DONE|open_positions=N
 # Utilise la valeur open_positions pour la suite de Phase 0.
@@ -42,21 +42,21 @@ Pour chaque trade open dans l'historique :
 
 RATTRAPAGE protection_failed :
 Exécute le script OCO retry (idempotence, SELL MARKET fallback, rattrapage OCO) :
-    python3 __PROJECT_DIR__/prompts/code/phase0_oco_retry.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_oco_retry.py __CYCLE_ID__
 Le script affiche sur stdout : PHASE0_OCO_DONE|retried=N
 
 # --- TRAILING STOP ---
 # Pour chaque position ouverte avec OCO actif, vérifier si le prix a progressé
 # et remonter le stop-loss en conséquence.
 # Exécute le script trailing stop :
-#   python3 __PROJECT_DIR__/prompts/code/phase0_trailing_stop.py __CYCLE_ID__
+#   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_trailing_stop.py __CYCLE_ID__
 # Le script affiche sur stdout : PHASE0_TS_DONE|updated=N
 # --- FIN TRAILING STOP ---
 
 # --- RÉALISATION DE PROFITS (Calibrage intégré Phase 0) ---
 # Évaluer chaque position ouverte : vendre si P&L >= min_profit_pct_take
 # Exécute le script de réalisation de profits :
-#   python3 __PROJECT_DIR__/prompts/code/phase0_profit.py __CYCLE_ID__
+#   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_profit.py __CYCLE_ID__
 # Le script affiche sur stdout : PHASE0_PROFIT_DONE|closed=N
 # --- FIN RÉALISATION DE PROFITS ---
 

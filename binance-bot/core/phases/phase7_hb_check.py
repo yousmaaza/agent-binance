@@ -1,7 +1,7 @@
 """Vérification complétude heartbeats phases 0-6 — extrait de phases6_8.txt Phase 7.
 
 Exécuté par Claude en Phase 7 avant hb(7) :
-    python3 __PROJECT_DIR__/prompts/code/phase7_hb_check.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase7_hb_check.py __CYCLE_ID__
 
 Stdout : PHASE7_HB_CHECK_DONE|missing=[...]
 """

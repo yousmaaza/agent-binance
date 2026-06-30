@@ -1,7 +1,7 @@
 """Trailing stop logic — extrait de phase0_snapshot.txt.
 
 Exécuté par Claude en Phase 0 après le rattrapage OCO :
-    python3 __PROJECT_DIR__/prompts/code/phase0_trailing_stop.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_trailing_stop.py __CYCLE_ID__
 
 Stdout : PHASE0_TS_DONE|updated=N
 """

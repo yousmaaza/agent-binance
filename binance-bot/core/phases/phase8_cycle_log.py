@@ -8,7 +8,7 @@ Lit les variables de synthèse depuis /tmp/cycle_{CYCLE_ID}_phase8_input.json :
 }
 
 Exécuté par Claude en Phase 8 :
-    python3 __PROJECT_DIR__/prompts/code/phase8_cycle_log.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase8_cycle_log.py __CYCLE_ID__
 
 Stdout : PHASE8_CYCLE_LOG_DONE|status=ok
 """

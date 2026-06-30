@@ -1,7 +1,7 @@
 """Réalisation de profits (min_profit_pct_take) — extrait de phase0_snapshot.txt.
 
 Exécuté par Claude en Phase 0 après le trailing stop :
-    python3 __PROJECT_DIR__/prompts/code/phase0_profit.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_profit.py __CYCLE_ID__
 
 Stdout : PHASE0_PROFIT_DONE|closed=N
 """

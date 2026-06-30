@@ -19,7 +19,7 @@ Lit le trade à enregistrer depuis /tmp/cycle_{CYCLE_ID}_phase5_input.json :
 }
 
 Exécuté par Claude en Phase 5 après chaque BUY MARKET exécuté :
-    python3 __PROJECT_DIR__/prompts/code/phase5_execution.py __CYCLE_ID__
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase5_execution.py __CYCLE_ID__
 
 Stdout : PHASE5_SAVE_DONE|coin=BTC|trade_id=abc12345
 """
