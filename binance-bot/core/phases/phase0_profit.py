@@ -43,6 +43,11 @@ for pos in history:
 
     if pnl_pct >= min_profit:
         try:
+            # Annuler les ordres OCO actifs avant SELL MARKET (sinon Binance refuse le MARKET)
+            binance("spot", "cancel-open-orders", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
+        except Exception:
+            pass
+        try:
             sell_raw = binance(
                 "spot", "new-order", "--symbol", f"{coin}USDC",
                 "--side", "SELL", "--type", "MARKET", "--quantity", str(qty), "--profile", "agent-profile"
@@ -63,7 +68,10 @@ for pos in history:
                 profit_summary.append(f"✅ {coin} : {actual_pnl_pct:+.1f}% ({actual_pnl_usdc:+.2f} USDC)")
                 tg(f"✅ Phase 0 — {coin} vendu (P&L cible)\n{actual_pnl_pct:+.1f}% | {actual_pnl_usdc:+.2f} USDC")
         except Exception as e:
-            tg(f"⚠️ Fermeture P&L {coin} échouée : {e}")
+            # OCO déjà annulé — marquer la position comme non protégée pour phase0_oco_retry
+            pos["protection_failed"] = True
+            _save_trade_history_atomic(history)
+            tg(f"⚠️ Fermeture P&L {coin} échouée (OCO annulé, position non protégée) : {e}")
 
 if profit_summary:
     _save_trade_history_atomic(history)

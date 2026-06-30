@@ -3,77 +3,51 @@ PHASE 3 — SCORING ET SÉLECTION
 ⏱️ HEARTBEAT START PHASE 3
 _hb_start(3)
 
-# Seuil adaptatif : si tous les coins BUY/STRONG_BUY 4h ont eu un rate limit 1D,
-# utiliser min_signal_score_degraded (config) au lieu de min_signal_score strict.
-min_signal_score = config["min_signal_score"]
-_buy_4h = [c for c in analysis_results if analysis_results[c].get("signal_4h") in ("BUY", "STRONG_BUY")]
-_all_rl = bool(_buy_4h) and all(analysis_results[c].get("signal_1d_rate_limited", False) for c in _buy_4h)
-if _all_rl:
-    effective_min_score = config.get("min_signal_score_degraded", min_signal_score)
-    tg(f"⚠️ Mode dégradé 1D (rate limit TradingView) — seuil abaissé à {effective_min_score}/10 (normal : {min_signal_score}/10)")
-else:
-    effective_min_score = min_signal_score
+Construis /tmp/cycle___CYCLE_ID___phase3_input.json avec les données de Phase 2 :
 
-# Initialiser les structures de données pour Phase 3
-buy_candidates = []
-hold_coins = []
-skip_coins_detail = {}  # {coin: {"skip_type": TYPE_X, "skip_detail": "..."}}
-sell_candidates = []
-top_score = 0
-N_buy = 0
+{
+  "analysis_results": {
+    "COIN": {
+      "signal_4h": "BUY|SELL|NEUTRAL|STRONG_BUY",
+      "signal_1d": "BUY|SELL|NEUTRAL|STRONG_BUY|null",
+      "rsi_4h": <float>,
+      "macd_bullish_4h": <bool>,
+      "volume_24h": <float USDC>,
+      "signal_1d_rate_limited": <bool — True si l'analyse 1D a échoué par rate limit>,
+      "in_portfolio": <bool — True si le coin a une position open dans trade_history>
+    },
+    ...
+  },
+  "top_gainers_symbols": [...],
+  "breakout_symbols": [...],
+  "sentiment": "Bullish|Neutral|Bearish",
+  "open_positions": <int>,
+  "budget_disponible": <float USDC>,
+  "config": null
+}
 
-Pour chaque coin, calcule un score sur 10 :
+RÈGLES pour construire analysis_results :
+- Utilise UNIQUEMENT les données produites par Phase 2 (coin_analysis 4h, coin_analysis 1D si disponible)
+- signal_1d_rate_limited = True si et seulement si l'appel coin_analysis 1D a retourné une erreur de rate limit ou a échoué
+- signal_1d = null si l'analyse 1D n'a pas été tentée ou a échoué
+- in_portfolio = True si le coin apparaît dans trade_history avec status="open"
+- NE PAS inventer, extrapoler ou hardcoder des valeurs — copier les données exactes de Phase 2
 
-| Critère | Points |
-|---------|--------|
-| Signal TradingView 4h = BUY/STRONG_BUY (dérivé Phase 2 via coin_analysis) | +2 |
-| Signal TradingView 1d = BUY/STRONG_BUY (dérivé Phase 2 via coin_analysis) | +2 |
-| RSI 4h entre 30 et 55 (zone d'entrée optimale) | +1 |
-| MACD bullish cross sur 4h (MACD > signal line, depuis coin_analysis) | +1 |
-| Coin présent dans top_gainers (mcp__tradingview__top_gainers Phase 1) | +1 |
-| Coin présent dans volume_breakout_scanner (mcp__tradingview__volume_breakout_scanner Phase 1) | +1 |
-| Sentiment marché haussier (calculé Phase 1 depuis market_sentiment) | +1 |
-| Volume 24h du coin > 2× médiane du volume de l'univers scanné | +1 |
+Puis exécute le script de scoring :
 
-DÉCISION par coin :
-- Score >= effective_min_score ET signal_4h = BUY ou STRONG_BUY → BUY CANDIDATE
-  * Le signal 1d haussier contribue déjà +2 pts au score (non bloqueur) — un 1d bearish réduit le score mais n'empêche pas le trade si le score total ≥ 6 et le 4h est haussier
-  * Si signal_1d = "NEUTRAL" pour cause de rate limit TradingView (données indisponibles) : 0 pts, aucun malus. Le scoring reste basé sur signal_4h dominant + les 6 autres critères. Un coin STRONG_BUY 4h peut toujours atteindre score >= 6 sans confirmation 1D.
-  * Si coin déjà en portfolio → RENFORCER (si pas déjà une position open dans trade_history)
-  * Si coin nouveau → NOUVELLE POSITION
-  * Mise à jour : top_score = max(top_score, score)
-- Score <= 3 ET coin en portfolio → évaluer si sortie est pertinente (SELL)
-  * Enregistrer dans sell_candidates avec skip_type=null (pas un skip, c'est une décision stratégique)
-- Sinon → HOLD
-  * Si rejeté par filtre de corrélation → skip_type = TYPE_A, skip_detail = "Corrélation : déjà N coins du groupe L1-alts"
-  * Si rejeté par limite positions → skip_type = TYPE_A, skip_detail = "Positions max atteintes (N/5)"
-  * Si montant < min_order → skip_type = TYPE_B, skip_detail = "Montant X USDC < seuil 11"
-  * Si volume < 5M USDC → skip_type = TYPE_D, skip_detail = "Volume 24h X USDC < 5M"
-  * Sinon → HOLD avec skip_type=null
+```bash
+__PROJECT_DIR__/.venv/bin/python3 __PROJECT_DIR__/binance-bot/core/phases/phase3_scoring.py __CYCLE_ID__
+```
 
-FILTRES OBLIGATOIRES (appliqués en Phase 3) :
-- Corrélation : SOL, SUI, STX, ETH sont corrélés (groupe L1-alts). Max max_correlated_positions (2) du même groupe.
-- Positions max : si open_positions >= max_open_positions (5) → pas de nouvelle entrée
-- Budget : montant_ordre >= min_order_usdc (11 USDC)
-- Liquidité : ne pas trader des coins avec volume 24h < 5M USDC (estimé depuis les screeners)
+Le script lit /tmp/cycle___CYCLE_ID___phase3_input.json et écrit /tmp/cycle___CYCLE_ID___phase3_output.json.
+Stdout attendu : PHASE3_DONE|N_buy=X|skipped=Y|top_score=Z
 
-Pour chaque coin avec skip_type défini :
-  skip_coins_detail[coin] = {"skip_type": skip_type, "skip_detail": skip_detail}
+Lis /tmp/cycle___CYCLE_ID___phase3_output.json pour récupérer :
+- buy_candidates, sell_candidates, skip_coins_detail
+- top_score, N_buy, skipped, skip_type, skip_detail
 
-À la fin de Phase 3, mets à jour les variables de synthèse :
-- top_score = score maximum parmi tous les coins analysés (int, 0-10)
-- skipped = nombre de coins avec decision == "SKIP" (len(skip_coins_detail))
-- skip_type = determiner si skip_type basé sur la raison principale du skip :
-  * TYPE_A si max_open_positions atteint avec signal >= seuil
-  * TYPE_B si budget × max_single_position_pct < min_order_usdc
-  * TYPE_C si sentiment bearish ET aucun signal >= min_signal_score
-  * TYPE_D pour autres raisons (corrélation, ADX, RSI extrême)
-  * None si aucun skip ou au moins un trade (BUY) a été décidé
-- skip_detail = phrase courte décrivant la raison du skip principal, ou None
+Mets à jour les variables de synthèse :
+- top_score, skipped, skip_type, skip_detail
 
-N_buy = len(buy_candidates)
-top_score = top_score or 0  # fallback au cas où aucun score n'a été calculé
-
-→ tg("🧠 Phase 3 — Stratégie\nTop score : {top_score}/10\nScores : {coin: score pour les top 5}\n{N_buy} BUY candidates : {liste}\nFiltres appliqués : {résumé}\nSkipped : {len(skip_coins_detail)} coins")
 ⏱️ HEARTBEAT END PHASE 3 — appel hb(3) immédiatement ci-dessous
 hb(3, summary=f"{N_buy} BUY candidates, {len(skip_coins_detail)} skipped, top_score {top_score}/10")
