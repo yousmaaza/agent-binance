@@ -88,3 +88,4 @@
 {"date": "2026-06-30T00:17:22Z", "cycle_id": "20260630_000508", "top_score": 7, "executed": 1, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 214.70898175634673, "sentiment": "Bullish", "open_positions": 3}
 {"date": "2026-06-30T04:12:34Z", "cycle_id": "20260630_040507", "top_score": 6, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 41.23776314, "sentiment": "Neutral", "open_positions": 3}
 {"date": "2026-06-30T08:12:37Z", "cycle_id": "20260630_080501", "top_score": 6, "executed": 0, "skipped": 0, "skip_type": null, "skip_detail": null, "portfolio": 145.18, "sentiment": "Bullish", "open_positions": 3}
+{"date": "2026-06-30T08:47:00Z", "cycle_id": "20260630_083928", "top_score": 5, "executed": 0, "skipped": 1, "skip_type": "TYPE_A", "skip_detail": "Score 5/10 < seuil 6/10 (SYN : RSI 4h 68.75 hors zone optimale 30-55, RSI 1D 91.45 overbought)", "portfolio": 41.27, "sentiment": "Neutral", "open_positions": 3}
