@@ -19,7 +19,7 @@ CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
 _hb_init(CYCLE_ID, project_dir=PROJECT_DIR)
 
-hb_check_path = os.path.join(PROJECT_DIR, "logs", f"cycle___{CYCLE_ID}___phases.jsonl")
+hb_check_path = os.path.join(PROJECT_DIR, "logs", f"cycle_{CYCLE_ID}_phases.jsonl")
 hb_check_phases = set()
 try:
     if os.path.exists(hb_check_path):
