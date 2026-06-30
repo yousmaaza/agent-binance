@@ -5,7 +5,9 @@ import subprocess
 import sys
 import tempfile
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Callable
 
 from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
 from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, POSITION_PROMPT, get_cycle_phases_log_path
@@ -20,26 +22,40 @@ from storage.mongo import mongo_repo
 CLAUDE_PROCESS_TIMEOUT_S = 3600  # 1h max par cycle — tuer le processus si dépassé
 
 
+@dataclass
+class WorkflowConfig:
+    """Configuration et callbacks pour un cycle de workflow."""
+    use_watchdog: bool = False
+    use_helpers: bool = False
+    on_lock_busy: Callable[[], None] | None = None
+    on_start: Callable[[str, str, datetime, str], None] | None = None
+    on_post_run: Callable[[str, str, datetime, float, int, str, str, CycleLogger], None] | None = None
+
+
 def run_trade_workflow(trigger: str = "manual", fmt_next_fn=None) -> None:
     """Lance un cycle complet d'analyse et d'exécution.
 
     fmt_next_fn : callable() -> str optionnel, fourni par main_loop pour afficher
     l'heure du prochain cycle. Si absent, on affiche '--'.
     """
+    config = WorkflowConfig(
+        use_watchdog=True,
+        use_helpers=False,
+        on_lock_busy=lambda: send_telegram("⏳ Un cycle est déjà en cours. Réessaie dans quelques minutes."),
+        on_start=_send_start_notification,
+        on_post_run=_handle_trade_post_run,
+    )
     _run_workflow_cycle(
         prompt_template=TRADE_PROMPT,
         log_prefix="cycle",
         trigger=trigger,
         fmt_next_fn=fmt_next_fn,
         cycle_type="trade",
+        config=config,
         additional_replacements={
             "__PROMPT_VERSION__": PROMPT_VERSION,
             "__TRIGGER__": trigger,
         },
-        use_watchdog=True,
-        on_lock_busy=lambda: send_telegram("⏳ Un cycle est déjà en cours. Réessaie dans quelques minutes."),
-        on_start=_send_start_notification,
-        on_post_run=_handle_trade_post_run,
     )
 
 
@@ -49,15 +65,18 @@ def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None
     fmt_next_fn : callable() -> str optionnel, fourni par main_loop pour afficher
     l'heure du prochain cycle position. Si absent, on affiche '--'.
     """
+    config = WorkflowConfig(
+        use_watchdog=False,
+        use_helpers=False,  # position_prompt importe les helpers depuis core.position_helpers
+        on_post_run=_handle_position_post_run,
+    )
     _run_workflow_cycle(
         prompt_template=POSITION_PROMPT,
         log_prefix="position",
         trigger=trigger,
         fmt_next_fn=fmt_next_fn,
         cycle_type="position",
-        use_watchdog=False,
-        on_start=None,
-        on_post_run=_handle_position_post_run,
+        config=config,
     )
 
 
@@ -67,11 +86,8 @@ def _run_workflow_cycle(
     trigger: str,
     fmt_next_fn,
     cycle_type: str,
-    additional_replacements: dict = None,
-    use_watchdog: bool = False,
-    on_lock_busy=None,
-    on_start=None,
-    on_post_run=None,
+    config: WorkflowConfig,
+    additional_replacements: dict | None = None,
 ) -> None:
     """Exécute un cycle complet avec gestion du lock et du logging.
 
@@ -81,17 +97,12 @@ def _run_workflow_cycle(
         trigger: Type de déclenchement (auto ou manual)
         fmt_next_fn: Callable pour formatter l'heure du prochain cycle
         cycle_type: Type de cycle (trade ou position)
+        config: WorkflowConfig avec callbacks et options (watchdog, helpers)
         additional_replacements: Remplacements prompt supplémentaires
-        use_watchdog: Activer le watchdog
-        on_lock_busy: Callback si le lock est occupé
-        on_start: Callback avant de lancer Claude
-        on_post_run: Callback après l'exécution de Claude
     """
     if is_locked():
-        # Position check is background/automatic; skip silently if a trade cycle is running.
-        # Avoids notification spam. Next hourly check will proceed when lock is released.
-        if on_lock_busy:
-            on_lock_busy()
+        if config.on_lock_busy:
+            config.on_lock_busy()
         return
 
     acquire_lock()
@@ -102,33 +113,34 @@ def _run_workflow_cycle(
     cycle_log.info(log_msg)
 
     fmt_next = fmt_next_fn() if fmt_next_fn else "–"
-    if on_start:
-        on_start(cycle_id, trigger, started_at, fmt_next)
+    if config.on_start:
+        config.on_start(cycle_id, trigger, started_at, fmt_next)
     elif cycle_type == "position":
         send_telegram(f"🔄 Cycle position horaire démarré ({fmt_local(started_at)})\n⏰ Prochain : {fmt_next}")
 
-    try:
-        helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"{log_prefix}_{cycle_id}_")
-    except OSError as e:
-        if cycle_type == "trade":
-            send_telegram(f"❌ Cycle {cycle_id} — impossible de créer le fichier helpers (disque plein ?) : {e}")
-        cycle_log.error(f"mkstemp helpers échoué : {e}")
-        release_lock()
-        return
+    helpers_path = None
+    if config.use_helpers:
+        try:
+            helpers_fd, helpers_path = tempfile.mkstemp(suffix=".py", prefix=f"{log_prefix}_{cycle_id}_")
+        except OSError as e:
+            cycle_log.error(f"mkstemp helpers échoué : {e}")
+            release_lock()
+            return
+        _write_helpers_file(helpers_fd, helpers_path, cycle_id, trigger)
+        prompt = prompt_template.replace("__CYCLE_ID__", cycle_id).replace("__HELPERS_PATH__", helpers_path)
+    else:
+        prompt = prompt_template.replace("__CYCLE_ID__", cycle_id)
 
-    prompt = prompt_template.replace("__CYCLE_ID__", cycle_id).replace("__HELPERS_PATH__", helpers_path)
     if additional_replacements:
         for key, value in additional_replacements.items():
             prompt = prompt.replace(key, value)
-
-    _write_helpers_file(helpers_fd, helpers_path, cycle_id, trigger)
 
     stdout_path = f"{LOGS_DIR}/stdout/{log_prefix}_{cycle_id}.log"
     stderr_path = f"{LOGS_DIR}/stderr/{log_prefix}_{cycle_id}.log"
     exit_code = -1
 
     watchdog = None
-    if use_watchdog:
+    if config.use_watchdog:
         watchdog = WatchdogThread(cycle_log)
         watchdog.start()
 
@@ -137,8 +149,8 @@ def _run_workflow_cycle(
         duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         cycle_log.info(f"Terminé exit={exit_code} en {duration:.0f}s")
 
-        if on_post_run:
-            on_post_run(cycle_id, trigger, started_at, duration, exit_code, stderr_path, stdout_path, cycle_log)
+        if config.on_post_run:
+            config.on_post_run(cycle_id, trigger, started_at, duration, exit_code, stderr_path, stdout_path, cycle_log)
 
     except Exception as e:
         send_telegram(f"❌ Cycle {cycle_id} — erreur inattendue : {e}")
@@ -148,10 +160,11 @@ def _run_workflow_cycle(
             watchdog.stop()
             watchdog.join(timeout=2)
         release_lock()
-        try:
-            os.unlink(helpers_path)
-        except OSError:
-            pass
+        if helpers_path:
+            try:
+                os.unlink(helpers_path)
+            except OSError:
+                pass
 
 
 def _handle_trade_post_run(
@@ -291,19 +304,7 @@ def hb(phase, status="ok", summary=""):
 
 def _save_trade_history_atomic(data, path_override=None):
     _th_path = path_override or f"{{PROJECT_DIR}}/state/trade_history.json"
-    _th_parent = _hb_os.path.dirname(_th_path)
-    _hb_os.makedirs(_th_parent, exist_ok=True)
-    _fd, _th_temp = _hb_tempfile.mkstemp(dir=_th_parent, text=True, suffix=".tmp")
-    try:
-        with _hb_os.fdopen(_fd, "w") as _f:
-            json.dump(data, _f, indent=2)
-        _hb_os.replace(_th_temp, _th_path)
-    except Exception as _e:
-        try:
-            _hb_os.unlink(_th_temp)
-        except OSError:
-            pass
-        raise _e
+    _save_json_atomic(data, _th_path)
 
 def _load_config():
     _cfg_path = f"{{PROJECT_DIR}}/config.json"
@@ -313,21 +314,24 @@ def _load_config():
     except Exception:
         return {{}}
 
-def _save_config_atomic(data):
-    _cfg_path = f"{{PROJECT_DIR}}/config.json"
-    _cfg_parent = _hb_os.path.dirname(_cfg_path)
-    _hb_os.makedirs(_cfg_parent, exist_ok=True)
-    _fd, _cfg_temp = _hb_tempfile.mkstemp(dir=_cfg_parent, text=True, suffix=".tmp")
+def _save_json_atomic(_data, _path):
+    _parent = _hb_os.path.dirname(_path)
+    _hb_os.makedirs(_parent, exist_ok=True)
+    _fd, _temp = _hb_tempfile.mkstemp(dir=_parent, text=True, suffix=".tmp")
     try:
         with _hb_os.fdopen(_fd, "w") as _f:
-            json.dump(data, _f, indent=2)
-        _hb_os.replace(_cfg_temp, _cfg_path)
+            json.dump(_data, _f, indent=2)
+        _hb_os.replace(_temp, _path)
     except Exception as _e:
         try:
-            _hb_os.unlink(_cfg_temp)
+            _hb_os.unlink(_temp)
         except OSError:
             pass
         raise _e
+
+def _save_config_atomic(data):
+    _cfg_path = f"{{PROJECT_DIR}}/config.json"
+    _save_json_atomic(data, _cfg_path)
 """
     with os.fdopen(fd, "w") as f:
         f.write(helpers_content)

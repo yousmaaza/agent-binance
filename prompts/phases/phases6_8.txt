@@ -1,0 +1,154 @@
+
+PHASE 6 — RAPPORT FINAL
+⏱️ HEARTBEAT START PHASE 6
+_hb_start(6)
+
+# Initialiser/finaliser les variables pour Phase 6
+# Fallback pour top_score si pas assigné en Phase 3
+top_score = top_score if 'top_score' in locals() and top_score else 0
+
+- Génère reports/YYYY-MM-DD_HH-MM_trade.md avec :
+  * Univers scanné (N coins), filtres appliqués, scores top 10, meilleur score {top_score}/10
+  * Ordres exécutés ({executed} coins) avec IDs et paramètres
+  * Ordres skippés ({skipped} coins) avec skip_type et skip_detail
+  * Budget utilisé / disponible
+  * Positions ouvertes totales (depuis trade_history.json)
+
+- Calcule l'heure du prochain cycle automatique (slot 4h UTC + 5 min, affiché en heure locale) :
+  Exécute : python3 __PROJECT_DIR__/binance-bot/core/phases/phase6_next_cycle.py __CYCLE_ID__
+  Le script affiche sur stdout : PHASE6_NEXT_CYCLE_DONE|next=DD/MM HH:MM (heure locale)
+  Utilise la valeur retournée comme _next_str pour les appels hb() et tg() qui suivent.
+⏱️ HEARTBEAT END PHASE 6 — appel hb(6) immédiatement ci-dessous
+hb(6, summary=f"Rapport généré, top_score {top_score}/10, {executed} exec / {skipped} skip, prochain cycle {_next_str}")
+
+PHASE 7 — PERSISTANCE EN BASE (MongoDB)
+⏱️ HEARTBEAT START PHASE 7
+_hb_start(7)
+
+CYCLE_ID = "__CYCLE_ID__"   # déjà substitué par Python avant l'appel
+
+# Fallbacks pour toutes les variables critiques (évite UnboundLocalError)
+top_score = top_score if 'top_score' in locals() else 0
+executed = executed if 'executed' in locals() else 0
+skipped = skipped if 'skipped' in locals() else 0
+skip_type = skip_type if 'skip_type' in locals() else None
+skip_detail = skip_detail if 'skip_detail' in locals() else None
+sentiment = sentiment if 'sentiment' in locals() else "NEUTRAL"
+open_positions = open_positions if 'open_positions' in locals() else 0
+
+Construis un document Python `doc` représentant ce cycle :
+
+doc = {
+  "_id": CYCLE_ID,
+  "cycle_id": CYCLE_ID,
+  "prompt_version": "__PROMPT_VERSION__",
+  "timestamp": "{ISO UTC du début du cycle}",
+  "status": "completed",
+  "trigger": _trigger,
+  "portfolio": {
+    "total_usdc": portfolio_total if 'portfolio_total' in locals() else 0,
+    "budget_disponible": budget_disponible if 'budget_disponible' in locals() else 0,
+    "positions_ouvertes": open_positions,  # défini en Phase 0
+    "daily_pnl": daily_pnl if 'daily_pnl' in locals() else 0
+  },
+  "market_context": {
+    "sentiment": sentiment,  # défini en Phase 1
+    "top_score": top_score,  # défini en Phase 3
+    "universe_size": N if 'N' in locals() else 0,
+    "coins_scanned": [<liste des coins analysés>]
+  },
+  "execution": {
+    "executed": executed,  # nombre d'ordres exécutés en Phase 5
+    "skipped": skipped  # nombre d'ordres skippés en Phase 5
+  },
+  "decisions": [
+    {
+      "coin": "BTC",
+      "score": <0-10>,
+      "signal_4h": "<BUY|SELL|NEUTRAL|STRONG_BUY|STRONG_SELL>",
+      "signal_1d": "...",
+      "rsi_4h": <number>,
+      "decision": "<BUY|HOLD|SKIP|SELL>",
+      "reason": "Phrase courte expliquant pourquoi cette décision",
+      "skip_type": "<TYPE_A|TYPE_B|TYPE_C|TYPE_D|null>",  # Classification du skip si decision == SKIP
+      "skip_detail": "<texte libre détaillant le motif du skip>"   # Détail spécifique du skip
+    },
+    ... un objet par coin analysé
+  ],
+  "executed": <nombre d'ordres exécutés>,
+  "skipped": <nombre d'ordres skippés pendant Phase 5>,
+  "top_score": <meilleur score trouvé en Phase 3>,
+  "sentiment": "<Strongly Bullish | Bullish | Neutral | Bearish | Strongly Bearish>",
+  "open_positions": <nombre de positions ouvertes au début du cycle>,
+  "orders_placed": [
+    {"coin": "...", "score": ..., "entry_price": ..., "stop_price": ...,
+     "tp_price": ..., "quantity": ..., "risk_usdc": ...}
+  ],
+  "orders_skipped_count": <N>,
+  "log_files": {
+    "stdout": f"logs/stdout/cycle_{CYCLE_ID}.log",
+    "stderr": f"logs/stderr/cycle_{CYCLE_ID}.log"
+  },
+  "explanation_fr": "Paragraphe de 3 à 5 phrases en FRANÇAIS expliquant à un non-expert en crypto : (a) ce qu'on a fait ce cycle, (b) pourquoi on a (ou pas) placé des ordres, (c) la météo du marché. ÉVITE le jargon technique. Au lieu de 'RSI à 32', dis 'l'indicateur de pression vendeuse'. Au lieu de 'score 7/10', dis 'signal solide'. Au lieu de 'ATR×2', dis 'protection ajustée à la volatilité'."
+}
+
+Écris ce document en Mongo via le script dédié :
+Écris d'abord le document dans /tmp/cycle___CYCLE_ID___phase7_input.json : {"doc": doc}
+Puis exécute : python3 __PROJECT_DIR__/binance-bot/core/phases/phase7_mongo.py __CYCLE_ID__
+Le script affiche sur stdout : PHASE7_MONGO_DONE|status=ok (ou skipped si MONGODB_URI absent)
+
+- Notification de synthèse (DOIT inclure le cycle_id) :
+  tg(f"✅ Cycle {CYCLE_ID} terminé\nTop score : {top_score}/10\nExécutés : {executed} | Skippés : {skipped}\nBudget utilisé : {budget_disponible if 'budget_disponible' in locals() else '?':.2f} USDC\nPositions actives : {open_positions}\n⏰ Prochain cycle : {_next_str}\n📊 /raisonnement pour les détails")
+
+- Écris state/agent_lock.json : {"running": false, "started_at": null}
+
+⏱️ HEARTBEAT VERIFICATION — VÉRIFIER QUE TOUTES LES PHASES SONT PRÉSENTES
+Avant d'appeler hb(7), vérifier que le fichier JSONL de heartbeats contient bien une ligne pour chaque phase 0-6.
+Exécute : python3 __PROJECT_DIR__/binance-bot/core/phases/phase7_hb_check.py __CYCLE_ID__
+Le script affiche sur stdout : PHASE7_HB_CHECK_DONE|missing=[...]
+
+⏱️ HEARTBEAT END PHASE 7 — appel hb(7) immédiatement ci-dessous
+hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, top_score {top_score}/10, {executed} exec / {skipped} skip")
+
+PHASE 8 — CYCLE LOG JSONL
+⏱️ HEARTBEAT START PHASE 8
+_hb_start(8)
+Écris une ligne dans state/cycle_log.jsonl et push sur GitHub.
+
+Les variables de synthèse suivantes ont été définies et mise à jour par les phases précédentes :
+- top_score : score maximum parmi tous les coins (défini en Phase 3, 0-10)
+- executed : nombre d'ordres BUY MARKET passés (défini en Phase 5)
+- skipped : nombre de coins bloqués par les filtres (défini en Phase 3)
+- skip_type : raison principale du skip (TYPE_A/B/C/D ou None, défini en Phase 3)
+- skip_detail : phrase décrivant le skip principal (défini en Phase 3, ou None)
+- sentiment : sentiment global du marché (obtenu en Phase 1)
+- portfolio_total : portefeuille total en USDC (calculé en Phase 0)
+- open_positions : nombre de trades open (calculé en Phase 5)
+
+Utilise ces variables pour écrire un document JSON dans state/cycle_log.jsonl :
+```json
+{
+    "date": "YYYY-MM-DDTHH:MMZ",
+    "cycle_id": "__CYCLE_ID__",
+    "top_score": <int 0-10>,
+    "executed": <int>,
+    "skipped": <int>,
+    "skip_type": "<TYPE_A|TYPE_B|TYPE_C|TYPE_D|None>",
+    "skip_detail": "<str or None>",
+    "portfolio": <float>,
+    "sentiment": "<Neutral|Bullish|Bearish|...>",
+    "open_positions": <int>
+}
+```
+
+Écris les variables de synthèse dans /tmp/cycle___CYCLE_ID___phase8_input.json :
+{"top_score": top_score, "executed": executed, "skipped": skipped,
+ "skip_type": skip_type, "skip_detail": skip_detail,
+ "portfolio": portfolio_total, "sentiment": sentiment, "open_positions": open_positions}
+Puis exécute :
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase8_cycle_log.py __CYCLE_ID__
+Le script écrit state/cycle_log.jsonl et pousse sur git.
+Il affiche sur stdout : PHASE8_CYCLE_LOG_DONE|status=ok
+
+⏱️ HEARTBEAT END PHASE 8 — appel hb(8) immédiatement ci-dessous
+hb(8, summary=f"Cycle log écrit, {executed} ordres exécutés")
