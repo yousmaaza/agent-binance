@@ -11,7 +11,7 @@ import os
 import json
 import datetime
 
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
