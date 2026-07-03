@@ -40,10 +40,9 @@ for t in history:
     trail_dist = entry - cur_stop
 
     try:
-        ticker = json.loads(
-            binance("spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
-        )
-        price = float(ticker["price"])
+        ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
+        ticker_data = json.loads(ticker_raw)
+        price = float(ticker_data.get(f"{coin}USDC", {}).get("c", [0])[0])
     except Exception as e:
         tg(f"⚠️ Trailing stop {coin} : impossible de récupérer le prix ({e})")
         continue
@@ -69,11 +68,11 @@ for t in history:
         continue
 
     try:
-        info_raw = binance("spot", "exchange-info", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
-        info = json.loads(info_raw)
-        filters = {f["filterType"]: f for f in info.get("filters", [])}
-        tick = float(filters.get("PRICE_FILTER", {}).get("tickSize", "0.00000001"))
-        lot = float(filters.get("LOT_SIZE", {}).get("stepSize", "0.00000001"))
+        pairs_raw = binance("pairs", "--pair", f"{coin}USDC", "-o", "json")
+        pair_data = json.loads(pairs_raw).get(f"{coin}USDC", {})
+        lot_dec = int(pair_data.get("lot_decimals", 8))
+        tick = float(pair_data.get("tick_size", "0.00000001"))
+        lot = 10 ** (-lot_dec)
         qty = _round_qty(float(t["quantity"]), lot)
         new_stop_r = _round_price(new_stop, tick)
         new_tp_r = _round_price(new_tp, tick)
