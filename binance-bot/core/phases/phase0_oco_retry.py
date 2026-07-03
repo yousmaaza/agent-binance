@@ -19,6 +19,38 @@ from core.trade_helpers import tg, binance, _load_config, _save_trade_history_at
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
+
+def _execute_sell_market(coin, qty, entry, history, trade_id, prix_actuel, close_reason, extra_updates=None):
+    """Execute SELL MARKET order and update history with PnL calculation.
+
+    Returns: (success, pnl_usdc, pnl_pct)
+    """
+    sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
+    sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
+    sell_txid = sell_resp.get("txid", [None])[0]
+    if sell_txid:
+        time.sleep(1)
+        fill_raw = binance("query-orders", sell_txid, "-o", "json")
+        fill = json.loads(fill_raw).get(sell_txid, {})
+        fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
+        pnl_usdc = (fill_exit - entry) * qty
+        pnl_pct = (fill_exit - entry) / entry * 100
+        for item in history:
+            if item.get("trade_id") == trade_id:
+                update = {
+                    "status": "closed", "exit_price": fill_exit,
+                    "pnl_usdc": pnl_usdc, "pnl_pct": pnl_pct,
+                    "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "protection_failed": False, "close_reason": close_reason,
+                }
+                if extra_updates:
+                    update.update(extra_updates)
+                item.update(update)
+        return True, pnl_usdc, pnl_pct
+    else:
+        return False, None, None
+
+
 try:
     with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
         history = json.load(f)
@@ -51,53 +83,20 @@ try:
         prix_actuel = float(ticker_data.get(f"{coin}USDC", {}).get("c", [0])[0])
 
         if prix_actuel > tp_calc:
-            sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
-            sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
-            sell_txid = sell_resp.get("txid", [None])[0]
-            if sell_txid:
-                time.sleep(1)
-                fill_raw = binance("query-orders", sell_txid, "-o", "json")
-                fill = json.loads(fill_raw).get(sell_txid, {})
-                fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
-                pnl_usdc = (fill_exit - entry) * qty
-                pnl_pct = (fill_exit - entry) / entry * 100
-                for item in history:
-                    if item.get("trade_id") == t.get("trade_id"):
-                        item.update({
-                            "status": "closed", "exit_price": fill_exit,
-                            "pnl_usdc": pnl_usdc, "pnl_pct": pnl_pct,
-                            "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                            "protection_failed": False, "close_reason": "market_above_tp",
-                        })
+            success, pnl_usdc, pnl_pct = _execute_sell_market(coin, qty, entry, history, t.get("trade_id"), prix_actuel, "market_above_tp")
+            if success:
                 tg(f"✅ {coin} fermé à market (prix {prix_actuel:.4g} > TP {tp_calc:.4g}) : {pnl_usdc:+.2f} USDC ({pnl_pct:+.1f}%)")
             else:
-                tg(f"⚠️ {coin} : fermeture market échouée — {sell_raw[:200]}")
+                tg(f"⚠️ {coin} : fermeture market échouée")
         else:
             oco_retry_count = t.get("oco_retry_count", 0)
 
             if oco_retry_count >= max_oco_retry:
-                sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
-                sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
-                sell_txid = sell_resp.get("txid", [None])[0]
-                if sell_txid:
-                    time.sleep(1)
-                    fill_raw = binance("query-orders", sell_txid, "-o", "json")
-                    fill = json.loads(fill_raw).get(sell_txid, {})
-                    fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
-                    pnl_usdc = (fill_exit - entry) * qty
-                    pnl_pct = (fill_exit - entry) / entry * 100
-                    for item in history:
-                        if item.get("trade_id") == t.get("trade_id"):
-                            item.update({
-                                "status": "closed", "exit_price": fill_exit,
-                                "pnl_usdc": pnl_usdc, "pnl_pct": pnl_pct,
-                                "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                                "protection_failed": False, "close_reason": "protection_exhausted",
-                                "oco_retry_count": 0,
-                            })
+                success, pnl_usdc, pnl_pct = _execute_sell_market(coin, qty, entry, history, t.get("trade_id"), prix_actuel, "protection_exhausted", {"oco_retry_count": 0})
+                if success:
                     tg(f"🚨 {coin} : SL rattrapage échoué {max_oco_retry} fois. Fermeture SELL MARKET forcée.\n{pnl_usdc:+.2f} USDC ({pnl_pct:+.1f}%)")
                 else:
-                    tg(f"⚠️ {coin} : fermeture SELL MARKET (fallback protection_exhausted) échouée — {sell_raw[:200]}")
+                    tg(f"⚠️ {coin} : fermeture SELL MARKET (fallback protection_exhausted) échouée")
             else:
                 for item in history:
                     if item.get("trade_id") == t.get("trade_id"):
