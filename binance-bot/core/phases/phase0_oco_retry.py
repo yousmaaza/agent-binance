@@ -9,6 +9,7 @@ import sys
 import os
 import json
 import math
+import time
 import datetime
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -54,7 +55,7 @@ try:
             sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
             sell_txid = sell_resp.get("txid", [None])[0]
             if sell_txid:
-                import time; time.sleep(1)
+                time.sleep(1)
                 fill_raw = binance("query-orders", sell_txid, "-o", "json")
                 fill = json.loads(fill_raw).get(sell_txid, {})
                 fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
@@ -79,7 +80,7 @@ try:
                 sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
                 sell_txid = sell_resp.get("txid", [None])[0]
                 if sell_txid:
-                    import time; time.sleep(1)
+                    time.sleep(1)
                     fill_raw = binance("query-orders", sell_txid, "-o", "json")
                     fill = json.loads(fill_raw).get(sell_txid, {})
                     fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
