@@ -5,12 +5,10 @@ Importé via :
 """
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 
-_EXCHANGE_CLI: str = shutil.which("kraken") or os.path.expanduser("~/.cargo/bin/kraken")
-_PROJECT_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.env import KRAKEN_CLI_PATH as _EXCHANGE_CLI, PROJECT_DIR as _PROJECT_DIR
 
 
 def tg(text: str) -> None:
