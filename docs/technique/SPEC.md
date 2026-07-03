@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-03 (PR #293)
+> **Dernière mise à jour** : 2026-07-03 (PR #294)
 > **Commit** : <current>
 
 ---
@@ -291,6 +291,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#294](pr-294-adapter-cli-kraken.md) | 2026-07-03 | [M286] Adapter les appels CLI de **lecture** vers Kraken : ticker unifié (remplace deux appels Binance), balance et open-orders via `kraken-cli` dans `status.py`, phase0_snapshot, phase0_profit, phase1_scan ; logique d'annulation d'ordres adaptée au format Kraken `descr.pair` |
 | [#293](pr-293-remplacer-binance-cli-par-kraken.md) | 2026-07-03 | [M285] Migration CLI : remplace `binance-cli` par `kraken-cli`, détection via `shutil.which("kraken")` avec fallback `~/.cargo/bin/kraken` (env.py:33), renommage variable interne `_BINANCE_CLI` → `_EXCHANGE_CLI`, substitution template `__KRAKEN_CLI_PATH__` dans TRADE_PROMPT et POSITION_PROMPT — architecturally isolated, pas d'impact logique |
 | [#270](pr-270-refacto-externaliser-helpers-python-modules.md) | 2026-07-03 | [REFACTO] Externaliser helpers Python en modules (`core/trade_helpers.py`, `core/heartbeat.py`, `core/position_helpers.py`), découper `trade_prompt.txt` en 9 sous-fichiers (`prompts/shared/` + `prompts/phases/`), déplacer 12 scripts de phase vers `binance-bot/core/phases/` (package Python), implémenter `core/env.py:assemble_prompt()` pour assemblage dynamique, refactoriser `runner.py` via dataclass `WorkflowConfig` — élimine ~70% de duplication d'helpers, maintenabilité +++ |
 | [#267](pr-267-fix-phase0-bugs.md) | 2026-06-28 | [M1] Phase 0 : comptage open_positions inclut protection_failed=True, retry OCO avec fallback SELL MARKET après max_oco_retry (défaut 3), standardisation close_reason (market_above_tp, profit_target_phase0, protection_exhausted) |
