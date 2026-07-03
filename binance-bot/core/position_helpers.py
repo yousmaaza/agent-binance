@@ -28,15 +28,26 @@ def tg(text: str) -> None:
 def binance(*args, _retries: int = 3) -> str:
     """Appelle kraken avec retry exponentiel."""
     import time
+
+    def _is_invalid_symbol(output: str) -> bool:
+        return output.startswith("Invalid symbol")
+
+    def _is_success(output: str) -> bool:
+        return output and not output.startswith("Request failed") and not output.startswith("Usage:")
+
     for attempt in range(_retries):
         r = subprocess.run([_EXCHANGE_CLI] + list(args), capture_output=True, text=True, timeout=30)
         raw = r.stdout.strip()
-        if raw.startswith("Invalid symbol"):
+
+        if _is_invalid_symbol(raw):
             raise ValueError("Invalid symbol")
-        if raw and not raw.startswith("Request failed") and not raw.startswith("Usage:"):
+
+        if _is_success(raw):
             return raw
+
         if attempt < _retries - 1:
             time.sleep(2 * (attempt + 1))
+
     raise RuntimeError(f"kraken failed after {_retries} retries: {raw[:120]}")
 
 
