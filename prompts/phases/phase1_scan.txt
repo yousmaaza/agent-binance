@@ -22,22 +22,18 @@ Si un coin a tv_symbol identique à coin mais que le ticker {tv_symbol}USDT n'ex
 (ex: nouveau coin Kraken inconnu de Binance) → exclure ce coin de l'univers Phase 2 et logger un warning.
 Utilise tv_symbol pour tous les appels TradingView/coin_analysis (Phase 2 incluse).
 
-Appelle les trois screeners TradingView pour enrichir le signal sur les coins tradables Kraken :
+Appelle les deux screeners TradingView pour enrichir le signal sur les coins tradables Kraken :
 1. mcp__tradingview__top_gainers(exchange="BINANCE", timeframe="4h", limit=25)
    → liste des coins avec le meilleur momentum sur 4h (change%, volume). Stocke la liste dans top_gainers_symbols.
 2. mcp__tradingview__volume_breakout_scanner(exchange="BINANCE", timeframe="4h", volume_multiplier=2.0, price_change_min=3.0, limit=25)
    → liste des breakouts volume (symbol, change%, volume). Stocke la liste dans breakout_symbols.
-3. mcp__tradingview__market_sentiment(symbol="BTC", category="crypto", limit=20)
-   → sentiment global du marché crypto. Stocke le résultat dans market_sentiment_data.
-   Si posts_analyzed=0 → utiliser le calcul fallback depuis les données Kraken ticker (voir ci-dessous).
 
-Si un appel MCP échoue → continuer avec les données disponibles (top_gainers_symbols ou breakout_symbols = [] si l'appel a échoué), ne pas bloquer le cycle.
+Si un appel MCP échoue → continuer avec les données disponibles ([] si l'appel a échoué), ne pas bloquer le cycle.
 
 Note : les screeners TradingView servent à enrichir le signal sur les coins déjà validés par Kraken — ils ne définissent plus l'univers de départ. Un coin absent des screeners mais présent dans tradable reste candidat.
 
-Calcul du sentiment global :
-- Utilise market_sentiment_data (issu de mcp__tradingview__market_sentiment) si disponible.
-- Sinon, calcule depuis les données kraken ticker : compte les coins avec priceChangePercent > 0 (bullish_count) et < 0 (bearish_count)
+Calcul du sentiment global (depuis les données Kraken ticker) :
+- Compte les coins tradables avec change_pct_24h > 0 (bullish_count) et < 0 (bearish_count)
 - Si bullish_count >= 2 × bearish_count → sentiment = "Bullish"
 - Si bearish_count >= 2 × bullish_count → sentiment = "Bearish"
 - Sinon → sentiment = "Neutral"
