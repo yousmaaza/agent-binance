@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#312](pr-312-refactor-phase1-kraken-usdc.md) | [M1] Refactorer Phase 1 — univers depuis Kraken USDC + seuil 1M | 2026-07-03 |
 | [#310](pr-310-mettre-a-jour-config-kraken.md) | [M291] Mettre à jour config.json pour Kraken (coins + suppression binance_profile) | 2026-07-03 |
 | [#305](pr-305-mettre-jour-prompts-api-reference-kraken.md) | [M5] Mettre à jour les prompts et api_reference pour Kraken | 2026-07-03 |
 | [#304](pr-304-ajouter-unittests-fonctions.md) | [M0] Ajouter unittests pour fonctions utilitaires | 2026-07-03 |

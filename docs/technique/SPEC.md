@@ -252,6 +252,7 @@ webhook_server.py (process principal)
 | `usdc_allocation_pct` | `0.70` | Fraction du USDC libre allouée au trading (70%) |
 | `portfolio_coins` | `["XBT", "XRP", "SOL"]` | Coins systématiquement inclus dans l'univers de scan (coins Kraken avec paires USDC tradables : XBTUSDC, XRPUSDC, SOLUSDC) |
 | `quote_asset` | `"USDC"` | Asset de cotation pour toutes les paires tradées |
+| `min_volume_usdc` | `1000000` | Seuil volume 24h (USDC) pour inclure un coin dans l'univers Phase 1 — coins sous ce seuil ignorés sauf s'ils figurent dans `portfolio_coins` (fallback garanti). Baissé de 5M à 1M via PR #312 pour couvrir alt-coins de taille moyenne (SOL, XRP) |
 | `order_type` | `"LIMIT"` | Type d'ordre d'entrée (ordre working de l'OTOCO) |
 | `limit_offset_pct` | `0.005` | Décalage du prix limite par rapport au prix actuel (−0.5%) |
 | `min_order_usdc` | `9` | Montant minimum d'un ordre en USDC (contrainte Binance) — abaissé de 11 à 9 via PR #268 pour couvrir dimensionnements ATR légitimes (8–11 USDC) |
@@ -291,6 +292,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#312](pr-312-refactor-phase1-kraken-usdc.md) | 2026-07-03 | [M1] Refactorer Phase 1 : univers de candidats défini par les paires USDC réellement disponibles sur Kraken (`kraken pairs`) au lieu de TradingView/Binance; seuil volume baissé de 5M à 1M USDC (configurable `min_volume_usdc`); `portfolio_coins` inclus systématiquement même sous seuil (fallback garanti); appels ticker par batch de 10 paires; prompts Phase 1 et Phase 2 mis à jour pour cohérence |
 | [#310](pr-310-mettre-a-jour-config-kraken.md) | 2026-07-03 | [M291] Mettre à jour `config.json` pour Kraken : suppression clé obsolète `binance_profile` (Kraken utilise credentials globaux via `kraken setup`, pas de profil par commande), migration `portfolio_coins` vers paires USDC disponibles sur Kraken (`["XBT", "XRP", "SOL"]` — remplace `["BTC", "STX", "SUI", "XRP", "SOL"]`), retrait STX et SUI dont STXUSDC/SUIUSDC introuvables sur Kraken, utilisation XBT (pas BTC) pour construction paire correcte XBTUSDC |
 | [#305](pr-305-mettre-jour-prompts-api-reference-kraken.md) | 2026-07-03 | [M5] Mettre à jour prompts et api_reference pour Kraken : migration complète Binance CLI → Kraken CLI dans phases 0 (balance, SL verification, trailing stop), 1 (tradabilité USDC), 4 (sizing, filtres lot_decimals), position_prompt (open-orders, ticker, cancel par txid) ; api_reference.txt rédaction complète avec pièges Kraken (BTCUSDC→XBTUSDC, volume asset base, pas OCO natif) — débloque phases 0-4 pour kraken-cli |
 | [#304](pr-304-ajouter-unittests-fonctions.md) | 2026-07-03 | [M0] Ajouter unittests pour fonctions utilitaires : 17 tests unitaires pour `_round_price()` et `_round_qty()` (arrondi déterministe, sans I/O) — validant comportement critique du dimensionnement ordres ; pas de dépendances externes ajoutées |
