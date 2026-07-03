@@ -24,6 +24,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#270](pr-270-refacto-externaliser-helpers-python-modules.md) | [REFACTO] Externaliser helpers Python en modules et découper trade_prompt par phase | 2026-07-03 |
 | [#268](pr-268-config-min-order-usdc.md) | [M1] Réduire min_order_usdc de 11 à 9 USDC | 2026-06-29 |
 | [#267](pr-267-fix-phase0-bugs.md) | [M1] fix(Phase 0) — comptage open_positions, retry OCO + close_reason | 2026-06-28 |
 | [#263](pr-263-position-prompt-binance-cli-fix.md) | [BUG] position_prompt.txt : mauvaises commandes binance-cli et mauvais noms de champs | 2026-06-28 |

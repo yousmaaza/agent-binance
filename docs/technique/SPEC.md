@@ -1,14 +1,14 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-06-24 (PR #265)
+> **Dernière mise à jour** : 2026-07-03 (PR #270)
 > **Commit** : <current>
 
 ---
 
 ## 1. Vue d'ensemble
 
-`agent-binance` est un bot de trading Binance piloté par Telegram, fonctionnant en architecture polling-only (aucun port entrant, aucun tunnel). Un unique processus Python (`binance-bot/webhook_server.py`) poll Telegram en long-polling (timeout 30s) et déclenche un sous-processus Claude CLI via `binance-bot/orchestration/runner.py:run_trade_workflow()` à chaque commande `/trade` ou toutes les 4h via l'auto-scheduler intégré. Le sous-processus Claude orchestre 9 phases (0–8) d'analyse de marché et d'exécution d'ordres via `binance-cli`, en lisant le prompt depuis `prompts/trade_prompt.txt` et injectant des helpers partagés via tempfile sécurisé, en utilisant les outils TradingView MCP pour les données marché et MongoDB Atlas pour la persistance des cycles. L'état persistant est stocké sous `state/` (JSON), les logs sous `logs/`, et toutes les notifications utilisateur sont envoyées en français via l'API Telegram (via `curl`).
+`agent-binance` est un bot de trading Binance piloté par Telegram, fonctionnant en architecture polling-only (aucun port entrant, aucun tunnel). Un unique processus Python (`binance-bot/webhook_server.py`) poll Telegram en long-polling (timeout 30s) et déclenche un sous-processus Claude CLI via `binance-bot/orchestration/runner.py:run_trade_workflow()` à chaque commande `/trade` ou toutes les 4h via l'auto-scheduler intégré. Le sous-processus Claude orchestre 9 phases (0–8) d'analyse de marché et d'exécution d'ordres via `binance-cli`, en lisant le prompt assemblé depuis 9 sous-fichiers (`prompts/trade_prompt.txt` + `prompts/shared/` + `prompts/phases/`) via `core/env.py:assemble_prompt()`, en important des helpers réutilisables depuis les modules `core/trade_helpers.py` et `core/heartbeat.py`, et appelant les scripts de phase depuis `binance-bot/core/phases/phase{N}*.py`, en utilisant les outils TradingView MCP pour les données marché et MongoDB Atlas pour la persistance des cycles. L'état persistant est stocké sous `state/` (JSON), les logs sous `logs/`, et toutes les notifications utilisateur sont envoyées en français via l'API Telegram (via `curl`).
 
 ---
 
@@ -121,7 +121,7 @@ webhook_server.py (process principal)
 
 ---
 
-## 3. Fonctions clés (`scripts/webhook_server.py`)
+## 3. Fonctions clés
 
 | Fonction | Ligne | Rôle |
 |---|---|---|
@@ -147,20 +147,27 @@ webhook_server.py (process principal)
 | `load_trade_history(path)` | core/state_manager.py:24 | Charge et valide `trade_history.json` — lève `ValueError`/`FileNotFoundError` |
 | `save_trade_history(data, path)` | core/state_manager.py:45 | Sauvegarde atomique via tempfile + os.replace() ; valide avant écriture |
 | `validate_and_repair_boot()` | core/state_manager.py:79 | Vérifie l'intégrité de `trade_history.json` au démarrage ; crée backup daté en cas de corruption, réinitialise à `[]` ; retourne `(is_valid, error_msg)` |
-| `_hb_start(phase)` | helpers:157 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
-| `hb(phase, status, summary)` | helpers:161 | Clôture une phase avec **déduplication** : relit le JSONL, supprime l'ancienne entrée si la phase existe, append la nouvelle ligne JSON ; calcule la durée ; flux immédiat |
+| `_hb_start(phase)` | core/heartbeat.py:31 | Démarre le chronomètre d'une phase — mémorise le timestamp UTC dans `_phase_start[phase]` |
+| `hb(phase, status, summary)` | core/heartbeat.py:36 | Clôture une phase avec **déduplication** : relit le JSONL, supprime l'ancienne entrée si la phase existe, append la nouvelle ligne JSON ; calcule la durée ; flux immédiat |
+| `init(cycle_id, trigger, project_dir)` | core/heartbeat.py:19 | Initialise l'état module-level du heartbeat pour un cycle — doit être appelée une fois en tête de chaque script de phase |
 | `CycleLogger.warning()` | botlogging/cycle_logger.py:34 | Nouvelle méthode pour logger les avertissements au niveau cycle avec préfixe structuré ; complète les méthodes `info()` et `error()` existantes |
 | `CycleLogger.debug()` | botlogging/cycle_logger.py:37 | Méthode pour logger les messages de debug au niveau cycle avec préfixe structuré ; complète les méthodes `info()`, `error()`, `warning()` existantes |
-| `binance(*args, _retries)` | TRADE_PROMPT:23 | Helper retry-backoff (x3, sleep 2s/4s/6s) pour appels binance-cli ; détecte "Invalid symbol" et "Request failed" ; lève `RuntimeError` si tous les retries échouent |
-| `_save_trade_history_atomic(data, path_override)` | TRADE_PROMPT:37 | Wrapper du module `state_manager` appelable dans le sous-processus Claude ; sauvegarde atomique `trade_history.json` |
+| `tg(text)` | core/trade_helpers.py:15 | Envoie une notification Telegram via `curl` (jamais `urllib`, cf. CLAUDE.md) — importée par les scripts de phase |
+| `binance(*args, _retries=3)` | core/trade_helpers.py:29 | Helper retry-backoff (x3, sleep 2s/4s/6s) pour appels binance-cli ; détecte "Invalid symbol" et "Request failed" ; lève `RuntimeError` si tous les retries échouent |
+| `_load_config(project_dir="")` | core/trade_helpers.py:43 | Charge `config.json` et retourne un dict ; retourne `{}` en cas d'erreur |
+| `_save_json_atomic(data, path)` | core/trade_helpers.py:53 | Écriture atomic générique via tempfile + os.replace() ; utilisée par les 3 fonctions *_atomic() |
+| `_save_trade_history_atomic(data, path_override="")` | core/trade_helpers.py:70 | Wrapper pour écriture atomique de `trade_history.json` |
+| `_save_config_atomic(data, project_dir="")` | core/trade_helpers.py:76 | Wrapper pour écriture atomique de `config.json` |
 | Bloc trailing stop _(Phase 0)_ | TRADE_PROMPT:264–365 | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec OCO actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule l'OCO existant et replace un nouvel OCO avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
 | `_format_stream_event()` | :643 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
 | `_RESOURCE_ERROR_PATTERNS` _(constante module)_ | :934 | Liste des 8 patterns de chaîne indiquant une erreur de ressource Claude (credit insuffisant, rate_limit_error, overloaded_error, session limit, etc.) — utilisée par `_is_resource_error()` |
 | `_is_resource_error()` | :946 | Lit le fichier `logs/stdout/cycle_*.log` et retourne `True` si un pattern de ressource y est détecté — gère silencieusement les erreurs de lecture |
 | `_read_last_jsonl_phase()` | :690 | Lit la dernière ligne valide du fichier `cycle_<id>_phases.jsonl` — utilisé par le watchdog pour connaître la dernière phase complétée |
 | `_watchdog_thread()` | :710 | Thread daemon qui surveille le cycle actif via le JSONL des heartbeats : alerte Telegram si aucune phase ne progresse pendant > 15 min |
-| `PROMPT_VERSION` _(constante module)_ | :410 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
-| `POSITION_PROMPT` _(constante module)_ | env.py:93–99 | Prompt pour cycle horaire de gestion des positions : template chargé depuis `prompts/position_prompt.txt` avec substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) |
+| `assemble_prompt(prompts_dir="")` | core/env.py:70 | Assemble le prompt de trading depuis 9 sous-fichiers dans l'ordre : header + api_reference + phase0..phase5 + phases6_8 ; retourne la chaîne concaténée |
+| `get_cycle_phases_log_path(cycle_id)` | core/env.py:39 | Retourne le chemin du fichier heartbeat JSONL pour un cycle : `logs/cycle_{cycle_id}_phases.jsonl` |
+| `PROMPT_VERSION` _(constante module)_ | core/env.py:102 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` assemblé, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
+| `POSITION_PROMPT` _(constante module)_ | core/env.py:113–119 | Prompt pour cycle horaire de gestion des positions : template chargé depuis `prompts/position_prompt.txt` avec substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) |
 | `next_1h_slot()` | timing.py:15 | Calcule le prochain slot horaire `:05 UTC` en sautant les slots 4h (00:05, 04:05, ..., 20:05) pour éviter collision avec `next_4h_slot()` — retourne un datetime UTC |
 | `run_trade_workflow()` | runner.py:23 | Orchestre un cycle complet de trading : appelle `_run_workflow_cycle()` avec callbacks spécialisés pour trade (watchdog=True, post-processing avec gestion quota abonnement) |
 | `run_position_check_workflow()` | runner.py:46 | Orchestre un cycle horaire de gestion des positions : appelle `_run_workflow_cycle()` avec cycle_type="position", watchdog=False (cycle léger), post-processing minimaliste |
@@ -284,6 +291,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#270](pr-270-refacto-externaliser-helpers-python-modules.md) | 2026-07-03 | [REFACTO] Externaliser helpers Python en modules (`core/trade_helpers.py`, `core/heartbeat.py`, `core/position_helpers.py`), découper `trade_prompt.txt` en 9 sous-fichiers (`prompts/shared/` + `prompts/phases/`), déplacer 12 scripts de phase vers `binance-bot/core/phases/` (package Python), implémenter `core/env.py:assemble_prompt()` pour assemblage dynamique, refactoriser `runner.py` via dataclass `WorkflowConfig` — élimine ~70% de duplication d'helpers, maintenabilité +++ |
 | [#267](pr-267-fix-phase0-bugs.md) | 2026-06-28 | [M1] Phase 0 : comptage open_positions inclut protection_failed=True, retry OCO avec fallback SELL MARKET après max_oco_retry (défaut 3), standardisation close_reason (market_above_tp, profit_target_phase0, protection_exhausted) |
 | [#263](pr-263-position-prompt-binance-cli-fix.md) | 2026-06-28 | [BUG #261] position_prompt.txt : corrections syntaxe binance-cli (`open-orders` → `get-open-orders`, `get-price` → `spot ticker-price`) et noms de champs trade_history.json (`status` minuscule, `coin`, `quantity`, `date`) |
 | [#260](pr-260-refactor-phase0-calibrage.md) | 2026-06-23 | [M259] Refactoriser : supprimer cycle horaire position (scheduler 1h), intégrer calibrage directement en Phase 0 du cycle 4h — réalisation de profits pour positions P&L ≥ `min_profit_pct_take`, simplification architecture (un seul scheduler) |
