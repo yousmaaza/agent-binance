@@ -58,6 +58,7 @@ CORRELATED_GROUP = {"SOL", "SUI", "STX", "ETH"}
 buy_candidates = []
 sell_candidates = []
 skip_coins_detail = {}
+scores_detail = {}
 top_score = 0
 
 volumes = [analysis_results[c].get("volume_24h", 0) for c in analysis_results]
@@ -72,64 +73,96 @@ for coin, data in analysis_results.items():
     volume_24h = data.get("volume_24h", 0)
 
     score = 0
+    reasons = []
     if signal_4h in ("BUY", "STRONG_BUY"):
         score += 2
+        reasons.append(f"4h {signal_4h}")
     if signal_1d in ("BUY", "STRONG_BUY"):
         score += 2
+        reasons.append(f"1D {signal_1d}")
+    elif signal_1d not in (None, "BUY", "STRONG_BUY"):
+        reasons.append(f"1D {signal_1d}")
     if rsi_4h is not None and 30 <= rsi_4h <= 55:
         score += 1
+    elif rsi_4h is not None:
+        reasons.append(f"RSI {rsi_4h:.0f} hors zone")
     if macd_bullish:
         score += 1
+        reasons.append("MACD haussier")
     if coin in top_gainers_symbols:
         score += 1
+        reasons.append("top gainers")
     if coin in breakout_symbols:
         score += 1
+        reasons.append("breakout")
     if sentiment == "Bullish":
         score += 1
     if median_vol > 0 and volume_24h > 2 * median_vol:
         score += 1
+        reasons.append("volume élevé")
 
     top_score = max(top_score, score)
 
     if score >= effective_min_score and signal_4h in ("BUY", "STRONG_BUY"):
         if data.get("in_portfolio"):
-            pass  # HOLD implicite — pas de renforcement de position existante
+            scores_detail[coin] = {"score": score, "decision": "HOLD", "skip_type": None, "reasons": reasons}
         elif open_positions >= max_open_positions:
-            skip_coins_detail[coin] = {
-                "skip_type": "TYPE_A",
-                "skip_detail": f"Positions max atteintes ({open_positions}/{max_open_positions})",
-            }
+            skip_detail_str = f"Positions max atteintes ({open_positions}/{max_open_positions})"
+            skip_coins_detail[coin] = {"skip_type": "TYPE_A", "skip_detail": skip_detail_str}
+            scores_detail[coin] = {"score": score, "decision": "SKIP", "skip_type": "TYPE_A", "reasons": reasons + [skip_detail_str]}
         elif coin.upper() in CORRELATED_GROUP:
             correlated_count = sum(1 for bc in buy_candidates if bc["coin"].upper() in CORRELATED_GROUP)
             if correlated_count >= max_correlated_positions:
-                skip_coins_detail[coin] = {
-                    "skip_type": "TYPE_A",
-                    "skip_detail": f"Corrélation : déjà {correlated_count} coins du groupe L1-alts",
-                }
+                skip_detail_str = f"Corrélation : déjà {correlated_count} coins du groupe L1-alts"
+                skip_coins_detail[coin] = {"skip_type": "TYPE_A", "skip_detail": skip_detail_str}
+                scores_detail[coin] = {"score": score, "decision": "SKIP", "skip_type": "TYPE_A", "reasons": reasons + [skip_detail_str]}
             else:
                 buy_candidates.append({
                     "coin": coin, "score": score,
                     "signal_4h": signal_4h, "signal_1d": signal_1d, "rsi_4h": rsi_4h,
                 })
+                scores_detail[coin] = {"score": score, "decision": "BUY", "skip_type": None, "reasons": reasons}
         else:
             buy_candidates.append({
                 "coin": coin, "score": score,
                 "signal_4h": signal_4h, "signal_1d": signal_1d, "rsi_4h": rsi_4h,
             })
+            scores_detail[coin] = {"score": score, "decision": "BUY", "skip_type": None, "reasons": reasons}
     elif score <= 3 and data.get("in_portfolio"):
         sell_candidates.append({"coin": coin, "score": score})
+        scores_detail[coin] = {"score": score, "decision": "SELL", "skip_type": None, "reasons": reasons}
+    else:
+        scores_detail[coin] = {"score": score, "decision": "SKIP", "skip_type": "TYPE_A", "reasons": reasons}
 
 N_buy = len(buy_candidates)
-tg(
-    f"🧠 Phase 3 — Stratégie\nTop score : {top_score}/10\n"
-    f"{N_buy} BUY candidates : {[c['coin'] for c in buy_candidates]}\n"
-    f"Skipped : {len(skip_coins_detail)} coins"
-)
+
+# Construire le message détaillé par coin (tronqué à 4096 chars)
+_lines = [f"📊 Phase 3 — Scoring\nSentiment : {sentiment}\n"]
+for coin, detail in scores_detail.items():
+    dec = detail["decision"]
+    sc = detail["score"]
+    reasons_str = ", ".join(detail["reasons"]) if detail["reasons"] else "—"
+    if dec == "BUY":
+        _lines.append(f"{coin} : {sc}/10 → BUY ✅ ({reasons_str})")
+    elif dec == "HOLD":
+        _lines.append(f"{coin} : {sc}/10 → HOLD ⏸️ (déjà en portefeuille)")
+    elif dec == "SELL":
+        _lines.append(f"{coin} : {sc}/10 → SELL 🔴 ({reasons_str})")
+    else:
+        skip_t = detail.get("skip_type") or "TYPE_A"
+        _lines.append(f"{coin} : {sc}/10 → SKIP {skip_t} ({reasons_str})")
+n_skip_a = sum(1 for d in scores_detail.values() if d["decision"] == "SKIP")
+_lines.append(f"\n✅ {N_buy} BUY | ⏭️ {n_skip_a} SKIP TYPE_A")
+_msg = "\n".join(_lines)
+if len(_msg) > 4000:
+    _msg = _msg[:3997] + "..."
+tg(_msg)
 
 out = {
     "buy_candidates": buy_candidates,
     "sell_candidates": sell_candidates,
     "skip_coins_detail": skip_coins_detail,
+    "scores_detail": scores_detail,
     "top_score": top_score,
     "N_buy": N_buy,
 }
