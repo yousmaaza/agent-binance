@@ -1,7 +1,6 @@
 {
-  "binance_profile": "agent-profile",
   "usdc_allocation_pct": 0.70,
-  "portfolio_coins": ["BTC", "STX", "XRP", "SOL", "SUI"],
+  "portfolio_coins": ["XBT", "XRP", "SOL"],
   "quote_asset": "USDC",
   "order_type": "LIMIT",
   "limit_offset_pct": 0.005,
@@ -21,6 +20,7 @@
   "min_adx": 20,
   "max_open_positions": 4,
   "universe_scan_top_n": 20,
+  "min_volume_usdc": 1000000,
 
   "min_profit_pct_take": 2.0,
   "max_hold_days": 14,

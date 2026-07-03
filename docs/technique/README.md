@@ -6,6 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-07-03 |
 
 ## Diagrammes
 
@@ -24,6 +25,20 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#317](pr-317-score-par-coin-phase-3.md) | [FEAT] Afficher le score par coin dans le rapport Phase 3 | 2026-07-03 |
+| [#316](pr-316-fix-phase5-nonetype-guard.md) | [BUG] Fix phase5_execution.py crash TypeError quand trade=None (0 ordres) | 2026-07-03 |
+| [#312](pr-312-refactor-phase1-kraken-usdc.md) | [M1] Refactorer Phase 1 — univers depuis Kraken USDC + seuil 1M | 2026-07-03 |
+| [#310](pr-310-mettre-a-jour-config-kraken.md) | [M291] Mettre à jour config.json pour Kraken (coins + suppression binance_profile) | 2026-07-03 |
+| [#305](pr-305-mettre-jour-prompts-api-reference-kraken.md) | [M5] Mettre à jour les prompts et api_reference pour Kraken | 2026-07-03 |
+| [#304](pr-304-ajouter-unittests-fonctions.md) | [M0] Ajouter unittests pour fonctions utilitaires | 2026-07-03 |
+| [#303](pr-303-phase0-structured-logs.md) | Ajouter logs structurés pour traçabilité (Phase 0) | 2026-07-03 |
+| [#298](pr-298-kraken-json-parsing.md) | [M4] Migrer parsing réponses JSON Binance → Kraken (phase0_profit) | 2026-07-03 |
+| [#296](pr-296-kraken-bracket-orders.md) | [M3] Migrer OCO Binance vers bracket orders Kraken | 2026-07-03 |
+| [#295](pr-295-kraken-market-filters.md) | [M3] Adapter les filtres de marché Binance LOT_SIZE → Kraken | 2026-07-03 |
+| [#294](pr-294-adapter-cli-kraken.md) | [M286] Adapter les appels CLI de lecture vers Kraken | 2026-07-03 |
+| [#293](pr-293-remplacer-binance-cli-par-kraken.md) | [M285] Remplacer binance-cli par kraken-cli dans la couche de détection | 2026-07-03 |
+| [#302](pr-302-migrer-helpers-position.md) | Refactor : éliminer duplication trade_helpers ↔ position_helpers via ré-export symétrique | 2026-07-03 |
+| [#270](pr-270-refacto-externaliser-helpers-python-modules.md) | [REFACTO] Externaliser helpers Python en modules et découper trade_prompt par phase | 2026-07-03 |
 | [#268](pr-268-config-min-order-usdc.md) | [M1] Réduire min_order_usdc de 11 à 9 USDC | 2026-06-29 |
 | [#267](pr-267-fix-phase0-bugs.md) | [M1] fix(Phase 0) — comptage open_positions, retry OCO + close_reason | 2026-06-28 |
 | [#263](pr-263-position-prompt-binance-cli-fix.md) | [BUG] position_prompt.txt : mauvaises commandes binance-cli et mauvais noms de champs | 2026-06-28 |

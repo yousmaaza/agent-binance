@@ -1,0 +1,28 @@
+
+COMMANDES kraken-cli UTILES DANS CE WORKFLOW
+
+Référence rapide des commandes employées lors des 8 phases de trading automatisé :
+
+| Besoin | Commande | Description |
+|--------|----------|-------------|
+| **Prix actuel + volume 24h** | `kraken ticker {COIN}USDC -o json` | Retourne `{"{COIN}USDC": {"c": ["81.25","5.04"], "v": ["8845","23715"], ...}}`. Prix = `data["{COIN}USDC"]["c"][0]`. Volume 24h USDC = `float(data["{COIN}USDC"]["v"][1]) * float(prix)`. |
+| **Solde compte** | `kraken balance -o json` | Retourne `{"USDC":"395.31","SOL":"1.24","XXBT":"0.00"}`. Budget disponible = `float(data.get("USDC",0)) * usdc_allocation_pct`. |
+| **Filtres marché** | `kraken pairs --pair {COIN}USDC -o json` | Retourne `{"{COIN}USDC":{"lot_decimals":8,"ordermin":"0.06","costmin":"0.5","tick_size":"0.01"}}`. Utiliser pour arrondir quantité et vérifier montant minimum (Phase 4). |
+| **Ordres ouverts** | `kraken open-orders -o json` | Retourne `{"open":{"TXID":{"descr":{"pair":"SOLUSDC","type":"sell"},"vol":"1.0","vol_exec":"0.0","status":"open"}}}`. |
+| **Vérifier un ordre** | `kraken query-orders {TXID} -o json` | Retourne `{"TXID":{"status":"open"/"closed"/"canceled","vol_exec":"...","cost":"..."}}`. Phase 0 — vérifier si SL déclenché (`status=="closed"`). Prix fill = `float(cost)/float(vol_exec)`. |
+| **Annuler un ordre** | `kraken order cancel {TXID} -o json --yes` | Annule l'ordre par txid. Retourne `{"count":1}`. Utilisé pour trailing stop (Phase 0) : annuler l'ancien SL, recalculer, replacer. |
+| **Annuler ordres d'une paire** | `kraken open-orders -o json` → filtrer `descr.pair=="{COIN}USDC"` → `kraken order cancel {TXID1} {TXID2} -o json --yes` | Annulation par paire avant SELL MARKET (Phase 0 profit). |
+| **BUY MARKET** | `kraken order buy {COIN}USDC {QTY} --type market -o json --yes` | Retourne `{"txid":["OXXXXX-YYYYY-ZZZZZ"]}`. Après fill : `kraken query-orders {txid} -o json` → `cost/vol_exec` = prix moyen fill. Phase 5. |
+| **SELL STOP-LOSS** | `kraken order sell {COIN}USDC {QTY} --type stop-loss --price {SL} -o json --yes` | Place un SL passif. Retourne `{"txid":["SL_TXID"]}`. Ce txid est stocké sous `sl_order_txid` dans trade_history. |
+| **SELL MARKET** | `kraken order sell {COIN}USDC {QTY} --type market -o json --yes` | Vend immédiatement. Retourne `{"txid":["SELL_TXID"]}`. Query fill ensuite via `query-orders`. |
+
+**Pièges courants** :
+
+- `BTCUSDC` n'existe pas sur Kraken — la paire BTC est `XBTUSDC`. Un mapping coin→pair sera appliqué en Phase 1.
+- Tous les prix dans les réponses Kraken sont des strings — toujours convertir en `float()` avant calculs.
+- `kraken ticker` retourne le volume en base asset (SOL, pas USDC) — multiplier par le prix pour obtenir le volume USDC.
+- Kraken n'a pas d'OCO natif — le TP est géré par `phase0_profit.py` (cycle-based), seul le SL est posé comme ordre permanent.
+- `kraken open-orders` retourne TOUS les ordres sans filtre par paire — filtrer manuellement sur `descr["pair"]`.
+- Les réponses peuvent être vides ou invalides JSON en cas d'erreur — toujours encapsuler dans `try/except`.
+
+---

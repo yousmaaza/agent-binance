@@ -1,14 +1,14 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-06-24 (PR #265)
+> **Dernière mise à jour** : 2026-07-03 (PR #305)
 > **Commit** : <current>
 
 ---
 
 ## 1. Vue d'ensemble
 
-`agent-binance` est un bot de trading Binance piloté par Telegram, fonctionnant en architecture polling-only (aucun port entrant, aucun tunnel). Un unique processus Python (`binance-bot/webhook_server.py`) poll Telegram en long-polling (timeout 30s) et déclenche un sous-processus Claude CLI via `binance-bot/orchestration/runner.py:run_trade_workflow()` à chaque commande `/trade` ou toutes les 4h via l'auto-scheduler intégré. Le sous-processus Claude orchestre 9 phases (0–8) d'analyse de marché et d'exécution d'ordres via `binance-cli`, en lisant le prompt depuis `prompts/trade_prompt.txt` et injectant des helpers partagés via tempfile sécurisé, en utilisant les outils TradingView MCP pour les données marché et MongoDB Atlas pour la persistance des cycles. L'état persistant est stocké sous `state/` (JSON), les logs sous `logs/`, et toutes les notifications utilisateur sont envoyées en français via l'API Telegram (via `curl`).
+`agent-binance` est un bot de trading Binance piloté par Telegram, fonctionnant en architecture polling-only (aucun port entrant, aucun tunnel). Un unique processus Python (`binance-bot/webhook_server.py`) poll Telegram en long-polling (timeout 30s) et déclenche un sous-processus Claude CLI via `binance-bot/orchestration/runner.py:run_trade_workflow()` à chaque commande `/trade` ou toutes les 4h via l'auto-scheduler intégré. Le sous-processus Claude orchestre 9 phases (0–8) d'analyse de marché et d'exécution d'ordres via `kraken-cli`, en lisant le prompt assemblé depuis 9 sous-fichiers (`prompts/trade_prompt.txt` + `prompts/shared/` + `prompts/phases/`) via `core/env.py:assemble_prompt()`, en important des helpers réutilisables depuis les modules `core/trade_helpers.py` et `core/heartbeat.py`, et appelant les scripts de phase depuis `binance-bot/core/phases/phase{N}*.py`, en utilisant les outils TradingView MCP pour les données marché et MongoDB Atlas pour la persistance des cycles. L'état persistant est stocké sous `state/` (JSON), les logs sous `logs/`, et toutes les notifications utilisateur sont envoyées en français via l'API Telegram (via `curl`).
 
 ---
 
@@ -60,8 +60,8 @@ webhook_server.py (process principal)
       ├──► tg_post() → curl → Telegram Bot API
       │                       (sendMessage, getUpdates, answerCallbackQuery)
       │
-      ├──► run_status() ──────────────────────────► binance-cli spot get-account
-      │                                              binance-cli spot get-open-orders
+      ├──► run_status() ──────────────────────────► kraken-cli spot get-account
+      │                                              kraken-cli spot get-open-orders
       │
       ├──► run_perf() ───────────────────────────► state/trade_history.json (lecture)
       │                                             (stats internes : Sharpe, t-test, drawdown)
@@ -77,10 +77,10 @@ webhook_server.py (process principal)
                 │     top_gainers, volume_breakout_scanner, market_sentiment,
                 │     rating_filter, coin_analysis (4h, 1d)
                 │
-                ├──► binance-cli spot (Phases 0, 1, 4, 5)
-                │     get-account, get-open-orders, get-exchange-info,
+                ├──► kraken-cli spot (Phases 0, 1, 4, 5)
+                │     get-account, get-open-orders, get-exchange-info, pairs,
                 │     ticker-price (filtre tradabilité USDC — Phase 1),
-                │     get-symbol-price-ticker, order-market, order-list-oco
+                │     get-symbol-price-ticker, order-market, order (stop-loss)
                 │
                 ├──► state/trade_history.json  (lecture Phase 0, écriture Phase 5)
                 ├──► state/agent_lock.json     (release Phase 7)
@@ -114,14 +114,14 @@ webhook_server.py (process principal)
 | Composant | Rôle | Config |
 |---|---|---|
 | Telegram Bot API | Interface utilisateur (commandes + notifications) | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` dans `.env` |
-| Binance CLI | Consultation portefeuille, passage ordres BUY MARKET + OCO spot | profil `agent-profile` dans `~/.binance-cli/` |
+| Kraken CLI | Consultation portefeuille, passage ordres BUY MARKET + SL (stop-loss) spot | Détection : `shutil.which("kraken")` ou fallback `~/.cargo/bin/kraken` |
 | MongoDB Atlas | Persistance des cycles de trading (collection `cycles`) | `MONGODB_URI`, `MONGODB_DB` dans `.env` |
 | TradingView MCP | Données marché : gainers, breakouts, sentiment, analyse coin | `.mcp.json` (MCP server `mcp__tradingview__*`) |
 | Claude CLI | Orchestration du cycle de trading (sous-processus) — mode abonnement uniquement via Claude Code CLI avec `--model claude-sonnet-4-6` forcé via `CLAUDE_CLI_FLAGS` (évite qu'Opus soit sélectionné par défaut sur Max) ; aucun fallback API ; en cas de dépassement de quota abonnement, le cycle s'arrête proprement avec notification Telegram | `ANTHROPIC_API_KEY` explicitement ignorée au chargement `.env` (jamais injectée dans le processus) ; `CLAUDE_CLI_FLAGS` et `RESOURCE_ERROR_PATTERNS` dans `binance-bot/config/llm.py` |
 
 ---
 
-## 3. Fonctions clés (`scripts/webhook_server.py`)
+## 3. Fonctions clés
 
 | Fonction | Ligne | Rôle |
 |---|---|---|
@@ -147,20 +147,28 @@ webhook_server.py (process principal)
 | `load_trade_history(path)` | core/state_manager.py:24 | Charge et valide `trade_history.json` — lève `ValueError`/`FileNotFoundError` |
 | `save_trade_history(data, path)` | core/state_manager.py:45 | Sauvegarde atomique via tempfile + os.replace() ; valide avant écriture |
 | `validate_and_repair_boot()` | core/state_manager.py:79 | Vérifie l'intégrité de `trade_history.json` au démarrage ; crée backup daté en cas de corruption, réinitialise à `[]` ; retourne `(is_valid, error_msg)` |
-| `_hb_start(phase)` | helpers:157 | Démarre le chronomètre d'une phase (dans le sous-processus Claude) — mémorise le timestamp UTC dans `_hb_phase_start[phase]` |
-| `hb(phase, status, summary)` | helpers:161 | Clôture une phase avec **déduplication** : relit le JSONL, supprime l'ancienne entrée si la phase existe, append la nouvelle ligne JSON ; calcule la durée ; flux immédiat |
+| `_hb_start(phase)` | core/heartbeat.py:31 | Démarre le chronomètre d'une phase — mémorise le timestamp UTC dans `_phase_start[phase]` |
+| `hb(phase, status, summary)` | core/heartbeat.py:36 | Clôture une phase avec **déduplication** : relit le JSONL, supprime l'ancienne entrée si la phase existe, append la nouvelle ligne JSON ; calcule la durée ; flux immédiat |
+| `init(cycle_id, trigger, project_dir)` | core/heartbeat.py:19 | Initialise l'état module-level du heartbeat pour un cycle — doit être appelée une fois en tête de chaque script de phase |
 | `CycleLogger.warning()` | botlogging/cycle_logger.py:34 | Nouvelle méthode pour logger les avertissements au niveau cycle avec préfixe structuré ; complète les méthodes `info()` et `error()` existantes |
 | `CycleLogger.debug()` | botlogging/cycle_logger.py:37 | Méthode pour logger les messages de debug au niveau cycle avec préfixe structuré ; complète les méthodes `info()`, `error()`, `warning()` existantes |
-| `binance(*args, _retries)` | TRADE_PROMPT:23 | Helper retry-backoff (x3, sleep 2s/4s/6s) pour appels binance-cli ; détecte "Invalid symbol" et "Request failed" ; lève `RuntimeError` si tous les retries échouent |
-| `_save_trade_history_atomic(data, path_override)` | TRADE_PROMPT:37 | Wrapper du module `state_manager` appelable dans le sous-processus Claude ; sauvegarde atomique `trade_history.json` |
-| Bloc trailing stop _(Phase 0)_ | TRADE_PROMPT:264–365 | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec OCO actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule l'OCO existant et replace un nouvel OCO avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
+| `tg(text)` | core/trade_helpers.py:15 | Envoie une notification Telegram via `curl` (jamais `urllib`, cf. CLAUDE.md) — importée par les scripts de phase |
+| `binance(*args, _retries=3)` | core/trade_helpers.py:29 | Helper retry-backoff (x3, sleep 2s/4s/6s) pour appels binance-cli ; détecte "Invalid symbol" et "Request failed" ; lève `RuntimeError` si tous les retries échouent |
+| `_load_config(project_dir="")` | core/trade_helpers.py:43 | Charge `config.json` et retourne un dict ; retourne `{}` en cas d'erreur |
+| `_save_json_atomic(data, path)` | core/trade_helpers.py:53 | Écriture atomic générique via tempfile + os.replace() ; utilisée par les 3 fonctions *_atomic() |
+| `_save_trade_history_atomic(data, path_override="")` | core/trade_helpers.py:70 | Wrapper pour écriture atomique de `trade_history.json` |
+| `_save_config_atomic(data, project_dir="")` | core/trade_helpers.py:76 | Wrapper pour écriture atomique de `config.json` |
+| `log_phase0_event(cycle_id, phase, coin, action, details)` | core/trade_helpers.py:83 | Écrit un événement structuré (JSON) dans `logs/phase0_events.jsonl` pour traçabilité Phase 0 — chaque ligne inclut timestamp ISO (UTC), cycle_id, phase (phase0_oco_retry/phase0_trailing_stop), coin, action (protection_recovery_start, sl_retry_success, ts_update_success, etc.), et dict `details` libre ; silencieuse en cas d'erreur |
+| Bloc trailing stop _(Phase 0)_ | phase0_trailing_stop.py | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec SL (`sl_order_txid`) actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule le SL existant et place un nouveau SL avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
 | `_format_stream_event()` | :643 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
 | `_RESOURCE_ERROR_PATTERNS` _(constante module)_ | :934 | Liste des 8 patterns de chaîne indiquant une erreur de ressource Claude (credit insuffisant, rate_limit_error, overloaded_error, session limit, etc.) — utilisée par `_is_resource_error()` |
 | `_is_resource_error()` | :946 | Lit le fichier `logs/stdout/cycle_*.log` et retourne `True` si un pattern de ressource y est détecté — gère silencieusement les erreurs de lecture |
 | `_read_last_jsonl_phase()` | :690 | Lit la dernière ligne valide du fichier `cycle_<id>_phases.jsonl` — utilisé par le watchdog pour connaître la dernière phase complétée |
 | `_watchdog_thread()` | :710 | Thread daemon qui surveille le cycle actif via le JSONL des heartbeats : alerte Telegram si aucune phase ne progresse pendant > 15 min |
-| `PROMPT_VERSION` _(constante module)_ | :410 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` brut, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
-| `POSITION_PROMPT` _(constante module)_ | env.py:93–99 | Prompt pour cycle horaire de gestion des positions : template chargé depuis `prompts/position_prompt.txt` avec substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) |
+| `assemble_prompt(prompts_dir="")` | core/env.py:70 | Assemble le prompt de trading depuis 9 sous-fichiers dans l'ordre : header + api_reference + phase0..phase5 + phases6_8 ; retourne la chaîne concaténée |
+| `get_cycle_phases_log_path(cycle_id)` | core/env.py:39 | Retourne le chemin du fichier heartbeat JSONL pour un cycle : `logs/cycle_{cycle_id}_phases.jsonl` |
+| `PROMPT_VERSION` _(constante module)_ | core/env.py:102 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` assemblé, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
+| `POSITION_PROMPT` _(constante module)_ | core/env.py:113–119 | Prompt pour cycle horaire de gestion des positions : template chargé depuis `prompts/position_prompt.txt` avec substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) |
 | `next_1h_slot()` | timing.py:15 | Calcule le prochain slot horaire `:05 UTC` en sautant les slots 4h (00:05, 04:05, ..., 20:05) pour éviter collision avec `next_4h_slot()` — retourne un datetime UTC |
 | `run_trade_workflow()` | runner.py:23 | Orchestre un cycle complet de trading : appelle `_run_workflow_cycle()` avec callbacks spécialisés pour trade (watchdog=True, post-processing avec gestion quota abonnement) |
 | `run_position_check_workflow()` | runner.py:46 | Orchestre un cycle horaire de gestion des positions : appelle `_run_workflow_cycle()` avec cycle_type="position", watchdog=False (cycle léger), post-processing minimaliste |
@@ -201,7 +209,7 @@ webhook_server.py (process principal)
 
 | Fichier | Type | Rôle |
 |---|---|---|
-| `trade_history.json` | JSON array | Source de vérité des trades : chaque entrée contient `trade_id`, `coin`, `side`, `signal_score`, `entry_price` (prix de fill réel), `stop_price`, `tp_price`, `quantity`, `risk_usdc`, `entry_order_id` (BUY MARKET), `tp_order_id`, `stop_order_id`, `order_list_id`, `protection_failed`, `status` (open/closed), `pnl_usdc`, `pnl_pct`, `close_reason`, dates |
+| `trade_history.json` | JSON array | Source de vérité des trades : chaque entrée contient `trade_id`, `coin`, `side`, `signal_score`, `entry_price` (prix de fill réel), `stop_price`, `tp_price`, `quantity`, `risk_usdc`, `entry_order_id` (BUY MARKET), `sl_order_txid` (SELL STOP-LOSS Kraken), `protection_failed`, `status` (open/closed), `pnl_usdc`, `pnl_pct`, `close_reason`, dates |
 | `agent_lock.json` | JSON object | Mutex de cycle : `{"running": bool, "started_at": ISO-UTC}` — expire automatiquement après 2h |
 | `telegram_offset.json` | JSON object | Dernier `update_id + 1` des updates Telegram — permet de reprendre sans re-traiter les anciens messages après redémarrage |
 | `pending_callback.json` | JSON object | Dernière réponse inline keyboard : `{"action": "CONFIRM"/"CANCEL", "timestamp": float}` — lu par le sous-processus Claude pour les confirmations |
@@ -241,10 +249,10 @@ webhook_server.py (process principal)
 
 | Paramètre | Valeur par défaut | Rôle |
 |---|---|---|
-| `binance_profile` | `"agent-profile"` | Nom du profil `binance-cli` utilisé pour tous les appels API Binance |
-| `usdc_allocation_pct` | `0.50` | Fraction du USDC libre allouée au trading (50%) |
-| `portfolio_coins` | `["BTC", "STX", "XRP", "SOL", "SUI"]` | Coins systématiquement inclus dans l'univers de scan |
+| `usdc_allocation_pct` | `0.70` | Fraction du USDC libre allouée au trading (70%) |
+| `portfolio_coins` | `["XBT", "XRP", "SOL"]` | Coins systématiquement inclus dans l'univers de scan (coins Kraken avec paires USDC tradables : XBTUSDC, XRPUSDC, SOLUSDC) |
 | `quote_asset` | `"USDC"` | Asset de cotation pour toutes les paires tradées |
+| `min_volume_usdc` | `1000000` | Seuil volume 24h (USDC) pour inclure un coin dans l'univers Phase 1 — coins sous ce seuil ignorés sauf s'ils figurent dans `portfolio_coins` (fallback garanti). Baissé de 5M à 1M via PR #312 pour couvrir alt-coins de taille moyenne (SOL, XRP) |
 | `order_type` | `"LIMIT"` | Type d'ordre d'entrée (ordre working de l'OTOCO) |
 | `limit_offset_pct` | `0.005` | Décalage du prix limite par rapport au prix actuel (−0.5%) |
 | `min_order_usdc` | `9` | Montant minimum d'un ordre en USDC (contrainte Binance) — abaissé de 11 à 9 via PR #268 pour couvrir dimensionnements ATR légitimes (8–11 USDC) |
@@ -284,6 +292,18 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#317](pr-317-score-par-coin-phase-3.md) | 2026-07-03 | [FEAT] Afficher le score par coin dans le rapport Phase 3 : enrichit la notification Telegram Phase 3 avec le détail par coin (score /10, décision BUY/HOLD/SKIP/SELL, raisons) ; ajoute champ `scores_detail` en output JSON ; heartbeat Phase 3 inclut résumé des scores (max 300 chars) |
+| [#312](pr-312-refactor-phase1-kraken-usdc.md) | 2026-07-03 | [M1] Refactorer Phase 1 : univers de candidats défini par les paires USDC réellement disponibles sur Kraken (`kraken pairs`) au lieu de TradingView/Binance; seuil volume baissé de 5M à 1M USDC (configurable `min_volume_usdc`); `portfolio_coins` inclus systématiquement même sous seuil (fallback garanti); appels ticker par batch de 10 paires; prompts Phase 1 et Phase 2 mis à jour pour cohérence |
+| [#310](pr-310-mettre-a-jour-config-kraken.md) | 2026-07-03 | [M291] Mettre à jour `config.json` pour Kraken : suppression clé obsolète `binance_profile` (Kraken utilise credentials globaux via `kraken setup`, pas de profil par commande), migration `portfolio_coins` vers paires USDC disponibles sur Kraken (`["XBT", "XRP", "SOL"]` — remplace `["BTC", "STX", "SUI", "XRP", "SOL"]`), retrait STX et SUI dont STXUSDC/SUIUSDC introuvables sur Kraken, utilisation XBT (pas BTC) pour construction paire correcte XBTUSDC |
+| [#305](pr-305-mettre-jour-prompts-api-reference-kraken.md) | 2026-07-03 | [M5] Mettre à jour prompts et api_reference pour Kraken : migration complète Binance CLI → Kraken CLI dans phases 0 (balance, SL verification, trailing stop), 1 (tradabilité USDC), 4 (sizing, filtres lot_decimals), position_prompt (open-orders, ticker, cancel par txid) ; api_reference.txt rédaction complète avec pièges Kraken (BTCUSDC→XBTUSDC, volume asset base, pas OCO natif) — débloque phases 0-4 pour kraken-cli |
+| [#304](pr-304-ajouter-unittests-fonctions.md) | 2026-07-03 | [M0] Ajouter unittests pour fonctions utilitaires : 17 tests unitaires pour `_round_price()` et `_round_qty()` (arrondi déterministe, sans I/O) — validant comportement critique du dimensionnement ordres ; pas de dépendances externes ajoutées |
+| [#303](pr-303-phase0-structured-logs.md) | 2026-07-03 | Ajouter logs structurés pour traçabilité Phase 0 : nouvelle fonction `log_phase0_event()` écrit chaque événement (protection_recovery_start, sl_retry_success, ts_update_success, etc.) en JSON dans `logs/phase0_events.jsonl` — brique pour audit et debugging des retries OCO + trailing stops |
+| [#298](pr-298-kraken-json-parsing.md) | 2026-07-03 | [M4] Migrer parsing réponses JSON Binance → Kraken (phase0_profit) : remplace `executedQty`, `cummulativeQuoteQty` par `vol_exec`, `cost` via `order sell` + `query-orders <txid>`, ajoute `time.sleep(1)` pour stabilisation fill ; rétro-compatible (anciens trades Binance conservés) |
+| [#296](pr-296-kraken-bracket-orders.md) | 2026-07-03 | [M3] Migrer OCO Binance → SL Kraken : supprime ordres OCO (TP+SL liés), remplace par BUY MARKET + SELL STOP-LOSS uniquement ; TP détecté cycliquement par `phase0_profit.py` ; schéma trade_history : supprime `order_list_id`, `stop_order_id`, `tp_order_id`, ajoute `sl_order_txid` ; rétro-compatible (trades Binance ignorés) |
+| [#295](pr-295-kraken-market-filters.md) | 2026-07-03 | [M3] Adapter les filtres de marché Kraken : remplace appels `exchange-info` Binance par `pairs` Kraken dans phases 0 (OCO retry, trailing stop) et phase 4 (sizing) ; ajoute vérification `costmin` native Kraken ; ajuste quantités via `lot_decimals` dynamique |
+| [#294](pr-294-adapter-cli-kraken.md) | 2026-07-03 | [M286] Adapter les appels CLI de **lecture** vers Kraken : ticker unifié (remplace deux appels Binance), balance et open-orders via `kraken-cli` dans `status.py`, phase0_snapshot, phase0_profit, phase1_scan ; logique d'annulation d'ordres adaptée au format Kraken `descr.pair` |
+| [#293](pr-293-remplacer-binance-cli-par-kraken.md) | 2026-07-03 | [M285] Migration CLI : remplace `binance-cli` par `kraken-cli`, détection via `shutil.which("kraken")` avec fallback `~/.cargo/bin/kraken` (env.py:33), renommage variable interne `_BINANCE_CLI` → `_EXCHANGE_CLI`, substitution template `__KRAKEN_CLI_PATH__` dans TRADE_PROMPT et POSITION_PROMPT — architecturally isolated, pas d'impact logique |
+| [#270](pr-270-refacto-externaliser-helpers-python-modules.md) | 2026-07-03 | [REFACTO] Externaliser helpers Python en modules (`core/trade_helpers.py`, `core/heartbeat.py`, `core/position_helpers.py`), découper `trade_prompt.txt` en 9 sous-fichiers (`prompts/shared/` + `prompts/phases/`), déplacer 12 scripts de phase vers `binance-bot/core/phases/` (package Python), implémenter `core/env.py:assemble_prompt()` pour assemblage dynamique, refactoriser `runner.py` via dataclass `WorkflowConfig` — élimine ~70% de duplication d'helpers, maintenabilité +++ |
 | [#267](pr-267-fix-phase0-bugs.md) | 2026-06-28 | [M1] Phase 0 : comptage open_positions inclut protection_failed=True, retry OCO avec fallback SELL MARKET après max_oco_retry (défaut 3), standardisation close_reason (market_above_tp, profit_target_phase0, protection_exhausted) |
 | [#263](pr-263-position-prompt-binance-cli-fix.md) | 2026-06-28 | [BUG #261] position_prompt.txt : corrections syntaxe binance-cli (`open-orders` → `get-open-orders`, `get-price` → `spot ticker-price`) et noms de champs trade_history.json (`status` minuscule, `coin`, `quantity`, `date`) |
 | [#260](pr-260-refactor-phase0-calibrage.md) | 2026-06-23 | [M259] Refactoriser : supprimer cycle horaire position (scheduler 1h), intégrer calibrage directement en Phase 0 du cycle 4h — réalisation de profits pour positions P&L ≥ `min_profit_pct_take`, simplification architecture (un seul scheduler) |
@@ -339,3 +359,5 @@ webhook_server.py (process principal)
 | [#242](pr-242-rec-auto-workflow.md) | 2026-06-22 | Workflow [REC] automation : refactoring complet post-review CI/CD — job `create-rec-tickets` détecte 3 formats recommandations + crée issues avec étiquettes `<!-- pr_branch -->` / `<!-- pr_number -->`; `auto-dispatch-on-auto-label` extrait métadonnées du body issue ; `binance-dev-auto` accepte mode REC-AUTO (implémente sur branche existante, ferme issue après commit) → recommandations tech lead intégrées au workflow PR existant |
 | [#268](pr-268-config-min-order-usdc.md) | 2026-06-29 | Configuration : abaissement de `min_order_usdc` de 11 à 9 USDC pour réduire les rejets TYPE_B dus aux dimensionnements ATR légitimes (8–11 USDC) — résout 4 skips/7j observés |
 | [#265](pr-265-supprimer-vars-claude-code.md) | 2026-06-24 | Fix : supprime les 5 variables `CLAUDE_CODE_*` du sous-processus Claude (`_run_claude()`) — empêche la réutilisation d'une session parent expirée en nettoyant l'env avant le lancement du CLI enfant (issue #264) |
+| [#316](pr-316-fix-phase5-nonetype-guard.md) | 2026-07-03 | [BUG] Fix phase5_execution.py crash `TypeError: 'NoneType' object is not subscriptable` quand `trade=null` (0 ordres exécutés en Phase 4) — ajout garde `if not trade:` + sortie propre `PHASE5_DONE\|executed=0\|skipped=0` + `sys.exit(0)` |
+| [#302](pr-302-migrer-helpers-position.md) | 2026-07-03 | Refactoring : élimination de la duplication complète entre `trade_helpers.py` et `position_helpers.py` en faisant du second un ré-export symétrique du premier (réduction 89 → 16 lignes) — fonte unique `trade_helpers.py` pour `tg`, `binance`, `_load_config`, `_save_trade_history_atomic`, `_save_config_atomic` → gains maintenabilité ticket #274 |

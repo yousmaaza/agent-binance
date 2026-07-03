@@ -1,0 +1,86 @@
+
+PHASE 5 — EXÉCUTION AUTOMATIQUE
+⏱️ HEARTBEAT START PHASE 5
+_hb_start(5)
+
+ordres_executes = []
+orders_skipped_count = 0
+orders_skipped_detail = {}
+
+Pour chaque ordre préparé, dans l'ordre de score décroissant :
+
+1. Re-fetch prix actuel :
+   kraken ticker {COIN}USDC -o json
+   prix_refetch = data["{COIN}USDC"]["c"][0]
+   drift = abs(prix_refetch - prix_entry) / prix_entry
+   Si drift > price_deviation_max_pct (2%) → SKIP
+   → skip_type=TYPE_C, skip_detail=f"Drift prix > {price_deviation_max_pct*100:.1f}% ({drift:.1f}%)"
+
+2. Re-fetch solde USDC :
+   kraken balance -o json
+   USDC_free = float(data.get("USDC", 0))
+   Si USDC_free < montant_ordre → SKIP
+   → skip_type=TYPE_C, skip_detail=f"Solde USDC insuffisant ({USDC_free:.2f} < {montant_ordre:.2f})"
+
+3. BUY MARKET :
+   kraken order buy {COIN}USDC {quantite} --type market -o json --yes
+   entry_txid = buy_resp["txid"][0]
+
+   Query le fill (jusqu'à 3 tentatives, 1s entre chaque) :
+   kraken query-orders {entry_txid} -o json
+   fill = data[entry_txid]
+   Si fill["status"] != "closed" → SKIP
+   → skip_type=TYPE_C, skip_detail=f"BUY MARKET non rempli (status: {fill['status']})"
+
+   actual_entry = float(fill["cost"]) / float(fill["vol_exec"])
+   actual_qty = float(fill["vol_exec"])
+   entry_order_id = entry_txid
+
+4. Re-fetch prix post-fill :
+   kraken ticker {COIN}USDC -o json
+   prix_post_fill = float(data["{COIN}USDC"]["c"][0])
+
+   Recalcule TP et SL sur actual_entry :
+   actual_stop = actual_entry × (1 - stop_distance_pct)
+   actual_tp   = actual_entry × (1 + stop_distance_pct × reward_risk_ratio)
+
+   Si prix_post_fill >= actual_tp :
+     kraken order sell {COIN}USDC {actual_qty} --type market -o json --yes
+     sell_txid = sell_resp["txid"][0]
+     Attendre fill via query-orders (3 tentatives)
+     avg_exit = float(fill["cost"]) / float(fill["vol_exec"])
+     pnl_usdc = (avg_exit - actual_entry) × actual_qty
+     Enregistrer trade status="closed", close_reason="market_above_tp_at_fill"
+     tg("⚡ {COIN} : TP dépassé au fill, fermé à market → {pnl_usdc:+.2f} USDC")
+     Passer au coin suivant.
+
+5. Filtres marché (lot_decimals) pour l'ordre SL :
+   kraken pairs --pair {COIN}USDC -o json
+   lot_dec = pair_data["lot_decimals"]
+   step = 10 ** (-lot_dec)
+   actual_qty_sl = round(math.floor(actual_qty / step) * step, lot_dec)
+
+6. Placer l'ordre SELL STOP-LOSS (protection SL) :
+   kraken order sell {COIN}USDC {actual_qty_sl} --type stop-loss --price {actual_stop} -o json --yes
+   sl_order_txid = sl_resp["txid"][0]
+
+   Si l'appel échoue → protection_failed=True
+   tg("⚠️ {COIN} : BUY OK mais SL échoué — position NON protégée ! {err_msg}")
+
+7. Écrire dans /tmp/cycle___CYCLE_ID___phase5_input.json :
+   {"trade": {"coin": "{COIN}", "signal_score": {score}, "actual_entry": {actual_entry},
+              "actual_stop": {actual_stop}, "actual_tp": {actual_tp}, "actual_qty": {actual_qty},
+              "risk_usdc": {risk_usdc}, "entry_order_id": {entry_order_id},
+              "sl_order_txid": {sl_order_txid},
+              "protection_failed": {True if sl_failed else False}}}
+   Puis : python3 __PROJECT_DIR__/binance-bot/core/phases/phase5_execution.py __CYCLE_ID__
+
+8. Notification :
+   tg("⚡ BUY MARKET {COIN}\n{actual_qty} @ {actual_entry:.4g} USDC\n🛑 Stop : {actual_stop:.4g}\n🎯 TP cible : {actual_tp:.4g}\nScore : {score}/10")
+
+Après tous les ordres :
+executed = len(ordres_executes)
+skipped = orders_skipped_count
+tg(f"📊 Phase 5 résumé\nExécutés : {executed}\nSkippés : {skipped}\nDétails : {orders_skipped_detail}")
+⏱️ HEARTBEAT END PHASE 5
+hb(5, summary=f"{executed} ordres exécutés, {skipped} skippés")

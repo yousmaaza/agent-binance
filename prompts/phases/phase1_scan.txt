@@ -1,0 +1,46 @@
+
+PHASE 1 — SCAN MARCHÉ
+⏱️ HEARTBEAT START PHASE 1
+_hb_start(1)
+
+Univers de candidats : récupère toutes les paires USDC disponibles sur Kraken via :
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase1_scan.py __CYCLE_ID__
+
+Ce script appelle `kraken pairs -o json` pour lister les paires USDC, calcule le volume 24h
+de chacune via `kraken ticker` (batches de 10 paires), et retourne uniquement les coins
+au-dessus du seuil min_volume_usdc (config.json, défaut 1M USDC).
+Les coins de portfolio_coins (XBT, XRP, SOL — cf. config.json) sont toujours inclus même si
+leur volume est sous le seuil — rôle de fallback garanti pour les positions déjà ouvertes.
+
+Lis le fichier /tmp/cycle___CYCLE_ID___phase1_output.json pour obtenir la liste tradable.
+Chaque entrée contient : coin (nom Kraken, ex: "XBT"), tv_symbol (nom TradingView, ex: "BTC"), price, volume_24h.
+
+Vérification du mapping Kraken → TradingView (OBLIGATOIRE avant de passer à Phase 2) :
+Pour chaque coin tradable, vérifie que tv_symbol correspond bien au ticker attendu sur BINANCE/TradingView.
+Mappings connus : XBT→BTC, XDG→DOGE. Tous les autres coins ont le même symbole des deux côtés.
+Si un coin a tv_symbol identique à coin mais que le ticker {tv_symbol}USDT n'existe pas sur BINANCE
+(ex: nouveau coin Kraken inconnu de Binance) → exclure ce coin de l'univers Phase 2 et logger un warning.
+Utilise tv_symbol pour tous les appels TradingView/coin_analysis (Phase 2 incluse).
+
+Appelle les deux screeners TradingView pour enrichir le signal sur les coins tradables Kraken :
+1. mcp__tradingview__top_gainers(exchange="BINANCE", timeframe="4h", limit=25)
+   → liste des coins avec le meilleur momentum sur 4h (change%, volume). Stocke la liste dans top_gainers_symbols.
+2. mcp__tradingview__volume_breakout_scanner(exchange="BINANCE", timeframe="4h", volume_multiplier=2.0, price_change_min=3.0, limit=25)
+   → liste des breakouts volume (symbol, change%, volume). Stocke la liste dans breakout_symbols.
+
+Si un appel MCP échoue → continuer avec les données disponibles ([] si l'appel a échoué), ne pas bloquer le cycle.
+
+Note : les screeners TradingView servent à enrichir le signal sur les coins déjà validés par Kraken — ils ne définissent plus l'univers de départ. Un coin absent des screeners mais présent dans tradable reste candidat.
+
+Calcul du sentiment global (depuis les données Kraken ticker) :
+- Compte les coins tradables avec change_pct_24h > 0 (bullish_count) et < 0 (bearish_count)
+- Si bullish_count >= 2 × bearish_count → sentiment = "Bullish"
+- Si bearish_count >= 2 × bullish_count → sentiment = "Bearish"
+- Sinon → sentiment = "Neutral"
+- Stocke sentiment comme variable pour Phase 3 et Phase 7.
+
+Stocke pour chaque coin tradable : prix_actuel, volume_24h, change_pct_24h (depuis screeners / kraken ticker). Ces données seront réutilisées en Phase 3 pour le scoring.
+
+→ tg("📡 Phase 1 — Scan marché\nSentiment : {sentiment}\n{N} candidats identifiés : {liste}")
+⏱️ HEARTBEAT END PHASE 1 — appel hb(1) immédiatement ci-dessous
+hb(1, summary=f"Sentiment {sentiment}, {N} candidats")

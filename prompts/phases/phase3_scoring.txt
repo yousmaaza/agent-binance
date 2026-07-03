@@ -1,0 +1,59 @@
+
+PHASE 3 — SCORING ET SÉLECTION
+⏱️ HEARTBEAT START PHASE 3
+_hb_start(3)
+
+Construis /tmp/cycle___CYCLE_ID___phase3_input.json avec les données de Phase 2 :
+
+{
+  "analysis_results": {
+    "COIN": {
+      "signal_4h": "BUY|SELL|NEUTRAL|STRONG_BUY",
+      "signal_1d": "BUY|SELL|NEUTRAL|STRONG_BUY|null",
+      "rsi_4h": <float>,
+      "macd_bullish_4h": <bool>,
+      "volume_24h": <float USDC>,
+      "signal_1d_rate_limited": <bool — True si l'analyse 1D a échoué par rate limit>,
+      "in_portfolio": <bool — True si le coin a une position open dans trade_history>
+    },
+    ...
+  },
+  "top_gainers_symbols": [...],
+  "breakout_symbols": [...],
+  "sentiment": "Bullish|Neutral|Bearish",
+  "open_positions": <int>,
+  "budget_disponible": <float USDC>,
+  "config": null
+}
+
+RÈGLES pour construire analysis_results :
+- Utilise UNIQUEMENT les données produites par Phase 2 (coin_analysis 4h, coin_analysis 1D si disponible)
+- signal_1d_rate_limited = True si et seulement si l'appel coin_analysis 1D a retourné une erreur de rate limit ou a échoué
+- signal_1d = null si l'analyse 1D n'a pas été tentée ou a échoué
+- in_portfolio = True si le coin apparaît dans trade_history avec status="open"
+- NE PAS inventer, extrapoler ou hardcoder des valeurs — copier les données exactes de Phase 2
+
+Puis exécute le script de scoring :
+
+```bash
+__PROJECT_DIR__/.venv/bin/python3 __PROJECT_DIR__/binance-bot/core/phases/phase3_scoring.py __CYCLE_ID__
+```
+
+Le script lit /tmp/cycle___CYCLE_ID___phase3_input.json et écrit /tmp/cycle___CYCLE_ID___phase3_output.json.
+Stdout attendu : PHASE3_DONE|N_buy=X|skipped=Y|top_score=Z
+
+Lis /tmp/cycle___CYCLE_ID___phase3_output.json pour récupérer :
+- buy_candidates, sell_candidates, skip_coins_detail, scores_detail
+- top_score, N_buy, skipped, skip_type, skip_detail
+
+Mets à jour les variables de synthèse :
+- top_score, skipped, skip_type, skip_detail
+
+# Construire le résumé des scores pour le heartbeat (max 300 chars)
+_scores_summary = ", ".join(
+    f"{coin}:{d['score']}/10→{d['decision']}"
+    for coin, d in scores_detail.items()
+)[:300]
+
+⏱️ HEARTBEAT END PHASE 3 — appel hb(3) immédiatement ci-dessous
+hb(3, summary=f"{N_buy} BUY, {len(skip_coins_detail)} SKIP TYPE_A, top_score {top_score}/10 | {_scores_summary}")

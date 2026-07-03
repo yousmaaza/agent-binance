@@ -4,7 +4,7 @@ Bot de trading Binance piloté par Telegram. Architecture polling-only : aucun p
 
 ## Stack
 
-- `binance-bot/webhook_server.py` : process Python unique qui poll Telegram en long-polling (timeout 30s) ET déclenche un sous-processus Claude (`claude --print --dangerously-skip-permissions <prompt>`) à chaque commande `/trade` ou tous les 4h via l'auto-scheduler.
+- `binance-bot/webhook_server.py` : process Python unique qui poll Telegram en long-polling (timeout 30s) ET déclenche un sous-processus Claude (`claude --print --dangerously-skip-permissions <prompt>`) à chaque commande `/trade` ou tous les 4h via l'auto-scheduler. L'invocation du CLI exchange utilise `kraken-cli` (`~/.cargo/bin/kraken`).
 - Le sous-processus Claude reçoit `TRADE_PROMPT` (variable à la racine de `webhook_server.py`) qui décrit 7 phases d'exécution.
 - État persistant dans `state/` (JSON files). Logs dans `logs/`. MongoDB Atlas pour la collection `cycles`.
 
