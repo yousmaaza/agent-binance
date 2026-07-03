@@ -13,14 +13,17 @@ Les coins de portfolio_coins (XBT, XRP, SOL — cf. config.json) sont toujours i
 leur volume est sous le seuil — rôle de fallback garanti pour les positions déjà ouvertes.
 
 Lis le fichier /tmp/cycle___CYCLE_ID___phase1_output.json pour obtenir la liste tradable.
+Chaque entrée contient : coin (nom Kraken, ex: "XBT"), tv_symbol (nom TradingView, ex: "BTC"), price, volume_24h.
+Utilise tv_symbol pour tous les appels TradingView/coin_analysis (Phase 2 incluse).
 
 Appelle les trois screeners TradingView pour enrichir le signal sur les coins tradables Kraken :
-1. mcp__tradingview__top_gainers(exchange="KRAKEN", timeframe="4h", limit=25)
+1. mcp__tradingview__top_gainers(exchange="BINANCE", timeframe="4h", limit=25)
    → liste des coins avec le meilleur momentum sur 4h (change%, volume). Stocke la liste dans top_gainers_symbols.
-2. mcp__tradingview__volume_breakout_scanner(exchange="KRAKEN", timeframe="4h", volume_multiplier=2.0, price_change_min=3.0, limit=25)
+2. mcp__tradingview__volume_breakout_scanner(exchange="BINANCE", timeframe="4h", volume_multiplier=2.0, price_change_min=3.0, limit=25)
    → liste des breakouts volume (symbol, change%, volume). Stocke la liste dans breakout_symbols.
 3. mcp__tradingview__market_sentiment(symbol="BTC", category="crypto", limit=20)
    → sentiment global du marché crypto. Stocke le résultat dans market_sentiment_data.
+   Si posts_analyzed=0 → utiliser le calcul fallback depuis les données Kraken ticker (voir ci-dessous).
 
 Si un appel MCP échoue → continuer avec les données disponibles (top_gainers_symbols ou breakout_symbols = [] si l'appel a échoué), ne pas bloquer le cycle.
 

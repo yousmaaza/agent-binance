@@ -22,6 +22,9 @@ from core.trade_helpers import tg, binance, _load_config  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
+# Mapping Kraken coin → symbole TradingView/Binance (pour les appels coin_analysis Phase 2)
+TV_MAP = {"XBT": "BTC"}
+
 cfg = _load_config()
 MIN_VOLUME_USDC = cfg.get("min_volume_usdc", 1_000_000)
 portfolio_coins = set(cfg.get("portfolio_coins", []))
@@ -49,8 +52,8 @@ for i in range(0, len(pairs_list), batch_size):
                 price = float(data["c"][0])
                 vol_base = float(data["v"][1])
                 ticker_by_pair[pair] = {"price": price, "volume_24h": vol_base * price}
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"batch ticker error (batch {i // batch_size + 1}): {e}", file=sys.stderr)
 
 # Étape 3 : filtrer par volume, toujours inclure portfolio_coins
 tradable = []
@@ -66,7 +69,7 @@ for pair, coin in usdc_coins.items():
     price = info["price"]
 
     if vol >= MIN_VOLUME_USDC or coin in portfolio_coins:
-        tradable.append({"coin": coin, "price": price, "volume_24h": vol})
+        tradable.append({"coin": coin, "price": price, "volume_24h": vol, "tv_symbol": TV_MAP.get(coin, coin)})
     else:
         non_tradable.append({"coin": coin, "reason": f"volume {vol / 1e6:.1f}M USDC < {MIN_VOLUME_USDC / 1e6:.0f}M"})
 

@@ -7,7 +7,7 @@ Pour chaque coin de l'univers tradable issu de Phase 1, exécute l'analyse techn
 
   Étape A — Analyse 4h :
   Pour chaque coin (séquentiel) :
-  mcp__tradingview__coin_analysis(symbol="{COIN}USDT", exchange="BINANCE", timeframe="4h")
+  mcp__tradingview__coin_analysis(symbol="{tv_symbol}USDT", exchange="BINANCE", timeframe="4h")
   → retourne RSI, MACD, BB, EMA, et un signal BUY/SELL/NEUTRAL.
   Si l'appel échoue → signal_4h = "NEUTRAL", rsi_4h = None, signal_4h_failed = True, continuer sans bloquer.
 
