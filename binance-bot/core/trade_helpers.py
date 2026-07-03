@@ -8,6 +8,7 @@ import os
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timezone
 
 from core.env import KRAKEN_CLI_PATH as _EXCHANGE_CLI, PROJECT_DIR as _PROJECT_DIR
 
@@ -77,3 +78,23 @@ def _save_config_atomic(data: dict, project_dir: str = "") -> None:
     """Écriture atomique de config.json via fichier temporaire + os.replace."""
     cfg_path = os.path.join(project_dir or _PROJECT_DIR, "config.json")
     _save_json_atomic(data, cfg_path)
+
+
+def log_phase0_event(cycle_id: str, phase: str, coin: str, action: str, details: dict = None) -> None:
+    """Écrit un événement structuré (JSON) dans logs/phase0_events.jsonl pour traçabilité."""
+    event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "cycle_id": cycle_id,
+        "phase": phase,
+        "coin": coin,
+        "action": action,
+        "details": details or {},
+    }
+    logs_dir = os.path.join(_PROJECT_DIR, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    log_file = os.path.join(logs_dir, "phase0_events.jsonl")
+    try:
+        with open(log_file, "a") as f:
+            f.write(json.dumps(event) + "\n")
+    except Exception:
+        pass
