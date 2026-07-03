@@ -1,29 +1,28 @@
 
-COMMANDES binance-cli UTILES DANS CE WORKFLOW
+COMMANDES kraken-cli UTILES DANS CE WORKFLOW
 
-Référence rapide des commandes employées lors des 7 phases de trading automatisé :
+Référence rapide des commandes employées lors des 8 phases de trading automatisé :
 
 | Besoin | Commande | Description |
 |--------|----------|-------------|
-| **Prix actuel** | `binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile` | Retourne `{"symbol": "BTCUSDC", "price": "67234.5"}`. Utilise ce format pour chaque coin candidat (Phase 1 vérification, Phase 5 avant exécution). |
-| **Volume 24h** | `binance-cli spot ticker24hr --symbol {COIN}USDC --profile agent-profile` | Retourne `{"symbol": "BTCUSDC", "quoteVolume": "5200000000.00", "priceChangePercent": "1.23"}`. Extraire le champ `quoteVolume` pour vérifier si volume >= 5M USDC (filtrage Phase 1). |
-| **Bougies OHLC** | `binance-cli spot klines --symbol {COIN}USDC --interval {INTERVAL} --limit {N} --profile agent-profile` | Exemple : `--interval 4h --limit 50` retourne un array de bougies : `[[timestamp, open, high, low, close, volume, ...], ...]`. Utiliser pour extraire ATR, MACD, RSI (Phase 2). |
-| **Info d'échange** | `binance-cli spot exchange-info --symbol {COIN}USDC --profile agent-profile` | Contient les filtres de la paire : `LOT_SIZE.stepSize` (précision quantité), `PRICE_FILTER.tickSize` (précision prix), `MIN_NOTIONAL.minNotional` (montant minimum). Requis avant Phase 4 (sizing) et Phase 5 (OCO). |
-| **Solde compte** | `binance-cli spot get-account --profile agent-profile` | Retourne `{"balances": [{"asset": "BTC", "free": "1.5", "locked": "0"}, ...]}`. Extraire champ `free` pour USDC. Appelé en Phase 0 (budget) et Phase 5 (vérification avant exécution). |
-| **Ordres ouverts** | `binance-cli spot get-open-orders --symbol {COIN}USDC --profile agent-profile` | Retourne `[{"orderId": 123, "symbol": "BTCUSDC", "type": "LIMIT", "status": "NEW", ...}]`. Utilisé en Phase 0 (vérifier OCO actifs) et Phase 5 (idempotence avant placer nouvel OCO). |
-| **Placer un ordre BUY** | `binance-cli spot new-order --symbol {COIN}USDC --side BUY --type MARKET --quantity {QTY} --profile agent-profile` | Exécute un achat immédiat au marché. Retourne `{"orderId": 456, "status": "FILLED", "executedQty": "0.01", "cummulativeQuoteQty": "672.35"}`. Phase 5 — calcule prix de fill réel = `cummulativeQuoteQty / executedQty`. |
-| **Placer un ordre SELL** | `binance-cli spot new-order --symbol {COIN}USDC --side SELL --type MARKET --quantity {QTY} --profile agent-profile` | Vend immédiatement au marché (utilisé si prix dépasse TP au fill). Même structure de réponse que BUY. |
-| **Créer OCO (TP+SL)** | `binance-cli spot order-list-oco --symbol {COIN}USDC --side SELL --quantity {QTY} --above-type LIMIT_MAKER --above-price {TP} --below-type STOP_LOSS_LIMIT --below-price {SL} --below-stop-price {SL*1.002} --below-time-in-force GTC --profile agent-profile` | Crée un ordre One-Cancels-Other : si prix monte jusqu'au TP, vend à ce prix (profit) ; si prix descend jusqu'au SL, vend à ce prix (perte). Retourne `{"orderListId": 789, "orderReports": [...]}`. Phase 5 après chaque BUY MARKET réussi. |
-| **Annuler OCO** | `binance-cli spot delete-order-list --symbol {COIN}USDC --order-list-id {OCO_ID} --profile agent-profile` | Annule l'OCO existant. Utile pour trailing stop (Phase 0) : annuler ancien OCO, recalculer SL/TP, replacer nouvel OCO. |
-| **Vérifier un ordre** | `binance-cli spot get-order --symbol {COIN}USDC --order-id {ORDER_ID} --profile agent-profile` | Récupère `{"orderId": ..., "status": "FILLED"|"NEW"|"PARTIALLY_FILLED", "executedQty": ..., "cummulativeQuoteQty": ...}`. Phase 0 — vérifier si trade ouvert a été clôturé par TP/SL. |
+| **Prix actuel + volume 24h** | `kraken ticker {COIN}USDC -o json` | Retourne `{"{COIN}USDC": {"c": ["81.25","5.04"], "v": ["8845","23715"], ...}}`. Prix = `data["{COIN}USDC"]["c"][0]`. Volume 24h USDC = `float(data["{COIN}USDC"]["v"][1]) * float(prix)`. |
+| **Solde compte** | `kraken balance -o json` | Retourne `{"USDC":"395.31","SOL":"1.24","XXBT":"0.00"}`. Budget disponible = `float(data.get("USDC",0)) * usdc_allocation_pct`. |
+| **Filtres marché** | `kraken pairs --pair {COIN}USDC -o json` | Retourne `{"{COIN}USDC":{"lot_decimals":8,"ordermin":"0.06","costmin":"0.5","tick_size":"0.01"}}`. Utiliser pour arrondir quantité et vérifier montant minimum (Phase 4). |
+| **Ordres ouverts** | `kraken open-orders -o json` | Retourne `{"open":{"TXID":{"descr":{"pair":"SOLUSDC","type":"sell"},"vol":"1.0","vol_exec":"0.0","status":"open"}}}`. |
+| **Vérifier un ordre** | `kraken query-orders {TXID} -o json` | Retourne `{"TXID":{"status":"open"/"closed"/"canceled","vol_exec":"...","cost":"..."}}`. Phase 0 — vérifier si SL déclenché (`status=="closed"`). Prix fill = `float(cost)/float(vol_exec)`. |
+| **Annuler un ordre** | `kraken order cancel {TXID} -o json --yes` | Annule l'ordre par txid. Retourne `{"count":1}`. Utilisé pour trailing stop (Phase 0) : annuler l'ancien SL, recalculer, replacer. |
+| **Annuler ordres d'une paire** | `kraken open-orders -o json` → filtrer `descr.pair=="{COIN}USDC"` → `kraken order cancel {TXID1} {TXID2} -o json --yes` | Annulation par paire avant SELL MARKET (Phase 0 profit). |
+| **BUY MARKET** | `kraken order buy {COIN}USDC {QTY} --type market -o json --yes` | Retourne `{"txid":["OXXXXX-YYYYY-ZZZZZ"]}`. Après fill : `kraken query-orders {txid} -o json` → `cost/vol_exec` = prix moyen fill. Phase 5. |
+| **SELL STOP-LOSS** | `kraken order sell {COIN}USDC {QTY} --type stop-loss --price {SL} -o json --yes` | Place un SL passif. Retourne `{"txid":["SL_TXID"]}`. Ce txid est stocké sous `sl_order_txid` dans trade_history. |
+| **SELL MARKET** | `kraken order sell {COIN}USDC {QTY} --type market -o json --yes` | Vend immédiatement. Retourne `{"txid":["SELL_TXID"]}`. Query fill ensuite via `query-orders`. |
 
-**Pièges courants (déjà testés, à éviter)** :
+**Pièges courants** :
 
-- `avg-price` n'existe pas dans binance-cli — utiliser `ticker-price` pour le prix actuel
-- `24hr-ticker` et `24hr-stats` n'existent pas — utiliser `ticker24hr` pour le volume 24h (champ `quoteVolume`)
-- `get-ticker` n'existe pas (problème du log cycle_20260528_155118.log)
-- Tous les prix dans les réponses JSON sont des strings — convertir en float() avant calculs (`float(ticker["price"])`)
-- `--profile agent-profile` doit TOUJOURS être fourni (sinon l'ordre ira sur le compte par défaut)
-- Les réponses peuvent être vides ou invalides JSON en cas d'erreur — toujours encapsuler dans try/except et vérifier avant parsing
+- `BTCUSDC` n'existe pas sur Kraken — la paire BTC est `XBTUSDC`. Un mapping coin→pair sera appliqué en Phase 1.
+- Tous les prix dans les réponses Kraken sont des strings — toujours convertir en `float()` avant calculs.
+- `kraken ticker` retourne le volume en base asset (SOL, pas USDC) — multiplier par le prix pour obtenir le volume USDC.
+- Kraken n'a pas d'OCO natif — le TP est géré par `phase0_profit.py` (cycle-based), seul le SL est posé comme ordre permanent.
+- `kraken open-orders` retourne TOUS les ordres sans filtre par paire — filtrer manuellement sur `descr["pair"]`.
+- Les réponses peuvent être vides ou invalides JSON en cas d'erreur — toujours encapsuler dans `try/except`.
 
 ---

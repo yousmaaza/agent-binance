@@ -55,16 +55,17 @@ for pos in positions:
     coin = pos["coin"]
     open_orders_bot[coin] = pos
 
-# Ordres manuels (OCO via binance-cli)
-open_orders_manual_json = binance("spot", "get-open-orders", "--profile", "agent-profile")
-open_orders_manual_raw = json.loads(open_orders_manual_json) if open_orders_manual_json else []
+# Ordres manuels (via kraken open-orders)
+open_orders_raw = json.loads(binance("open-orders", "-o", "json")) if True else {}
+all_open = open_orders_raw.get("open", {})
 
 manual_positions = {}
-for order_group in open_orders_manual_raw:
-    symbol = order_group.get("symbol", "")
-    if symbol.endswith("USDC"):
-        coin = symbol.replace("USDC", "")
-        manual_positions[coin] = order_group
+for txid, order in all_open.items():
+    pair = order.get("descr", {}).get("pair", "")
+    if pair.endswith("USDC"):
+        coin = pair.replace("USDC", "")
+        order["_txid"] = txid  # conservé pour annulation éventuelle
+        manual_positions[coin] = order
 
 # Merge : tous les coins (bot + manuels)
 all_coins = set(open_orders_bot.keys()) | set(manual_positions.keys())
@@ -73,9 +74,9 @@ all_coins = set(open_orders_bot.keys()) | set(manual_positions.keys())
 current_prices = {}
 for coin in all_coins:
     try:
-        price_json = binance("spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
+        price_json = binance("ticker", f"{coin}USDC", "-o", "json")
         price_data = json.loads(price_json)
-        current_prices[coin] = float(price_data.get("price", 0))
+        current_prices[coin] = float(price_data.get(f"{coin}USDC", {}).get("c", [0])[0])
     except:
         current_prices[coin] = 0
 ```
@@ -150,20 +151,19 @@ for action in actions:
     source = action.get("source", "unknown")
     cancel_oco = action.get("cancel_oco", False)
 
-    # Si OCO manuel : annuler les ordres stop/take-profit d'abord
+    # Si ordre manuel Kraken : annuler le SL avant SELL MARKET
     if cancel_oco:
         try:
             pos_manual = manual_positions.get(coin)
             if pos_manual:
-                orders = pos_manual.get("orders", [])
-                for order in orders:
-                    if order.get("side") in ["SELL"]:
-                        try:
-                            binance("cancel-order", coin, "USDC", str(order.get("orderId")))
-                        except:
-                            pass
+                txid = pos_manual.get("_txid")
+                if txid:
+                    try:
+                        binance("order", "cancel", txid, "-o", "json", "--yes")
+                    except:
+                        pass
         except Exception as e:
-            tg(f"⚠️ Annulation OCO {coin} (partielle): {e}")
+            tg(f"⚠️ Annulation ordre {coin} (partielle): {e}")
 
     # Vendre au marché
     sell_cmd = ["market-order", "sell", coin, "USDC", str(qty)]
@@ -217,4 +217,4 @@ else:
 - Aucune invocation de skills
 - Aucune création de tâches (TaskCreate, CronCreate)
 
-Exécute les tâches en ordre logique. N'appelle jamais binance-cli directement — utilise la fonction `binance()` du fichier helpers.
+Exécute les tâches en ordre logique. N'appelle jamais kraken-cli directement — utilise la fonction `binance()` du fichier helpers.

@@ -10,7 +10,7 @@ _hb_start(0)
 # Aucune autre valeur n'est permise en Phase 0. Les autres close_reason (tp_hit, sl_hit, etc.) appartiennent aux autres phases.
 
 # --- SNAPSHOT POSITIONS OUVERTES ---
-# Exécute le script de snapshot (P&L boucle, ticker-price) :
+# Exécute le script de snapshot (P&L boucle, kraken ticker) :
 #   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_snapshot.py __CYCLE_ID__
 # Le script envoie la notification Telegram et affiche sur stdout :
 #   PHASE0_SNAPSHOT_DONE|open_positions=N
@@ -18,9 +18,10 @@ _hb_start(0)
 # --- FIN SNAPSHOT ---
 
 Lis config.json pour récupérer TOUS les paramètres.
-Exécute : binance-cli spot get-account --profile agent-profile
-Calcule : portfolio_total = USDC_free + sum(locked USDC de tous les assets)
-budget_disponible = USDC_free × usdc_allocation_pct
+Exécute : kraken balance -o json
+Retourne : {"USDC":"395.31","SOL":"1.24",...}
+portfolio_total = float(balance.get("USDC", 0))
+budget_disponible = portfolio_total × usdc_allocation_pct
 
 Lis state/trade_history.json.
 Identifie les trades du jour (date = aujourd'hui UTC).
@@ -29,16 +30,18 @@ Si daily_pnl < -(portfolio_total × daily_loss_limit_pct) :
 → tg("⛔ Daily loss limit atteinte. Trading pausé pour aujourd'hui.")
 → ARRÊTE.
 
-Vérifie les trades "open" dans trade_history.json vs les ordres ouverts Binance :
-Pour chaque trade open dans l'historique :
-  binance-cli spot get-order --symbol {COIN}USDC --orderId {entry_order_id} --profile agent-profile
-  Si l'ordre d'entrée est FILLED et que l'ordre stop ou TP n'est plus dans get-open-orders :
-    → Le trade est fermé. Récupère le prix d'exécution.
-    → Calcule pnl_usdc = (exit_price - entry_price) × quantity
-    → Calcule pnl_pct = (exit_price - entry_price) / entry_price × 100
-    → Met à jour trade_history.json : status="closed", exit_price, pnl_usdc, pnl_pct, exit_date
-    → Si pnl_usdc > 0 : tg("✅ TP touché : {COIN} +{pnl_usdc:.2f} USDC (+{pnl_pct:.1f}%)")
+Vérifie les trades "open" avec sl_order_txid actif :
+Pour chaque trade open dans trade_history.json avec un champ sl_order_txid :
+  kraken query-orders {sl_order_txid} -o json
+  Si status == "closed" :
+    → Stop-loss déclenché. exit_price = float(cost) / float(vol_exec)
+    → pnl_usdc = (exit_price - entry_price) × quantity
+    → pnl_pct = (exit_price - entry_price) / entry_price × 100
+    → Met à jour trade_history.json : status="closed", exit_price, pnl_usdc, pnl_pct,
+       exit_date (UTC), close_reason="sl_hit"
+    → Si pnl_usdc > 0 : tg("✅ SL déclenché (profit) : {COIN} +{pnl_usdc:.2f} USDC (+{pnl_pct:.1f}%)")
     → Sinon : tg("🛑 Stop touché : {COIN} {pnl_usdc:.2f} USDC ({pnl_pct:.1f}%)")
+# Note : le TP est géré par phase0_profit.py (exécuté plus bas dans Phase 0)
 
 RATTRAPAGE protection_failed :
 Exécute le script OCO retry (idempotence, SELL MARKET fallback, rattrapage OCO) :
@@ -46,7 +49,7 @@ Exécute le script OCO retry (idempotence, SELL MARKET fallback, rattrapage OCO)
 Le script affiche sur stdout : PHASE0_OCO_DONE|retried=N
 
 # --- TRAILING STOP ---
-# Pour chaque position ouverte avec OCO actif, vérifier si le prix a progressé
+# Pour chaque position ouverte avec SL actif (sl_order_txid), vérifier si le prix a progressé
 # et remonter le stop-loss en conséquence.
 # Exécute le script trailing stop :
 #   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_trailing_stop.py __CYCLE_ID__

@@ -23,9 +23,12 @@ prix_tp = prix_entry × (1 + stop_distance_pct × reward_risk_ratio)
 quantite = risk_usdc / (prix_entry × stop_distance_pct)
 montant_ordre = quantite × prix_entry
 
-# Arrondir la quantité selon la précision Binance du coin (utilise stepSize)
-binance-cli spot exchange-info --symbol {COIN}USDC --profile agent-profile
-→ extraire stepSize et minQty, arrondir quantite
+# Arrondir la quantité selon les filtres Kraken du coin
+kraken pairs --pair {COIN}USDC -o json
+→ extraire lot_decimals, ordermin, costmin
+step_size = 10 ** (-lot_decimals)
+quantite_arrondie = floor(quantite / step_size) * step_size
+Vérifier : quantite_arrondie >= ordermin ET quantite_arrondie * prix_entry >= costmin
 
 Vérifications :
 - montant_ordre < min_order_usdc → SKIP (trop petit)
