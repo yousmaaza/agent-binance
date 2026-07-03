@@ -1,4 +1,4 @@
-"""BUY MARKET + OCO + sauvegarde trade_history — phase 5.
+"""BUY MARKET + SL + sauvegarde trade_history — phase 5.
 
 Lit le trade à enregistrer depuis /tmp/cycle_{CYCLE_ID}_phase5_input.json :
 {
@@ -10,10 +10,8 @@ Lit le trade à enregistrer depuis /tmp/cycle_{CYCLE_ID}_phase5_input.json :
     "actual_tp": 64800.0,
     "actual_qty": 0.001,
     "risk_usdc": 1.5,
-    "entry_order_id": 123456,
-    "stop_order_id": 123457,
-    "tp_order_id": 123458,
-    "order_list_id": 789,
+    "entry_order_id": "OXXXXX-YYYYY-ZZZZZ",
+    "sl_order_txid": "SL_TXID_789",
     "protection_failed": false
   }
 }
@@ -58,9 +56,7 @@ history.append({
     "quantity": trade.get("actual_qty"),
     "risk_usdc": trade.get("risk_usdc"),
     "entry_order_id": trade.get("entry_order_id"),
-    "stop_order_id": trade.get("stop_order_id"),
-    "tp_order_id": trade.get("tp_order_id"),
-    "order_list_id": trade.get("order_list_id"),
+    "sl_order_txid": trade.get("sl_order_txid"),
     "protection_failed": trade.get("protection_failed", False),
     "status": "open",
     "exit_price": None,

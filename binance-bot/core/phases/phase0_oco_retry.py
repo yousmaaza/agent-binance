@@ -32,29 +32,32 @@ try:
         tp_calc = t["tp_price"]
         stop_calc = t["stop_price"]
 
-        # Idempotence : vérifier qu'aucun OCO actif n'existe déjà
-        open_orders_raw = binance("open-orders", "-o", "json")
-        open_orders = json.loads(open_orders_raw).get("open", {})
-        has_oco = False  # Kraken n'a pas d'OCO natif — logique revue en T3
-        if has_oco:
-            for item in history:
-                if item.get("trade_id") == t.get("trade_id"):
-                    item["protection_failed"] = False
-            tg(f"ℹ️ {coin} : OCO déjà actif, protection_failed corrigé")
-            continue
+        # Idempotence : vérifier si un SL actif existe déjà
+        sl_txid = t.get("sl_order_txid")
+        if sl_txid:
+            qs_raw = binance("query-orders", sl_txid, "-o", "json")
+            qs_data = json.loads(qs_raw) if qs_raw.strip() else {}
+            sl_status = qs_data.get(sl_txid, {}).get("status", "unknown")
+            if sl_status == "open":
+                tg(f"ℹ️ {coin} : SL déjà actif ({sl_txid}), protection_failed corrigé")
+                for item in history:
+                    if item.get("trade_id") == t.get("trade_id"):
+                        item["protection_failed"] = False
+                continue
 
         ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
         ticker_data = json.loads(ticker_raw)
         prix_actuel = float(ticker_data.get(f"{coin}USDC", {}).get("c", [0])[0])
 
         if prix_actuel > tp_calc:
-            sell_raw = binance(
-                "spot", "new-order", "--symbol", f"{coin}USDC",
-                "--side", "SELL", "--type", "MARKET", "--quantity", str(qty), "--profile", "agent-profile"
-            )
+            sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
             sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
-            if sell_resp.get("orderId"):
-                fill_exit = float(sell_resp.get("cummulativeQuoteQty", 0)) / float(sell_resp.get("executedQty", qty))
+            sell_txid = sell_resp.get("txid", [None])[0]
+            if sell_txid:
+                import time; time.sleep(1)
+                fill_raw = binance("query-orders", sell_txid, "-o", "json")
+                fill = json.loads(fill_raw).get(sell_txid, {})
+                fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
                 pnl_usdc = (fill_exit - entry) * qty
                 pnl_pct = (fill_exit - entry) / entry * 100
                 for item in history:
@@ -72,13 +75,14 @@ try:
             oco_retry_count = t.get("oco_retry_count", 0)
 
             if oco_retry_count >= max_oco_retry:
-                sell_raw = binance(
-                    "spot", "new-order", "--symbol", f"{coin}USDC",
-                    "--side", "SELL", "--type", "MARKET", "--quantity", str(qty), "--profile", "agent-profile"
-                )
+                sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
                 sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
-                if sell_resp.get("orderId"):
-                    fill_exit = float(sell_resp.get("cummulativeQuoteQty", 0)) / float(sell_resp.get("executedQty", qty))
+                sell_txid = sell_resp.get("txid", [None])[0]
+                if sell_txid:
+                    import time; time.sleep(1)
+                    fill_raw = binance("query-orders", sell_txid, "-o", "json")
+                    fill = json.loads(fill_raw).get(sell_txid, {})
+                    fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
                     pnl_usdc = (fill_exit - entry) * qty
                     pnl_pct = (fill_exit - entry) / entry * 100
                     for item in history:
@@ -90,7 +94,7 @@ try:
                                 "protection_failed": False, "close_reason": "protection_exhausted",
                                 "oco_retry_count": 0,
                             })
-                    tg(f"🚨 {coin} : OCO rattrapage échoué {max_oco_retry} fois. Fermeture SELL MARKET forcée.\n{pnl_usdc:+.2f} USDC ({pnl_pct:+.1f}%)")
+                    tg(f"🚨 {coin} : SL rattrapage échoué {max_oco_retry} fois. Fermeture SELL MARKET forcée.\n{pnl_usdc:+.2f} USDC ({pnl_pct:+.1f}%)")
                 else:
                     tg(f"⚠️ {coin} : fermeture SELL MARKET (fallback protection_exhausted) échouée — {sell_raw[:200]}")
             else:
@@ -105,35 +109,21 @@ try:
                 step = 10 ** (-lot_dec)
                 qty_adj = round(math.floor(qty / step) * step, lot_dec)
 
-                tp_oco = max(tp_calc, prix_actuel * 1.001)
-                oco_raw = binance(
-                    "spot", "order-list-oco",
-                    "--symbol", f"{coin}USDC",
-                    "--side", "SELL",
-                    "--quantity", str(qty_adj),
-                    "--above-type", "LIMIT_MAKER",
-                    "--above-price", str(round(tp_oco, 8)),
-                    "--below-type", "STOP_LOSS_LIMIT",
-                    "--below-price", str(round(stop_calc, 8)),
-                    "--below-stop-price", str(round(stop_calc * 1.002, 8)),
-                    "--below-time-in-force", "GTC",
-                    "--profile", "agent-profile",
-                )
-                oco_resp = json.loads(oco_raw) if oco_raw.strip() else {}
-                if oco_resp.get("orderListId"):
-                    reports = {r["type"]: r for r in oco_resp.get("orderReports", [])}
-                    tp_id = reports.get("LIMIT_MAKER", {}).get("orderId")
-                    sl_id = reports.get("STOP_LOSS_LIMIT", {}).get("orderId")
+                sl_raw = binance("order", "sell", f"{coin}USDC", str(qty_adj), "--type", "stop-loss", "--price", str(stop_calc), "-o", "json", "--yes")
+                sl_resp = json.loads(sl_raw) if sl_raw.strip() else {}
+                new_sl_txid = sl_resp.get("txid", [None])[0]
+                if new_sl_txid:
                     for item in history:
                         if item.get("trade_id") == t.get("trade_id"):
                             item.update({
-                                "protection_failed": False, "tp_order_id": tp_id,
-                                "stop_order_id": sl_id, "order_list_id": oco_resp["orderListId"],
-                                "tp_price": tp_oco, "stop_price": stop_calc, "oco_retry_count": 0,
+                                "protection_failed": False,
+                                "sl_order_txid": new_sl_txid,
+                                "stop_price": stop_calc,
+                                "oco_retry_count": 0,
                             })
-                    tg(f"🛡️ {coin} : OCO de rattrapage placé (tentative {oco_retry_count + 1}) — TP {tp_oco:.4g} / SL {stop_calc:.4g}")
+                    tg(f"🛡️ {coin} : SL de rattrapage placé (tentative {oco_retry_count + 1}) — SL {stop_calc:.4g}")
                 else:
-                    tg(f"⚠️ {coin} : OCO rattrapage échoué (tentative {oco_retry_count + 1}/{max_oco_retry})")
+                    tg(f"⚠️ {coin} : SL rattrapage échoué (tentative {oco_retry_count + 1}/{max_oco_retry})")
 
     _save_trade_history_atomic(history)
     retried = len(unprotected)

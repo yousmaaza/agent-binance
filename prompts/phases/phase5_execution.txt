@@ -3,100 +3,84 @@ PHASE 5 — EXÉCUTION AUTOMATIQUE
 ⏱️ HEARTBEAT START PHASE 5
 _hb_start(5)
 
-# Initialiser les structures de données pour Phase 5
-ordres_executes = []     # fallback: liste des ordres effectivement exécutés
+ordres_executes = []
 orders_skipped_count = 0
-orders_skipped_detail = {}  # {coin: {"skip_type": TYPE_X, "skip_detail": "..."}}
+orders_skipped_detail = {}
 
 Pour chaque ordre préparé, dans l'ordre de score décroissant :
 
 1. Re-fetch prix actuel :
-   binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
-   Si drift > price_deviation_max_pct (2%) → SKIP + tg("⚠️ {COIN} : prix dévié de {drift:.1f}%, ordre annulé")
-   → Assigner : skip_type = TYPE_C, skip_detail = f"Drift prix > {price_deviation_max_pct*100:.1f}% ({drift:.1f}%)"
-   → Incrémenter orders_skipped_count
+   kraken ticker {COIN}USDC -o json
+   prix_refetch = data["{COIN}USDC"]["c"][0]
+   drift = abs(prix_refetch - prix_entry) / prix_entry
+   Si drift > price_deviation_max_pct (2%) → SKIP
+   → skip_type=TYPE_C, skip_detail=f"Drift prix > {price_deviation_max_pct*100:.1f}% ({drift:.1f}%)"
 
 2. Re-fetch solde USDC :
-   binance-cli spot get-account --profile agent-profile
-   Si USDC_free < montant_ordre → SKIP + tg("⚠️ Solde insuffisant pour {COIN}")
-   → Assigner : skip_type = TYPE_C, skip_detail = f"Solde USDC insuffisant ({USDC_free:.2f} < {montant_ordre:.2f})"
-   → Incrémenter orders_skipped_count
+   kraken balance -o json
+   USDC_free = float(data.get("USDC", 0))
+   Si USDC_free < montant_ordre → SKIP
+   → skip_type=TYPE_C, skip_detail=f"Solde USDC insuffisant ({USDC_free:.2f} < {montant_ordre:.2f})"
 
-3. Placer un BUY MARKET immédiat (élimine le risque de fill tardif qui provoquerait protection_failed) :
-   binance-cli spot new-order --symbol {COIN}USDC \
-     --side BUY --type MARKET --quantity {quantite} \
-     --profile agent-profile
+3. BUY MARKET :
+   kraken order buy {COIN}USDC {quantite} --type market -o json --yes
+   entry_txid = buy_resp["txid"][0]
 
-   La réponse contient `orderId`, `executedQty`, `cummulativeQuoteQty`, `status`.
-   Si status != "FILLED" ou orderId absent → SKIP + tg("⚠️ BUY MARKET {COIN} non rempli : {status}") + continuer au coin suivant.
-   → Assigner : skip_type = TYPE_C, skip_detail = f"BUY MARKET non rempli (status: {status}, qty: {executedQty}/{quantite})"
-   → Incrémenter orders_skipped_count
-   → Enregistrer dans orders_skipped_detail[coin] = {"skip_type": skip_type, "skip_detail": skip_detail}
+   Query le fill (jusqu'à 3 tentatives, 1s entre chaque) :
+   kraken query-orders {entry_txid} -o json
+   fill = data[entry_txid]
+   Si fill["status"] != "closed" → SKIP
+   → skip_type=TYPE_C, skip_detail=f"BUY MARKET non rempli (status: {fill['status']})"
 
-   Calcule le prix de fill réel (gère les fills partiels en plusieurs lots) :
-   actual_entry = cummulativeQuoteQty / executedQty   # prix moyen pondéré réel
-   actual_qty = executedQty                            # quantité effectivement achetée
-   entry_order_id = orderId
+   actual_entry = float(fill["cost"]) / float(fill["vol_exec"])
+   actual_qty = float(fill["vol_exec"])
+   entry_order_id = entry_txid
 
-   Recalcule TP et SL sur le prix réel (pas sur le prix limit initial) :
+4. Re-fetch prix post-fill :
+   kraken ticker {COIN}USDC -o json
+   prix_post_fill = float(data["{COIN}USDC"]["c"][0])
+
+   Recalcule TP et SL sur actual_entry :
    actual_stop = actual_entry × (1 - stop_distance_pct)
    actual_tp   = actual_entry × (1 + stop_distance_pct × reward_risk_ratio)
 
-4. Vérifier que actual_tp est strictement au-dessus du prix marché courant avant de poser l'OCO :
-   Re-fetch prix actuel juste après le fill :
-   binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
-   prix_post_fill = float(réponse["price"])
-
    Si prix_post_fill >= actual_tp :
-     → Le marché est déjà au-dessus du TP recalculé (wick rapide) — fermer à market directement :
-     binance-cli spot new-order --symbol {COIN}USDC --side SELL --type MARKET --quantity {actual_qty} --profile agent-profile
-     → Calculer pnl_usdc = (prix_post_fill - actual_entry) × actual_qty
-     → Enregistrer trade comme status="closed", close_reason="market_above_tp_at_fill"
-     → tg("⚡ {COIN} : TP dépassé au fill, fermé à market immédiatement → {pnl_usdc:+.2f} USDC")
-     → Passer au coin suivant.
+     kraken order sell {COIN}USDC {actual_qty} --type market -o json --yes
+     sell_txid = sell_resp["txid"][0]
+     Attendre fill via query-orders (3 tentatives)
+     avg_exit = float(fill["cost"]) / float(fill["vol_exec"])
+     pnl_usdc = (avg_exit - actual_entry) × actual_qty
+     Enregistrer trade status="closed", close_reason="market_above_tp_at_fill"
+     tg("⚡ {COIN} : TP dépassé au fill, fermé à market → {pnl_usdc:+.2f} USDC")
+     Passer au coin suivant.
 
-5. Vérifier les filtres LOT_SIZE pour l'OCO SELL :
-   binance-cli spot exchange-info --symbol {COIN}USDC --profile agent-profile
-   → extraire stepSize du filtre LOT_SIZE
-   actual_qty_oco = floor(actual_qty / stepSize) * stepSize   # quantité entière pour l'OCO
+5. Filtres marché (lot_decimals) pour l'ordre SL :
+   kraken pairs --pair {COIN}USDC -o json
+   lot_dec = pair_data["lot_decimals"]
+   step = 10 ** (-lot_dec)
+   actual_qty_sl = round(math.floor(actual_qty / step) * step, lot_dec)
 
-6. Placer l'OCO SELL standalone (TP + SL) sur le prix de fill réel :
-   binance-cli spot order-list-oco --symbol {COIN}USDC \
-     --side SELL --quantity {actual_qty_oco} \
-     --above-type LIMIT_MAKER --above-price {actual_tp} \
-     --below-type STOP_LOSS_LIMIT --below-price {actual_stop} \
-     --below-stop-price {actual_stop * 1.002} --below-time-in-force GTC \
-     --profile agent-profile
+6. Placer l'ordre SELL STOP-LOSS (protection SL) :
+   kraken order sell {COIN}USDC {actual_qty_sl} --type stop-loss --price {actual_stop} -o json --yes
+   sl_order_txid = sl_resp["txid"][0]
 
-   La réponse contient `orderListId` et `orderReports`. Récupère :
-     tp_order_id   = orderReports[type=LIMIT_MAKER].orderId
-     stop_order_id = orderReports[type=STOP_LOSS_LIMIT].orderId
-     order_list_id = orderListId
+   Si l'appel échoue → protection_failed=True
+   tg("⚠️ {COIN} : BUY OK mais SL échoué — position NON protégée ! {err_msg}")
 
-   Si l'appel OCO échoue → marquer protection_failed=True dans le trade enregistré :
-     tg("⚠️ {COIN} : BUY MARKET OK mais OCO échoué — position NON protégée ! {err_msg}")
-     Enregistrer trade avec protection_failed=True (sera repris en Phase 0 du prochain cycle).
-
-7. Enregistre dans state/trade_history.json (APPEND, ne pas écraser) :
-   Écris d'abord le trade dans /tmp/cycle___CYCLE_ID___phase5_input.json :
+7. Écrire dans /tmp/cycle___CYCLE_ID___phase5_input.json :
    {"trade": {"coin": "{COIN}", "signal_score": {score}, "actual_entry": {actual_entry},
               "actual_stop": {actual_stop}, "actual_tp": {actual_tp}, "actual_qty": {actual_qty},
               "risk_usdc": {risk_usdc}, "entry_order_id": {entry_order_id},
-              "stop_order_id": {stop_order_id}, "tp_order_id": {tp_order_id},
-              "order_list_id": {order_list_id}, "protection_failed": {True if oco_failed else False}}}
-   Puis exécute :
-       python3 __PROJECT_DIR__/binance-bot/core/phases/phase5_execution.py __CYCLE_ID__
-   Le script affiche sur stdout : PHASE5_SAVE_DONE|coin={COIN}|trade_id=XXXXXXXX
+              "sl_order_txid": {sl_order_txid},
+              "protection_failed": {True if sl_failed else False}}}
+   Puis : python3 __PROJECT_DIR__/binance-bot/core/phases/phase5_execution.py __CYCLE_ID__
 
-8. Notification immédiate :
-   tg("⚡ BUY MARKET {COIN}\n{actual_qty} @ {actual_entry:.4g} USDC (fill réel)\n🛑 Stop : {actual_stop:.4g}\n🎯 TP : {actual_tp:.4g}\nScore : {score}/10")
+8. Notification :
+   tg("⚡ BUY MARKET {COIN}\n{actual_qty} @ {actual_entry:.4g} USDC\n🛑 Stop : {actual_stop:.4g}\n🎯 TP cible : {actual_tp:.4g}\nScore : {score}/10")
 
-Après avoir traité tous les ordres :
-Mets à jour les variables de synthèse :
-- executed = len(ordres_executes) if ordres_executes else 0
-- skipped = orders_skipped_count if orders_skipped_count else 0
-- open_positions = nombre de trades status="open" dans trade_history.json après cette phase
-
-→ tg(f"📊 Phase 5 résumé\nExécutés : {executed}\nSkippés : {skipped}\nDétails skip : {orders_skipped_detail}")
-⏱️ HEARTBEAT END PHASE 5 — appel hb(5) immédiatement ci-dessous
+Après tous les ordres :
+executed = len(ordres_executes)
+skipped = orders_skipped_count
+tg(f"📊 Phase 5 résumé\nExécutés : {executed}\nSkippés : {skipped}\nDétails : {orders_skipped_detail}")
+⏱️ HEARTBEAT END PHASE 5
 hb(5, summary=f"{executed} ordres exécutés, {skipped} skippés")
