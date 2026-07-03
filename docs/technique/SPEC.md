@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-03 (PR #295)
+> **Dernière mise à jour** : 2026-07-03 (PR #296)
 > **Commit** : <current>
 
 ---
@@ -78,9 +78,9 @@ webhook_server.py (process principal)
                 │     rating_filter, coin_analysis (4h, 1d)
                 │
                 ├──► kraken-cli spot (Phases 0, 1, 4, 5)
-                │     get-account, get-open-orders, get-exchange-info,
+                │     get-account, get-open-orders, get-exchange-info, pairs,
                 │     ticker-price (filtre tradabilité USDC — Phase 1),
-                │     get-symbol-price-ticker, order-market, order-list-oco
+                │     get-symbol-price-ticker, order-market, order (stop-loss)
                 │
                 ├──► state/trade_history.json  (lecture Phase 0, écriture Phase 5)
                 ├──► state/agent_lock.json     (release Phase 7)
@@ -114,7 +114,7 @@ webhook_server.py (process principal)
 | Composant | Rôle | Config |
 |---|---|---|
 | Telegram Bot API | Interface utilisateur (commandes + notifications) | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` dans `.env` |
-| Kraken CLI | Consultation portefeuille, passage ordres BUY MARKET + OCO spot | Détection : `shutil.which("kraken")` ou fallback `~/.cargo/bin/kraken` |
+| Kraken CLI | Consultation portefeuille, passage ordres BUY MARKET + SL (stop-loss) spot | Détection : `shutil.which("kraken")` ou fallback `~/.cargo/bin/kraken` |
 | MongoDB Atlas | Persistance des cycles de trading (collection `cycles`) | `MONGODB_URI`, `MONGODB_DB` dans `.env` |
 | TradingView MCP | Données marché : gainers, breakouts, sentiment, analyse coin | `.mcp.json` (MCP server `mcp__tradingview__*`) |
 | Claude CLI | Orchestration du cycle de trading (sous-processus) — mode abonnement uniquement via Claude Code CLI avec `--model claude-sonnet-4-6` forcé via `CLAUDE_CLI_FLAGS` (évite qu'Opus soit sélectionné par défaut sur Max) ; aucun fallback API ; en cas de dépassement de quota abonnement, le cycle s'arrête proprement avec notification Telegram | `ANTHROPIC_API_KEY` explicitement ignorée au chargement `.env` (jamais injectée dans le processus) ; `CLAUDE_CLI_FLAGS` et `RESOURCE_ERROR_PATTERNS` dans `binance-bot/config/llm.py` |
@@ -158,7 +158,7 @@ webhook_server.py (process principal)
 | `_save_json_atomic(data, path)` | core/trade_helpers.py:53 | Écriture atomic générique via tempfile + os.replace() ; utilisée par les 3 fonctions *_atomic() |
 | `_save_trade_history_atomic(data, path_override="")` | core/trade_helpers.py:70 | Wrapper pour écriture atomique de `trade_history.json` |
 | `_save_config_atomic(data, project_dir="")` | core/trade_helpers.py:76 | Wrapper pour écriture atomique de `config.json` |
-| Bloc trailing stop _(Phase 0)_ | TRADE_PROMPT:264–365 | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec OCO actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule l'OCO existant et replace un nouvel OCO avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
+| Bloc trailing stop _(Phase 0)_ | phase0_trailing_stop.py | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec SL (`sl_order_txid`) actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule le SL existant et place un nouveau SL avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
 | `_format_stream_event()` | :643 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
 | `_RESOURCE_ERROR_PATTERNS` _(constante module)_ | :934 | Liste des 8 patterns de chaîne indiquant une erreur de ressource Claude (credit insuffisant, rate_limit_error, overloaded_error, session limit, etc.) — utilisée par `_is_resource_error()` |
 | `_is_resource_error()` | :946 | Lit le fichier `logs/stdout/cycle_*.log` et retourne `True` si un pattern de ressource y est détecté — gère silencieusement les erreurs de lecture |
@@ -208,7 +208,7 @@ webhook_server.py (process principal)
 
 | Fichier | Type | Rôle |
 |---|---|---|
-| `trade_history.json` | JSON array | Source de vérité des trades : chaque entrée contient `trade_id`, `coin`, `side`, `signal_score`, `entry_price` (prix de fill réel), `stop_price`, `tp_price`, `quantity`, `risk_usdc`, `entry_order_id` (BUY MARKET), `tp_order_id`, `stop_order_id`, `order_list_id`, `protection_failed`, `status` (open/closed), `pnl_usdc`, `pnl_pct`, `close_reason`, dates |
+| `trade_history.json` | JSON array | Source de vérité des trades : chaque entrée contient `trade_id`, `coin`, `side`, `signal_score`, `entry_price` (prix de fill réel), `stop_price`, `tp_price`, `quantity`, `risk_usdc`, `entry_order_id` (BUY MARKET), `sl_order_txid` (SELL STOP-LOSS Kraken), `protection_failed`, `status` (open/closed), `pnl_usdc`, `pnl_pct`, `close_reason`, dates |
 | `agent_lock.json` | JSON object | Mutex de cycle : `{"running": bool, "started_at": ISO-UTC}` — expire automatiquement après 2h |
 | `telegram_offset.json` | JSON object | Dernier `update_id + 1` des updates Telegram — permet de reprendre sans re-traiter les anciens messages après redémarrage |
 | `pending_callback.json` | JSON object | Dernière réponse inline keyboard : `{"action": "CONFIRM"/"CANCEL", "timestamp": float}` — lu par le sous-processus Claude pour les confirmations |
@@ -291,6 +291,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#296](pr-296-kraken-bracket-orders.md) | 2026-07-03 | [M3] Migrer OCO Binance → SL Kraken : supprime ordres OCO (TP+SL liés), remplace par BUY MARKET + SELL STOP-LOSS uniquement ; TP détecté cycliquement par `phase0_profit.py` ; schéma trade_history : supprime `order_list_id`, `stop_order_id`, `tp_order_id`, ajoute `sl_order_txid` ; rétro-compatible (trades Binance ignorés) |
 | [#295](pr-295-kraken-market-filters.md) | 2026-07-03 | [M3] Adapter les filtres de marché Kraken : remplace appels `exchange-info` Binance par `pairs` Kraken dans phases 0 (OCO retry, trailing stop) et phase 4 (sizing) ; ajoute vérification `costmin` native Kraken ; ajuste quantités via `lot_decimals` dynamique |
 | [#294](pr-294-adapter-cli-kraken.md) | 2026-07-03 | [M286] Adapter les appels CLI de **lecture** vers Kraken : ticker unifié (remplace deux appels Binance), balance et open-orders via `kraken-cli` dans `status.py`, phase0_snapshot, phase0_profit, phase1_scan ; logique d'annulation d'ordres adaptée au format Kraken `descr.pair` |
 | [#293](pr-293-remplacer-binance-cli-par-kraken.md) | 2026-07-03 | [M285] Migration CLI : remplace `binance-cli` par `kraken-cli`, détection via `shutil.which("kraken")` avec fallback `~/.cargo/bin/kraken` (env.py:33), renommage variable interne `_BINANCE_CLI` → `_EXCHANGE_CLI`, substitution template `__KRAKEN_CLI_PATH__` dans TRADE_PROMPT et POSITION_PROMPT — architecturally isolated, pas d'impact logique |
