@@ -33,9 +33,9 @@ for pos in history:
         continue
 
     try:
-        ticker_raw = binance("spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
+        ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
         ticker_data = json.loads(ticker_raw)
-        current_price = float(ticker_data.get("price", entry_price))
+        current_price = float(ticker_data.get(f"{coin}USDC", {}).get("c", [entry_price])[0])
     except Exception:
         continue
 
@@ -43,8 +43,13 @@ for pos in history:
 
     if pnl_pct >= min_profit:
         try:
-            # Annuler les ordres OCO actifs avant SELL MARKET (sinon Binance refuse le MARKET)
-            binance("spot", "cancel-open-orders", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
+            # Annuler les ordres actifs sur la paire avant SELL MARKET
+            open_data = json.loads(binance("open-orders", "-o", "json"))
+            pair = f"{coin}USDC"
+            txids = [txid for txid, o in open_data.get("open", {}).items()
+                     if o.get("descr", {}).get("pair") == pair]
+            if txids:
+                binance("order", "cancel", *txids, "-o", "json", "--yes")
         except Exception:
             pass
         try:

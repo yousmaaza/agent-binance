@@ -1,4 +1,4 @@
-"""Filtrage USDC et vérification volume binance-cli — phase 1.
+"""Filtrage USDC et vérification volume Kraken — phase 1.
 
 Lit la liste de candidats depuis /tmp/cycle_{CYCLE_ID}_phase1_input.json
 (champ "candidates") ou depuis config.json si le fichier est absent.
@@ -38,17 +38,15 @@ non_tradable = []
 
 for coin in candidates:
     try:
-        ticker_raw = binance("spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
+        ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
         ticker_data = json.loads(ticker_raw)
-        if ticker_data.get("price"):
-            try:
-                hr24_raw = binance("spot", "ticker24hr", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
-                hr24_data = json.loads(hr24_raw)
-                vol = float(hr24_data.get("quoteVolume", 0))
-            except Exception:
-                vol = 0
+        pair_data = ticker_data.get(f"{coin}USDC")
+        if pair_data and pair_data.get("c"):
+            price = float(pair_data["c"][0])
+            vol_base = float(pair_data["v"][1])  # volume 24h en base asset
+            vol = vol_base * price  # volume 24h en USDC
             if vol >= 5_000_000:
-                tradable.append({"coin": coin, "price": float(ticker_data["price"]), "volume_24h": vol})
+                tradable.append({"coin": coin, "price": price, "volume_24h": vol})
             else:
                 non_tradable.append({"coin": coin, "reason": f"volume {vol / 1e6:.1f}M USDC < 5M"})
         else:
