@@ -24,6 +24,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#295](pr-295-kraken-market-filters.md) | [M3] Adapter les filtres de marché Binance LOT_SIZE → Kraken | 2026-07-03 |
 | [#294](pr-294-adapter-cli-kraken.md) | [M286] Adapter les appels CLI de lecture vers Kraken | 2026-07-03 |
 | [#293](pr-293-remplacer-binance-cli-par-kraken.md) | [M285] Remplacer binance-cli par kraken-cli dans la couche de détection | 2026-07-03 |
 | [#270](pr-270-refacto-externaliser-helpers-python-modules.md) | [REFACTO] Externaliser helpers Python en modules et découper trade_prompt par phase | 2026-07-03 |
