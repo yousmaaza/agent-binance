@@ -23,7 +23,11 @@ from core.trade_helpers import tg, binance, _load_config  # noqa: E402
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
 # Mapping Kraken coin → symbole TradingView/Binance (pour les appels coin_analysis Phase 2)
-TV_MAP = {"XBT": "BTC"}
+# Seuls les coins dont le ticker Kraken diffère de celui de TradingView/Binance
+TV_MAP = {
+    "XBT": "BTC",   # Kraken utilise XBT, TradingView utilise BTC
+    "XDG": "DOGE",  # Kraken utilise XDG, TradingView utilise DOGE
+}
 
 cfg = _load_config()
 MIN_VOLUME_USDC = cfg.get("min_volume_usdc", 1_000_000)

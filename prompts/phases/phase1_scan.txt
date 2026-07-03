@@ -14,6 +14,12 @@ leur volume est sous le seuil — rôle de fallback garanti pour les positions d
 
 Lis le fichier /tmp/cycle___CYCLE_ID___phase1_output.json pour obtenir la liste tradable.
 Chaque entrée contient : coin (nom Kraken, ex: "XBT"), tv_symbol (nom TradingView, ex: "BTC"), price, volume_24h.
+
+Vérification du mapping Kraken → TradingView (OBLIGATOIRE avant de passer à Phase 2) :
+Pour chaque coin tradable, vérifie que tv_symbol correspond bien au ticker attendu sur BINANCE/TradingView.
+Mappings connus : XBT→BTC, XDG→DOGE. Tous les autres coins ont le même symbole des deux côtés.
+Si un coin a tv_symbol identique à coin mais que le ticker {tv_symbol}USDT n'existe pas sur BINANCE
+(ex: nouveau coin Kraken inconnu de Binance) → exclure ce coin de l'univers Phase 2 et logger un warning.
 Utilise tv_symbol pour tous les appels TradingView/coin_analysis (Phase 2 incluse).
 
 Appelle les trois screeners TradingView pour enrichir le signal sur les coins tradables Kraken :
