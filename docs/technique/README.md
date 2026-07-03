@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#317](pr-317-score-par-coin-phase-3.md) | [FEAT] Afficher le score par coin dans le rapport Phase 3 | 2026-07-03 |
 | [#316](pr-316-fix-phase5-nonetype-guard.md) | [BUG] Fix phase5_execution.py crash TypeError quand trade=None (0 ordres) | 2026-07-03 |
 | [#312](pr-312-refactor-phase1-kraken-usdc.md) | [M1] Refactorer Phase 1 — univers depuis Kraken USDC + seuil 1M | 2026-07-03 |
 | [#310](pr-310-mettre-a-jour-config-kraken.md) | [M291] Mettre à jour config.json pour Kraken (coins + suppression binance_profile) | 2026-07-03 |
