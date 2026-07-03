@@ -24,6 +24,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#298](pr-298-kraken-json-parsing.md) | [M4] Migrer parsing réponses JSON Binance → Kraken (phase0_profit) | 2026-07-03 |
 | [#296](pr-296-kraken-bracket-orders.md) | [M3] Migrer OCO Binance vers bracket orders Kraken | 2026-07-03 |
 | [#295](pr-295-kraken-market-filters.md) | [M3] Adapter les filtres de marché Binance LOT_SIZE → Kraken | 2026-07-03 |
 | [#294](pr-294-adapter-cli-kraken.md) | [M286] Adapter les appels CLI de lecture vers Kraken | 2026-07-03 |
