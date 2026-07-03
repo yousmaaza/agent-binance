@@ -1,14 +1,14 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-03 (PR #270)
+> **Dernière mise à jour** : 2026-07-03 (PR #293)
 > **Commit** : <current>
 
 ---
 
 ## 1. Vue d'ensemble
 
-`agent-binance` est un bot de trading Binance piloté par Telegram, fonctionnant en architecture polling-only (aucun port entrant, aucun tunnel). Un unique processus Python (`binance-bot/webhook_server.py`) poll Telegram en long-polling (timeout 30s) et déclenche un sous-processus Claude CLI via `binance-bot/orchestration/runner.py:run_trade_workflow()` à chaque commande `/trade` ou toutes les 4h via l'auto-scheduler intégré. Le sous-processus Claude orchestre 9 phases (0–8) d'analyse de marché et d'exécution d'ordres via `binance-cli`, en lisant le prompt assemblé depuis 9 sous-fichiers (`prompts/trade_prompt.txt` + `prompts/shared/` + `prompts/phases/`) via `core/env.py:assemble_prompt()`, en important des helpers réutilisables depuis les modules `core/trade_helpers.py` et `core/heartbeat.py`, et appelant les scripts de phase depuis `binance-bot/core/phases/phase{N}*.py`, en utilisant les outils TradingView MCP pour les données marché et MongoDB Atlas pour la persistance des cycles. L'état persistant est stocké sous `state/` (JSON), les logs sous `logs/`, et toutes les notifications utilisateur sont envoyées en français via l'API Telegram (via `curl`).
+`agent-binance` est un bot de trading Binance piloté par Telegram, fonctionnant en architecture polling-only (aucun port entrant, aucun tunnel). Un unique processus Python (`binance-bot/webhook_server.py`) poll Telegram en long-polling (timeout 30s) et déclenche un sous-processus Claude CLI via `binance-bot/orchestration/runner.py:run_trade_workflow()` à chaque commande `/trade` ou toutes les 4h via l'auto-scheduler intégré. Le sous-processus Claude orchestre 9 phases (0–8) d'analyse de marché et d'exécution d'ordres via `kraken-cli`, en lisant le prompt assemblé depuis 9 sous-fichiers (`prompts/trade_prompt.txt` + `prompts/shared/` + `prompts/phases/`) via `core/env.py:assemble_prompt()`, en important des helpers réutilisables depuis les modules `core/trade_helpers.py` et `core/heartbeat.py`, et appelant les scripts de phase depuis `binance-bot/core/phases/phase{N}*.py`, en utilisant les outils TradingView MCP pour les données marché et MongoDB Atlas pour la persistance des cycles. L'état persistant est stocké sous `state/` (JSON), les logs sous `logs/`, et toutes les notifications utilisateur sont envoyées en français via l'API Telegram (via `curl`).
 
 ---
 
@@ -60,8 +60,8 @@ webhook_server.py (process principal)
       ├──► tg_post() → curl → Telegram Bot API
       │                       (sendMessage, getUpdates, answerCallbackQuery)
       │
-      ├──► run_status() ──────────────────────────► binance-cli spot get-account
-      │                                              binance-cli spot get-open-orders
+      ├──► run_status() ──────────────────────────► kraken-cli spot get-account
+      │                                              kraken-cli spot get-open-orders
       │
       ├──► run_perf() ───────────────────────────► state/trade_history.json (lecture)
       │                                             (stats internes : Sharpe, t-test, drawdown)
@@ -77,7 +77,7 @@ webhook_server.py (process principal)
                 │     top_gainers, volume_breakout_scanner, market_sentiment,
                 │     rating_filter, coin_analysis (4h, 1d)
                 │
-                ├──► binance-cli spot (Phases 0, 1, 4, 5)
+                ├──► kraken-cli spot (Phases 0, 1, 4, 5)
                 │     get-account, get-open-orders, get-exchange-info,
                 │     ticker-price (filtre tradabilité USDC — Phase 1),
                 │     get-symbol-price-ticker, order-market, order-list-oco
@@ -114,7 +114,7 @@ webhook_server.py (process principal)
 | Composant | Rôle | Config |
 |---|---|---|
 | Telegram Bot API | Interface utilisateur (commandes + notifications) | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` dans `.env` |
-| Binance CLI | Consultation portefeuille, passage ordres BUY MARKET + OCO spot | profil `agent-profile` dans `~/.binance-cli/` |
+| Kraken CLI | Consultation portefeuille, passage ordres BUY MARKET + OCO spot | Détection : `shutil.which("kraken")` ou fallback `~/.cargo/bin/kraken` |
 | MongoDB Atlas | Persistance des cycles de trading (collection `cycles`) | `MONGODB_URI`, `MONGODB_DB` dans `.env` |
 | TradingView MCP | Données marché : gainers, breakouts, sentiment, analyse coin | `.mcp.json` (MCP server `mcp__tradingview__*`) |
 | Claude CLI | Orchestration du cycle de trading (sous-processus) — mode abonnement uniquement via Claude Code CLI avec `--model claude-sonnet-4-6` forcé via `CLAUDE_CLI_FLAGS` (évite qu'Opus soit sélectionné par défaut sur Max) ; aucun fallback API ; en cas de dépassement de quota abonnement, le cycle s'arrête proprement avec notification Telegram | `ANTHROPIC_API_KEY` explicitement ignorée au chargement `.env` (jamais injectée dans le processus) ; `CLAUDE_CLI_FLAGS` et `RESOURCE_ERROR_PATTERNS` dans `binance-bot/config/llm.py` |
@@ -291,6 +291,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#293](pr-293-remplacer-binance-cli-par-kraken.md) | 2026-07-03 | [M285] Migration CLI : remplace `binance-cli` par `kraken-cli`, détection via `shutil.which("kraken")` avec fallback `~/.cargo/bin/kraken` (env.py:33), renommage variable interne `_BINANCE_CLI` → `_EXCHANGE_CLI`, substitution template `__KRAKEN_CLI_PATH__` dans TRADE_PROMPT et POSITION_PROMPT — architecturally isolated, pas d'impact logique |
 | [#270](pr-270-refacto-externaliser-helpers-python-modules.md) | 2026-07-03 | [REFACTO] Externaliser helpers Python en modules (`core/trade_helpers.py`, `core/heartbeat.py`, `core/position_helpers.py`), découper `trade_prompt.txt` en 9 sous-fichiers (`prompts/shared/` + `prompts/phases/`), déplacer 12 scripts de phase vers `binance-bot/core/phases/` (package Python), implémenter `core/env.py:assemble_prompt()` pour assemblage dynamique, refactoriser `runner.py` via dataclass `WorkflowConfig` — élimine ~70% de duplication d'helpers, maintenabilité +++ |
 | [#267](pr-267-fix-phase0-bugs.md) | 2026-06-28 | [M1] Phase 0 : comptage open_positions inclut protection_failed=True, retry OCO avec fallback SELL MARKET après max_oco_retry (défaut 3), standardisation close_reason (market_above_tp, profit_target_phase0, protection_exhausted) |
 | [#263](pr-263-position-prompt-binance-cli-fix.md) | 2026-06-28 | [BUG #261] position_prompt.txt : corrections syntaxe binance-cli (`open-orders` → `get-open-orders`, `get-price` → `spot ticker-price`) et noms de champs trade_history.json (`status` minuscule, `coin`, `quantity`, `date`) |
