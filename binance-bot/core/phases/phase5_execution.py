@@ -38,7 +38,11 @@ in_path = f"/tmp/cycle_{CYCLE_ID}_phase5_input.json"
 with open(in_path) as f:
     inp = json.load(f)
 
-trade = inp.get("trade", {})
+trade = inp.get("trade")
+
+if not trade:
+    print("PHASE5_DONE|executed=0|skipped=0")
+    sys.exit(0)
 
 with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
     history = json.load(f)
