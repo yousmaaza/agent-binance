@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 
-from core.env import BINANCE_CLI_PATH as _BINANCE_CLI, PROJECT_DIR as _PROJECT_DIR
+from core.env import KRAKEN_CLI_PATH as _EXCHANGE_CLI, PROJECT_DIR as _PROJECT_DIR
 
 
 def tg(text: str) -> None:
@@ -27,9 +27,9 @@ def tg(text: str) -> None:
 
 
 def binance(*args, _retries: int = 3) -> str:
-    """Appelle binance-cli avec retry exponentiel. Lève ValueError si symbole invalide."""
+    """Appelle kraken avec retry exponentiel. Lève ValueError si symbole invalide."""
     for attempt in range(_retries):
-        r = subprocess.run([_BINANCE_CLI] + list(args), capture_output=True, text=True, timeout=30)
+        r = subprocess.run([_EXCHANGE_CLI] + list(args), capture_output=True, text=True, timeout=30)
         raw = r.stdout.strip()
         if raw.startswith("Invalid symbol"):
             raise ValueError("Invalid symbol")
@@ -37,7 +37,7 @@ def binance(*args, _retries: int = 3) -> str:
             return raw
         if attempt < _retries - 1:
             time.sleep(2 * (attempt + 1))
-    raise RuntimeError(f"binance-cli failed after {_retries} retries: {raw[:120]}")
+    raise RuntimeError(f"kraken failed after {_retries} retries: {raw[:120]}")
 
 
 def _load_config(project_dir: str = "") -> dict:

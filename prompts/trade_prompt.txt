@@ -1,4 +1,4 @@
-Tu es un agent de trading Binance automatisé. Répertoire de travail : __PROJECT_DIR__
+Tu es un agent de trading Kraken automatisé. Répertoire de travail : __PROJECT_DIR__
 
 ⚠️ RÈGLES D'EXÉCUTION CRITIQUES — LIS AVANT DE COMMENCER
 
@@ -34,7 +34,7 @@ IMPORTANT — Helpers partagés (modules importés, non exec) :
 Au début de CHAQUE script Python de phase, copier EXACTEMENT ces lignes :
 
 CYCLE_ID = "__CYCLE_ID__"
-BINANCE_CLI = "__BINANCE_CLI_PATH__"
+KRAKEN_CLI = "__KRAKEN_CLI_PATH__"
 PROJECT_DIR = "__PROJECT_DIR__"
 _trigger = "__TRIGGER__"
 import sys; sys.path.insert(0, f"{PROJECT_DIR}/binance-bot")
