@@ -31,7 +31,7 @@ with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
 
 ts_updates = []
 for t in history:
-    if t.get("status") != "open" or not t.get("order_list_id"):
+    if t.get("status") != "open" or not t.get("sl_order_txid"):
         continue
     coin = t["coin"]
     entry = float(t["entry_price"])
@@ -57,14 +57,10 @@ for t in history:
     new_tp = max(cur_tp, round(price + trail_dist * 3, 8))
 
     try:
-        binance(
-            "spot", "delete-order-list",
-            "--symbol", f"{coin}USDC",
-            "--order-list-id", str(t["order_list_id"]),
-            "--profile", "agent-profile",
-        )
+        sl_txid = t["sl_order_txid"]
+        binance("order", "cancel", sl_txid, "-o", "json", "--yes")
     except Exception as e:
-        tg(f"⚠️ Trailing stop {coin} : échec annulation OCO ({e}), skip")
+        tg(f"⚠️ Trailing stop {coin} : échec annulation SL ({e}), skip")
         continue
 
     try:
@@ -76,42 +72,25 @@ for t in history:
         qty = _round_qty(float(t["quantity"]), lot)
         new_stop_r = _round_price(new_stop, tick)
         new_tp_r = _round_price(new_tp, tick)
-        stop_limit_r = _round_price(new_stop * 1.002, tick)
     except Exception:
         qty = float(t["quantity"])
-        new_stop_r, new_tp_r, stop_limit_r = new_stop, new_tp, round(new_stop * 1.002, 8)
+        new_stop_r, new_tp_r = new_stop, new_tp
 
     try:
-        oco_raw = binance(
-            "spot", "order-list-oco",
-            "--symbol", f"{coin}USDC",
-            "--side", "SELL",
-            "--quantity", str(qty),
-            "--above-type", "LIMIT_MAKER",
-            "--above-price", str(new_tp_r),
-            "--below-type", "STOP_LOSS_LIMIT",
-            "--below-price", str(new_stop_r),
-            "--below-stop-price", str(stop_limit_r),
-            "--below-time-in-force", "GTC",
-            "--profile", "agent-profile",
+        sl_raw = binance(
+            "order", "sell", f"{coin}USDC", str(qty),
+            "--type", "stop-loss", "--price", str(new_stop_r),
+            "-o", "json", "--yes",
         )
-        oco = json.loads(oco_raw)
-        new_list_id = oco.get("orderListId")
-        new_tp_id = next(
-            (o["orderId"] for o in oco.get("orderReports", []) if o.get("type") == "LIMIT_MAKER"), None
-        )
-        new_sl_id = next(
-            (o["orderId"] for o in oco.get("orderReports", []) if o.get("type") == "STOP_LOSS_LIMIT"), None
-        )
+        sl_resp = json.loads(sl_raw)
+        new_sl_txid = sl_resp.get("txid", [None])[0]
     except Exception as e:
-        tg(f"⚠️ Trailing stop {coin} : échec placement nouvel OCO ({e})")
+        tg(f"⚠️ Trailing stop {coin} : échec placement nouvel SL ({e})")
         continue
 
     t["stop_price"] = new_stop_r
     t["tp_price"] = new_tp_r
-    t["order_list_id"] = new_list_id
-    t["stop_order_id"] = new_sl_id
-    t["tp_order_id"] = new_tp_id
+    t["sl_order_txid"] = new_sl_txid
     _save_trade_history_atomic(history)
 
     ts_updates.append(f"{coin}: stop {cur_stop:.4g}→{new_stop_r:.4g} | TP {cur_tp:.4g}→{new_tp_r:.4g}")
