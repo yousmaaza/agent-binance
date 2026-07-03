@@ -2,6 +2,12 @@
 
 Importé via :
     from core.position_helpers import tg, binance, _load_config, _save_trade_history_atomic, _save_config_atomic
+
+Security note: subprocess is used intentionally for curl calls (Telegram notifications).
+- curl via subprocess is preferred over urllib to avoid DNS resolution issues on macOS
+  (IPv6 DNS resolution failure in nohup context — see CLAUDE.md section 4).
+- subprocess.run() is always called with a list of arguments (safe), never with shell=True
+  or user-controlled strings, preventing command injection.
 """
 import json
 import os
@@ -12,10 +18,15 @@ from core.env import KRAKEN_CLI_PATH as _EXCHANGE_CLI, PROJECT_DIR as _PROJECT_D
 
 
 def tg(text: str) -> None:
-    """Envoie une notification Telegram via curl."""
+    """Envoie une notification Telegram via curl.
+
+    Uses subprocess.run() with a list of arguments (safe, no command injection).
+    curl is preferred over urllib to avoid DNS resolution failures on macOS.
+    """
     tok = os.environ.get("TELEGRAM_TOKEN", "")
     cid = os.environ.get("TELEGRAM_CHAT_ID", "")
     payload = json.dumps({"chat_id": cid, "text": text})
+    # subprocess.run with list of arguments is safe (no shell=True, no string interpolation)
     subprocess.run(
         ["curl", "-s", "-X", "POST",
          f"https://api.telegram.org/bot{tok}/sendMessage",
@@ -26,7 +37,10 @@ def tg(text: str) -> None:
 
 
 def binance(*args, _retries: int = 3) -> str:
-    """Appelle kraken avec retry exponentiel."""
+    """Appelle kraken avec retry exponentiel.
+
+    Uses subprocess.run() with a list of arguments (safe, no command injection).
+    """
     import time
 
     def _is_invalid_symbol(output: str) -> bool:
@@ -36,6 +50,7 @@ def binance(*args, _retries: int = 3) -> str:
         return output and not output.startswith("Request failed") and not output.startswith("Usage:")
 
     for attempt in range(_retries):
+        # subprocess.run with list of arguments is safe (no shell=True, no string interpolation)
         r = subprocess.run([_EXCHANGE_CLI] + list(args), capture_output=True, text=True, timeout=30)
         raw = r.stdout.strip()
 
