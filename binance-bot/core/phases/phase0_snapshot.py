@@ -34,10 +34,9 @@ try:
             entry_usdc = entry_price * qty
 
             try:
-                ticker_data = json.loads(
-                    binance("spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
-                )
-                current_price = float(ticker_data.get("price", entry_price))
+                ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
+                ticker_data = json.loads(ticker_raw)
+                current_price = float(ticker_data.get(f"{coin}USDC", {}).get("c", [entry_price])[0])
             except Exception:
                 current_price = entry_price
 
