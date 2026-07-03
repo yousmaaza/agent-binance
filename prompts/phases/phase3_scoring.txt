@@ -43,11 +43,17 @@ Le script lit /tmp/cycle___CYCLE_ID___phase3_input.json et écrit /tmp/cycle___C
 Stdout attendu : PHASE3_DONE|N_buy=X|skipped=Y|top_score=Z
 
 Lis /tmp/cycle___CYCLE_ID___phase3_output.json pour récupérer :
-- buy_candidates, sell_candidates, skip_coins_detail
+- buy_candidates, sell_candidates, skip_coins_detail, scores_detail
 - top_score, N_buy, skipped, skip_type, skip_detail
 
 Mets à jour les variables de synthèse :
 - top_score, skipped, skip_type, skip_detail
 
+# Construire le résumé des scores pour le heartbeat (max 300 chars)
+_scores_summary = ", ".join(
+    f"{coin}:{d['score']}/10→{d['decision']}"
+    for coin, d in scores_detail.items()
+)[:300]
+
 ⏱️ HEARTBEAT END PHASE 3 — appel hb(3) immédiatement ci-dessous
-hb(3, summary=f"{N_buy} BUY candidates, {len(skip_coins_detail)} skipped, top_score {top_score}/10")
+hb(3, summary=f"{N_buy} BUY, {len(skip_coins_detail)} SKIP TYPE_A, top_score {top_score}/10 | {_scores_summary}")
