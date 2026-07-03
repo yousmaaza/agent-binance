@@ -14,26 +14,52 @@ import os
 import subprocess
 import tempfile
 
+from loguru import logger
+
 from core.env import KRAKEN_CLI_PATH as _EXCHANGE_CLI, PROJECT_DIR as _PROJECT_DIR
 
 
 def tg(text: str) -> None:
-    """Envoie une notification Telegram via curl.
+    """Envoie une notification Telegram via curl. Logue les erreurs en cas d'échec.
 
     Uses subprocess.run() with a list of arguments (safe, no command injection).
     curl is preferred over urllib to avoid DNS resolution failures on macOS.
     """
     tok = os.environ.get("TELEGRAM_TOKEN", "")
     cid = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+    if not tok:
+        logger.warning("tg(): TELEGRAM_TOKEN vide, notification non envoyée")
+        return
+    if not cid:
+        logger.warning("tg(): TELEGRAM_CHAT_ID vide, notification non envoyée")
+        return
+
     payload = json.dumps({"chat_id": cid, "text": text})
-    # subprocess.run with list of arguments is safe (no shell=True, no string interpolation)
-    subprocess.run(
-        ["curl", "-s", "-X", "POST",
-         f"https://api.telegram.org/bot{tok}/sendMessage",
-         "-H", "Content-Type: application/json",
-         "-d", payload, "--max-time", "20"],
-        capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            ["curl", "-s", "-X", "POST",
+             f"https://api.telegram.org/bot{tok}/sendMessage",
+             "-H", "Content-Type: application/json",
+             "-d", payload, "--max-time", "20"],
+            capture_output=True,
+            text=True,
+            timeout=25,
+        )
+        if result.returncode != 0:
+            logger.error(f"tg(): curl exit code {result.returncode}, stderr: {result.stderr[:200]}")
+        else:
+            try:
+                resp = json.loads(result.stdout) if result.stdout else {}
+                if not resp.get("ok"):
+                    error_msg = resp.get("description", "unknown error")
+                    logger.error(f"tg(): Telegram API error: {error_msg}")
+            except json.JSONDecodeError:
+                logger.warning(f"tg(): curl succeeded but response is not JSON: {result.stdout[:200]}")
+    except subprocess.TimeoutExpired:
+        logger.error("tg(): curl timeout (25s)")
+    except Exception as e:
+        logger.error(f"tg(): unexpected error: {e}")
 
 
 def binance(*args, _retries: int = 3) -> str:
