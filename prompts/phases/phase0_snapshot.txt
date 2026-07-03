@@ -1,0 +1,67 @@
+
+PHASE 0 — SNAPSHOT POSITIONS OUVERTES + VÉRIFICATIONS PRÉALABLES
+⏱️ HEARTBEAT START PHASE 0
+_hb_start(0)
+
+# ⚠️ Valeurs autorisées pour close_reason en Phase 0 (et seulement en Phase 0) :
+# - "market_above_tp" : prix marché au-dessus du TP lors du rattrapage OCO
+# - "profit_target_phase0" : position fermée en Phase 0 pour prise de profit (>= min_profit_pct_take)
+# - "protection_exhausted" : SELL MARKET après max_oco_retry échecs de rattrapage OCO
+# Aucune autre valeur n'est permise en Phase 0. Les autres close_reason (tp_hit, sl_hit, etc.) appartiennent aux autres phases.
+
+# --- SNAPSHOT POSITIONS OUVERTES ---
+# Exécute le script de snapshot (P&L boucle, ticker-price) :
+#   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_snapshot.py __CYCLE_ID__
+# Le script envoie la notification Telegram et affiche sur stdout :
+#   PHASE0_SNAPSHOT_DONE|open_positions=N
+# Utilise la valeur open_positions pour la suite de Phase 0.
+# --- FIN SNAPSHOT ---
+
+Lis config.json pour récupérer TOUS les paramètres.
+Exécute : binance-cli spot get-account --profile agent-profile
+Calcule : portfolio_total = USDC_free + sum(locked USDC de tous les assets)
+budget_disponible = USDC_free × usdc_allocation_pct
+
+Lis state/trade_history.json.
+Identifie les trades du jour (date = aujourd'hui UTC).
+daily_pnl = sum(pnl_usdc pour trades fermés aujourd'hui)
+Si daily_pnl < -(portfolio_total × daily_loss_limit_pct) :
+→ tg("⛔ Daily loss limit atteinte. Trading pausé pour aujourd'hui.")
+→ ARRÊTE.
+
+Vérifie les trades "open" dans trade_history.json vs les ordres ouverts Binance :
+Pour chaque trade open dans l'historique :
+  binance-cli spot get-order --symbol {COIN}USDC --orderId {entry_order_id} --profile agent-profile
+  Si l'ordre d'entrée est FILLED et que l'ordre stop ou TP n'est plus dans get-open-orders :
+    → Le trade est fermé. Récupère le prix d'exécution.
+    → Calcule pnl_usdc = (exit_price - entry_price) × quantity
+    → Calcule pnl_pct = (exit_price - entry_price) / entry_price × 100
+    → Met à jour trade_history.json : status="closed", exit_price, pnl_usdc, pnl_pct, exit_date
+    → Si pnl_usdc > 0 : tg("✅ TP touché : {COIN} +{pnl_usdc:.2f} USDC (+{pnl_pct:.1f}%)")
+    → Sinon : tg("🛑 Stop touché : {COIN} {pnl_usdc:.2f} USDC ({pnl_pct:.1f}%)")
+
+RATTRAPAGE protection_failed :
+Exécute le script OCO retry (idempotence, SELL MARKET fallback, rattrapage OCO) :
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_oco_retry.py __CYCLE_ID__
+Le script affiche sur stdout : PHASE0_OCO_DONE|retried=N
+
+# --- TRAILING STOP ---
+# Pour chaque position ouverte avec OCO actif, vérifier si le prix a progressé
+# et remonter le stop-loss en conséquence.
+# Exécute le script trailing stop :
+#   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_trailing_stop.py __CYCLE_ID__
+# Le script affiche sur stdout : PHASE0_TS_DONE|updated=N
+# --- FIN TRAILING STOP ---
+
+# --- RÉALISATION DE PROFITS (Calibrage intégré Phase 0) ---
+# Évaluer chaque position ouverte : vendre si P&L >= min_profit_pct_take
+# Exécute le script de réalisation de profits :
+#   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_profit.py __CYCLE_ID__
+# Le script affiche sur stdout : PHASE0_PROFIT_DONE|closed=N
+# --- FIN RÉALISATION DE PROFITS ---
+
+# open_positions : valeur retournée par phase0_snapshot.py (PHASE0_SNAPSHOT_DONE|open_positions=N).
+# max_open_positions : lire depuis config.json (champ max_open_positions, défaut 4).
+tg(f"📋 Phase 0 — Vérifications\nPortfolio : {portfolio_total:.2f} USDC\nBudget dispo : {budget_disponible:.2f} USDC\nPositions ouvertes : {open_positions}/{max_open_positions}\nPnL du jour : {daily_pnl:+.2f} USDC")
+⏱️ HEARTBEAT END PHASE 0 — appel hb(0) immédiatement ci-dessous
+hb(0, summary=f"Portfolio {portfolio_total:.2f} USDC, {open_positions} positions, PnL jour {daily_pnl:+.2f} USDC")

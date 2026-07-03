@@ -1,0 +1,38 @@
+
+PHASE 4 — SIZING ET PRÉPARATION DES ORDRES
+⏱️ HEARTBEAT START PHASE 4
+_hb_start(4)
+Pour chaque BUY candidate :
+
+# Sizing basé sur le risque fixe
+portfolio_total = (calculé en Phase 0)
+risk_usdc = portfolio_total × risk_per_trade_pct        # ex: 152 × 0.01 = 1.52 USDC
+
+# Estimation ATR comme proxy de volatilité (utilise la range des bougies 4h)
+# ATR ≈ (high - low) moyen sur 14 bougies. Utilise les données TradingView.
+# Si ATR non disponible, utilise 2% du prix comme approximation conservative.
+atr_pct = atr_estimé / prix_actuel                      # ex: 0.02 = 2%
+stop_distance_pct = atr_pct × atr_stop_multiplier       # ex: 0.02 × 2 = 4%
+
+# Calcul des prix
+prix_entry = prix_actuel × (1 - limit_offset_pct)
+prix_stop = prix_entry × (1 - stop_distance_pct)
+prix_tp = prix_entry × (1 + stop_distance_pct × reward_risk_ratio)
+
+# Quantité
+quantite = risk_usdc / (prix_entry × stop_distance_pct)
+montant_ordre = quantite × prix_entry
+
+# Arrondir la quantité selon la précision Binance du coin (utilise stepSize)
+binance-cli spot exchange-info --symbol {COIN}USDC --profile agent-profile
+→ extraire stepSize et minQty, arrondir quantite
+
+Vérifications :
+- montant_ordre < min_order_usdc → SKIP (trop petit)
+- montant_ordre > budget_disponible × max_single_position_pct → réduire à la limite
+- prix_stop < 0 → SKIP (erreur)
+- Re-vérifier budget total de tous les ordres ≤ budget_disponible
+
+→ tg("💰 Phase 4 — Ordres préparés\n{pour chaque ordre : COIN qty @ entry | Stop: stop | TP: tp | Risque: risk_usdc USDC}")
+⏱️ HEARTBEAT END PHASE 4 — appel hb(4) immédiatement ci-dessous
+hb(4, summary=f"{len(ordres_prepares)} ordres dimensionnés")

@@ -67,17 +67,37 @@ logger.add(
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
 )
 
-# Chargement du prompt depuis prompts/trade_prompt.txt
-_PROMPT_FILE = os.path.join(PROJECT_DIR, "prompts", "trade_prompt.txt")
-with open(_PROMPT_FILE) as _f:
-    _TRADE_PROMPT_TEMPLATE = _f.read()
+def assemble_prompt(prompts_dir: str = "") -> str:
+    """Assemble le prompt de trading depuis les sous-fichiers par phase.
+
+    Ordre : header (trade_prompt.txt) + api_reference + phase0..phase5 + phases6_8.
+    PROMPT_VERSION est calculé sur le contenu assemblé final.
+    """
+    if not prompts_dir:
+        prompts_dir = os.path.join(PROJECT_DIR, "prompts")
+    parts = [
+        os.path.join(prompts_dir, "trade_prompt.txt"),
+        os.path.join(prompts_dir, "shared", "api_reference.txt"),
+        os.path.join(prompts_dir, "phases", "phase0_snapshot.txt"),
+        os.path.join(prompts_dir, "phases", "phase1_scan.txt"),
+        os.path.join(prompts_dir, "phases", "phase2_analysis.txt"),
+        os.path.join(prompts_dir, "phases", "phase3_scoring.txt"),
+        os.path.join(prompts_dir, "phases", "phase4_sizing.txt"),
+        os.path.join(prompts_dir, "phases", "phase5_execution.txt"),
+        os.path.join(prompts_dir, "phases", "phases6_8.txt"),
+    ]
+    return "\n".join(open(p).read() for p in parts)
+
+
+# Assemblage du prompt de trading depuis les sous-fichiers par phase
+_TRADE_PROMPT_TEMPLATE = assemble_prompt(os.path.join(PROJECT_DIR, "prompts"))
 
 # Chargement du prompt position depuis prompts/position_prompt.txt
 _POSITION_PROMPT_FILE = os.path.join(PROJECT_DIR, "prompts", "position_prompt.txt")
 with open(_POSITION_PROMPT_FILE) as _f:
     _POSITION_PROMPT_TEMPLATE = _f.read()
 
-# SHA1 du template brut pour versionner le prompt (fingerprint non-cryptographique, stable entre cycles)
+# SHA1 du prompt assemblé pour versionner (fingerprint non-cryptographique, stable entre cycles)
 # usedforsecurity=False supprime le warning Bandit B324 (usage déclaré non-cryptographique)
 PROMPT_VERSION = hashlib.sha1(_TRADE_PROMPT_TEMPLATE.encode(), usedforsecurity=False).hexdigest()[:8]
 
