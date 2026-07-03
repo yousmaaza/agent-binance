@@ -16,25 +16,23 @@ Appelle les trois screeners TradingView pour identifier les opportunités sur le
 Si un appel MCP échoue → continuer avec les données disponibles (top_gainers_symbols ou breakout_symbols = [] si l'appel a échoué), ne pas bloquer le cycle.
 
 Vérification de tradabilité USDC — pour chaque coin candidat de l'univers de départ, exécute :
-binance-cli spot ticker-price --symbol {COIN}USDC --profile agent-profile
-- Si le prix est retourné ET le volume 24h (issu des screeners ou ticker24hr) >= 5M USDC → marquer ✓ (tradable)
-- Si la commande échoue ou le symbole est introuvable → marquer ✗ (non tradable)
-
-Pour le volume 24h : si les screeners ne fournissent pas de volume suffisamment précis pour un coin de l'univers, complète avec :
-binance-cli spot ticker24hr --symbol {COIN}USDC --profile agent-profile
-→ extraire quoteVolume pour comparaison >= 5M USDC.
+kraken ticker {COIN}USDC -o json
+- Si `data["{COIN}USDC"]` présent → tradable. Prix = `data["{COIN}USDC"]["c"][0]`.
+- Volume 24h USDC = `float(data["{COIN}USDC"]["v"][1]) * float(prix)`. Si volume < 5M USDC → ✗
+- Si la commande échoue ou la paire est absente → ✗ (non tradable)
+Note : BTC doit utiliser la paire XBTUSDC (pas BTCUSDC) — mapping à appliquer avant l'appel.
 
 Filtre définitif : éliminer immédiatement les coins marqués ✗ (paire USDC introuvable ou volume insuffisant). Ces coins ne doivent PAS être inclus dans l'univers final transmis à la Phase 2. Seuls les coins avec ✓ passent à la suite.
 
 Calcul du sentiment global :
 - Utilise market_sentiment_data (issu de mcp__tradingview__market_sentiment) si disponible.
-- Sinon, calcule depuis les données ticker24hr : compte les coins avec priceChangePercent > 0 (bullish_count) et < 0 (bearish_count)
+- Sinon, calcule depuis les données kraken ticker : compte les coins avec priceChangePercent > 0 (bullish_count) et < 0 (bearish_count)
 - Si bullish_count >= 2 × bearish_count → sentiment = "Bullish"
 - Si bearish_count >= 2 × bullish_count → sentiment = "Bearish"
 - Sinon → sentiment = "Neutral"
 - Stocke sentiment comme variable pour Phase 3 et Phase 7.
 
-Stocke pour chaque coin tradable : prix_actuel, volume_24h, change_pct_24h (depuis screeners / ticker24hr). Ces données seront réutilisées en Phase 3 pour le scoring.
+Stocke pour chaque coin tradable : prix_actuel, volume_24h, change_pct_24h (depuis screeners / kraken ticker). Ces données seront réutilisées en Phase 3 pour le scoring.
 
 → tg("📡 Phase 1 — Scan marché\nSentiment : {sentiment}\n{N} candidats identifiés : {liste}")
 ⏱️ HEARTBEAT END PHASE 1 — appel hb(1) immédiatement ci-dessous
