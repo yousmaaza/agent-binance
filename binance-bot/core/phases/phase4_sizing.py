@@ -1,4 +1,4 @@
-"""Dimensionnement de position et filtres LOT_SIZE — phase 4.
+"""Dimensionnement de position et filtres Kraken (lot_decimals/ordermin/costmin) — phase 4.
 
 Lit les buy_candidates depuis /tmp/cycle_{CYCLE_ID}_phase4_input.json :
 {
@@ -77,18 +77,22 @@ for candidate in buy_candidates:
         montant_ordre = budget_max
 
     try:
-        ei_raw = binance("spot", "exchange-info", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
-        ei = json.loads(ei_raw)
-        filters = {f["filterType"]: f for sym in ei.get("symbols", []) for f in sym.get("filters", [])}
-        step = float(filters.get("LOT_SIZE", {}).get("stepSize", "0.00000001"))
-        min_qty = float(filters.get("LOT_SIZE", {}).get("minQty", "0"))
+        pairs_raw = binance("pairs", "--pair", f"{coin}USDC", "-o", "json")
+        pair_data = json.loads(pairs_raw).get(f"{coin}USDC", {})
+        lot_dec = int(pair_data.get("lot_decimals", 8))
+        step = 10 ** (-lot_dec)
+        min_qty = float(pair_data.get("ordermin", "0"))
+        costmin = float(pair_data.get("costmin", "5.0"))
         quantite = math.floor(quantite / step) * step
-        quantite = round(quantite, 8)
+        quantite = round(quantite, lot_dec)
         if quantite < min_qty:
-            skipped.append({"coin": coin, "reason": f"qty {quantite} < minQty {min_qty}"})
+            skipped.append({"coin": coin, "reason": f"qty {quantite} < ordermin {min_qty}"})
+            continue
+        if quantite * prix_entry < costmin:
+            skipped.append({"coin": coin, "reason": f"montant {quantite * prix_entry:.2f} USDC < costmin {costmin}"})
             continue
     except Exception as e:
-        tg(f"⚠️ {coin} exchange-info échoué : {e}")
+        tg(f"⚠️ {coin} kraken pairs échoué : {e}")
 
     ordres_prepares.append({
         "coin": coin,

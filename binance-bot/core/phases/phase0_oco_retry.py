@@ -33,9 +33,9 @@ try:
         stop_calc = t["stop_price"]
 
         # Idempotence : vérifier qu'aucun OCO actif n'existe déjà
-        open_orders_raw = binance("spot", "get-open-orders", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
-        open_orders = json.loads(open_orders_raw) if open_orders_raw.strip() else []
-        has_oco = any(o.get("type") in ("LIMIT_MAKER", "STOP_LOSS_LIMIT") for o in open_orders)
+        open_orders_raw = binance("open-orders", "-o", "json")
+        open_orders = json.loads(open_orders_raw).get("open", {})
+        has_oco = False  # Kraken n'a pas d'OCO natif — logique revue en T3
         if has_oco:
             for item in history:
                 if item.get("trade_id") == t.get("trade_id"):
@@ -43,10 +43,9 @@ try:
             tg(f"ℹ️ {coin} : OCO déjà actif, protection_failed corrigé")
             continue
 
-        ticker_data = json.loads(
-            binance("spot", "ticker-price", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
-        )
-        prix_actuel = float(ticker_data["price"])
+        ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
+        ticker_data = json.loads(ticker_raw)
+        prix_actuel = float(ticker_data.get(f"{coin}USDC", {}).get("c", [0])[0])
 
         if prix_actuel > tp_calc:
             sell_raw = binance(
@@ -100,11 +99,11 @@ try:
                         item["oco_retry_count"] = oco_retry_count + 1
                 _save_trade_history_atomic(history)
 
-                ei_raw = binance("spot", "exchange-info", "--symbol", f"{coin}USDC", "--profile", "agent-profile")
-                ei = json.loads(ei_raw) if ei_raw.strip() else {}
-                filters = {f["filterType"]: f for sym in ei.get("symbols", []) for f in sym.get("filters", [])}
-                step = float(filters.get("LOT_SIZE", {}).get("stepSize", "1"))
-                qty_adj = math.floor(qty / step) * step
+                pairs_raw = binance("pairs", "--pair", f"{coin}USDC", "-o", "json")
+                pair_data = json.loads(pairs_raw).get(f"{coin}USDC", {})
+                lot_dec = int(pair_data.get("lot_decimals", 8))
+                step = 10 ** (-lot_dec)
+                qty_adj = round(math.floor(qty / step) * step, lot_dec)
 
                 tp_oco = max(tp_calc, prix_actuel * 1.001)
                 oco_raw = binance(
