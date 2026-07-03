@@ -13,7 +13,7 @@ import math
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _save_trade_history_atomic  # noqa: E402
+from core.trade_helpers import tg, binance, _save_trade_history_atomic, log_phase0_event  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -44,14 +44,28 @@ for t in history:
         ticker_data = json.loads(ticker_raw)
         price = float(ticker_data.get(f"{coin}USDC", {}).get("c", [0])[0])
     except Exception as e:
+        log_phase0_event(CYCLE_ID, "phase0_trailing_stop", coin, "price_fetch_error", {
+            "error": str(e),
+        })
         tg(f"⚠️ Trailing stop {coin} : impossible de récupérer le prix ({e})")
         continue
 
     new_stop = round(price - trail_dist, 8)
 
     if new_stop <= cur_stop + trail_dist * 0.20:
+        log_phase0_event(CYCLE_ID, "phase0_trailing_stop", coin, "ts_update_skip", {
+            "reason": "new_stop_too_close",
+            "current_price": price,
+            "current_stop": cur_stop,
+            "new_stop": new_stop,
+        })
         continue
     if new_stop >= price * 0.98:
+        log_phase0_event(CYCLE_ID, "phase0_trailing_stop", coin, "ts_update_skip", {
+            "reason": "new_stop_too_high",
+            "current_price": price,
+            "new_stop": new_stop,
+        })
         continue
 
     new_tp = max(cur_tp, round(price + trail_dist * 3, 8))
@@ -60,6 +74,10 @@ for t in history:
         sl_txid = t["sl_order_txid"]
         binance("order", "cancel", sl_txid, "-o", "json", "--yes")
     except Exception as e:
+        log_phase0_event(CYCLE_ID, "phase0_trailing_stop", coin, "sl_cancel_error", {
+            "sl_txid": sl_txid,
+            "error": str(e),
+        })
         tg(f"⚠️ Trailing stop {coin} : échec annulation SL ({e}), skip")
         continue
 
@@ -85,6 +103,12 @@ for t in history:
         sl_resp = json.loads(sl_raw)
         new_sl_txid = sl_resp.get("txid", [None])[0]
     except Exception as e:
+        log_phase0_event(CYCLE_ID, "phase0_trailing_stop", coin, "ts_update_failed", {
+            "reason": "sl_placement_error",
+            "error": str(e),
+            "attempted_new_stop": new_stop_r,
+            "attempted_new_tp": new_tp_r,
+        })
         tg(f"⚠️ Trailing stop {coin} : échec placement nouvel SL ({e})")
         continue
 
@@ -92,6 +116,15 @@ for t in history:
     t["tp_price"] = new_tp_r
     t["sl_order_txid"] = new_sl_txid
     _save_trade_history_atomic(history)
+
+    log_phase0_event(CYCLE_ID, "phase0_trailing_stop", coin, "ts_update_success", {
+        "old_stop": cur_stop,
+        "new_stop": new_stop_r,
+        "old_tp": cur_tp,
+        "new_tp": new_tp_r,
+        "current_price": price,
+        "new_sl_txid": new_sl_txid,
+    })
 
     ts_updates.append(f"{coin}: stop {cur_stop:.4g}→{new_stop_r:.4g} | TP {cur_tp:.4g}→{new_tp_r:.4g}")
     tg(

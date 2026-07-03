@@ -14,7 +14,7 @@ import datetime
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic  # noqa: E402
+from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, log_phase0_event  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -32,6 +32,13 @@ try:
         tp_calc = t["tp_price"]
         stop_calc = t["stop_price"]
 
+        log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "protection_recovery_start", {
+            "oco_retry_count": t.get("oco_retry_count", 0),
+            "entry_price": entry,
+            "stop_price": stop_calc,
+            "tp_price": tp_calc,
+        })
+
         # Idempotence : vérifier si un SL actif existe déjà
         sl_txid = t.get("sl_order_txid")
         if sl_txid:
@@ -39,6 +46,10 @@ try:
             qs_data = json.loads(qs_raw) if qs_raw.strip() else {}
             sl_status = qs_data.get(sl_txid, {}).get("status", "unknown")
             if sl_status == "open":
+                log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "sl_already_active_skip", {
+                    "sl_txid": sl_txid,
+                    "sl_status": sl_status,
+                })
                 tg(f"ℹ️ {coin} : SL déjà actif ({sl_txid}), protection_failed corrigé")
                 for item in history:
                     if item.get("trade_id") == t.get("trade_id"):
@@ -50,6 +61,11 @@ try:
         prix_actuel = float(ticker_data.get(f"{coin}USDC", {}).get("c", [0])[0])
 
         if prix_actuel > tp_calc:
+            log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "force_close_above_tp", {
+                "current_price": prix_actuel,
+                "tp_price": tp_calc,
+                "reason": "price_above_tp_protection_failed",
+            })
             sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
             sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
             sell_txid = sell_resp.get("txid", [None])[0]
@@ -68,13 +84,28 @@ try:
                             "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                             "protection_failed": False, "close_reason": "market_above_tp",
                         })
+                log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "force_close_success", {
+                    "exit_price": fill_exit,
+                    "pnl_usdc": pnl_usdc,
+                    "pnl_pct": pnl_pct,
+                })
                 tg(f"✅ {coin} fermé à market (prix {prix_actuel:.4g} > TP {tp_calc:.4g}) : {pnl_usdc:+.2f} USDC ({pnl_pct:+.1f}%)")
             else:
+                log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "force_close_failed", {
+                    "reason": "market_order_failed",
+                    "error": sell_raw[:200],
+                })
                 tg(f"⚠️ {coin} : fermeture market échouée — {sell_raw[:200]}")
         else:
             oco_retry_count = t.get("oco_retry_count", 0)
 
             if oco_retry_count >= max_oco_retry:
+                log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "retry_exhausted_fallback", {
+                    "oco_retry_count": oco_retry_count,
+                    "max_oco_retry": max_oco_retry,
+                    "current_price": prix_actuel,
+                    "stop_price": stop_calc,
+                })
                 sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
                 sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
                 sell_txid = sell_resp.get("txid", [None])[0]
@@ -94,8 +125,17 @@ try:
                                 "protection_failed": False, "close_reason": "protection_exhausted",
                                 "oco_retry_count": 0,
                             })
+                    log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "exhausted_fallback_success", {
+                        "exit_price": fill_exit,
+                        "pnl_usdc": pnl_usdc,
+                        "pnl_pct": pnl_pct,
+                    })
                     tg(f"🚨 {coin} : SL rattrapage échoué {max_oco_retry} fois. Fermeture SELL MARKET forcée.\n{pnl_usdc:+.2f} USDC ({pnl_pct:+.1f}%)")
                 else:
+                    log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "exhausted_fallback_failed", {
+                        "reason": "market_order_failed",
+                        "error": sell_raw[:200],
+                    })
                     tg(f"⚠️ {coin} : fermeture SELL MARKET (fallback protection_exhausted) échouée — {sell_raw[:200]}")
             else:
                 for item in history:
@@ -121,8 +161,19 @@ try:
                                 "stop_price": stop_calc,
                                 "oco_retry_count": 0,
                             })
+                    log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "sl_retry_success", {
+                        "retry_attempt": oco_retry_count + 1,
+                        "max_retries": max_oco_retry,
+                        "new_sl_txid": new_sl_txid,
+                        "stop_price": stop_calc,
+                    })
                     tg(f"🛡️ {coin} : SL de rattrapage placé (tentative {oco_retry_count + 1}) — SL {stop_calc:.4g}")
                 else:
+                    log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "sl_retry_failed", {
+                        "retry_attempt": oco_retry_count + 1,
+                        "max_retries": max_oco_retry,
+                        "reason": "sl_placement_failed",
+                    })
                     tg(f"⚠️ {coin} : SL rattrapage échoué (tentative {oco_retry_count + 1}/{max_oco_retry})")
 
     _save_trade_history_atomic(history)
