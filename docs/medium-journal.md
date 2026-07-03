@@ -10,6 +10,200 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-03
+
+### PRs mergées (14)
+
+Journée record : 14 PRs mergées entre 14:32 et 16:50 UTC. Deux fils narratifs distincts — la clôture de l'épic migration Binance → Kraken (12 PRs) et deux améliorations indépendantes en fin de journée.
+
+#### #270 — [REFACTO] Externaliser helpers Python en modules et découper trade_prompt par phase
+
+- **Mergée à** : 14:32 UTC (16:32 Europe/Paris)
+- **Branche** : `feat/issue-269-factoriser-trade-helpers-modules-phase`
+- **Issues fermées** : #269, #272, #275, #279, #280
+- **Contexte** : PR ouverte depuis le 29 juin (mentionnée dans l'entrée du 29/06), testée en production sur les cycles du 30 juin avant d'être mergée.
+- **Quoi** : refactorisation architecturale majeure. `trade_prompt.txt` passe de 1 086 lignes à 56 lignes (header + contexte), le reste découpé en 9 fichiers dans `prompts/phases/` et `prompts/shared/`. Les fonctions Python partagées (`tg()`, `binance()`, gestion d'état atomique) quittent la zone de texte et deviennent de vrais modules importables dans `binance-bot/core/trade_helpers.py` (79 lignes), `core/heartbeat.py` (66 lignes), `core/position_helpers.py` (88 lignes). Les 12 scripts de phase migrent de `prompts/code/` vers `binance-bot/core/phases/` (package Python avec `__init__.py`). La signature de `_run_workflow_cycle()` passe de 13 à 7 paramètres via un dataclass `WorkflowConfig`.
+- **Scope** : 28+ fichiers, ~+2 000 / -1 200 lignes. La génération dynamique du fichier helpers temporaire dans `runner.py` est supprimée.
+- **Pourquoi c'est structurant** : c'est la sortie définitive du paradigme "code Python dans un fichier `.txt` exécuté via `exec()`". Les scripts de phase sont désormais testables unitairement, visibles dans l'IDE avec coloration syntaxique, et importables normalement. La PR #304 (unittests ajoutés le même jour) en est la conséquence directe.
+- **Doc tech** : [docs/technique/pr-270-refacto-externaliser-helpers-python-modules.md](../technique/pr-270-refacto-externaliser-helpers-python-modules.md)
+
+---
+
+#### #293 — [M285] Remplacer binance-cli par kraken-cli dans la couche de détection
+
+- **Mergée à** : 14:44 UTC
+- **Issues fermées** : #285
+- **Quoi** : première PR de la vague migration. Remplace `BINANCE_CLI_PATH` par `KRAKEN_CLI_PATH` dans `core/env.py` (détection via `shutil.which("kraken")` + fallback `~/.cargo/bin/kraken`). Les variables internes `_BINANCE_CLI` deviennent `_EXCHANGE_CLI` dans les deux modules helpers. La substitution `__KRAKEN_CLI_PATH__` remplace `__BINANCE_CLI_PATH__` dans les templates de prompt. La fonction `binance(*args)` conserve son nom pour ne pas casser les 12 scripts de phase qui l'importent — renommage planifié dans un ticket futur.
+- **Doc tech** : [docs/technique/pr-293-remplacer-binance-cli-par-kraken.md](../technique/pr-293-remplacer-binance-cli-par-kraken.md)
+
+---
+
+#### #294 — [M286] Adapter les commandes CLI de lecture vers Kraken
+
+- **Mergée à** : 14:54 UTC
+- **Issues fermées** : #286
+- **Quoi** : migration des commandes de lecture d'état de marché. Les commandes `binance-cli spot account`, `spot order-status`, `spot open-orders` sont remplacées par leurs équivalents Kraken : `kraken balance`, `kraken query-orders`, `kraken open-orders`. Les scripts de phase Phase 0 qui interrogent l'état du compte ou des ordres ouverts sont mis à jour.
+- **Doc tech** : [docs/technique/pr-294-adapter-cli-kraken.md](../technique/pr-294-adapter-cli-kraken.md)
+
+---
+
+#### #295 — [M3] Adapter les filtres de marché Binance LOT_SIZE → Kraken
+
+- **Mergée à** : 14:58 UTC
+- **Issues fermées** : #289
+- **Quoi** : migration du système de filtrage des tailles d'ordres. Le modèle Binance `LOT_SIZE` (quantité minimale, step size, precision) est remplacé par le modèle Kraken `lot_decimals` (nombre de décimales pour la quantité). Les scripts de phase Phase 4 et Phase 5 qui arrondissent les quantités sont mis à jour pour appeler `kraken asset-pairs` au lieu de `binance-cli spot exchange-info`.
+- **Doc tech** : [docs/technique/pr-295-kraken-market-filters.md](../technique/pr-295-kraken-market-filters.md)
+
+---
+
+#### #296 — [M3] Migrer les ordres OCO Binance vers bracket orders Kraken
+
+- **Mergée à** : 15:08 UTC
+- **Issues fermées** : #287
+- **Quoi** : changement architectural de la protection des positions. Sur Binance, chaque trade était protégé par un ordre OCO (One-Cancels-Other) combinant stop-loss et take-profit en un seul objet exchange. Kraken ne supporte pas les OCO. Le modèle adopté : **BUY MARKET + SELL STOP-LOSS uniquement**. Le take-profit n'est plus géré par un ordre exchange — il est détecté cycliquement par `phase0_profit.py` qui scrute le prix à chaque cycle 4h. Les champs `order_list_id`, `stop_order_id`, `tp_order_id` sont retirés du schéma `trade_history.json`. Le nouveau champ `sl_order_txid` persiste l'identifiant Kraken du SELL STOP-LOSS. La logique de rattrapage `phase0_oco_retry.py` est entièrement réécrite : idempotence (vérification via `query-orders` avant de retenter), fallback SELL MARKET si `max_oco_retry` est atteint.
+- **Décision notable** : simplification du contrat protection/exchange. Le TP déporté dans la boucle cyclique est moins réactif (4h de latence max) mais rend le système indépendant de la capacité OCO de l'exchange.
+- **Doc tech** : [docs/technique/pr-296-kraken-bracket-orders.md](../technique/pr-296-kraken-bracket-orders.md)
+
+---
+
+#### #298 — [M4] Adapter le parsing des réponses JSON Binance → Kraken (phase0_profit)
+
+- **Mergée à** : 15:13 UTC
+- **Issues fermées** : #288
+- **Quoi** : migration du parseur de réponses d'ordres. Le format JSON Binance (`orderId`, `status: "FILLED"`, `executedQty`, `cummulativeQuoteQty`) est incompatible avec le format Kraken (`txid`, `status: "closed"`, `vol_exec`, `cost`). `phase0_profit.py` et les scripts de phase qui lisent les réponses d'ordres sont mis à jour pour le schéma Kraken.
+- **Doc tech** : [docs/technique/pr-298-kraken-json-parsing.md](../technique/pr-298-kraken-json-parsing.md)
+
+---
+
+#### #302 — refactor: migrer helpers position vers module symétrique
+
+- **Mergée à** : 15:21 UTC
+- **Issues fermées** : #280 (déjà fermée via PR #270 — doublon de clôture)
+- **Quoi** : migration de `position_prompt.txt` du mécanisme `exec(open("__HELPERS_PATH__").read())` (génération dynamique) vers `from core.position_helpers import ...` (importation directe). Symétrique au changement fait sur `trade_prompt.txt` dans PR #270.
+- **Doc tech** : [docs/technique/pr-302-migrer-helpers-position.md](../technique/pr-302-migrer-helpers-position.md)
+
+---
+
+#### #303 — feat(phase0): Ajouter logs structurés pour traçabilité
+
+- **Mergée à** : 15:21 UTC
+- **Issues fermées** : #301
+- **Quoi** : ajout de logs structurés dans Phase 0 (`phase0_snapshot.py`). Chaque évaluation de position ouverte émet maintenant un log `cycle_log.debug()` avec les métriques clés (coin, prix actuel, P&L, distance au stop). Améliore la traçabilité des décisions Phase 0 sans polluer le journal INFO.
+- **Doc tech** : [docs/technique/pr-303-phase0-structured-logs.md](../technique/pr-303-phase0-structured-logs.md)
+
+---
+
+#### #304 — [M0] Ajouter unittests pour fonctions utilitaires
+
+- **Mergée à** : 15:22 UTC
+- **Issues fermées** : #300
+- **Quoi** : premiers vrais tests unitaires Python du projet. La PR ajoute `tests/test_phase0_trailing_stop.py` avec des tests pour les fonctions de `core/trade_helpers.py` — notamment `_save_json_atomic()` et les fonctions de calcul de trailing stop. Conséquence directe de la PR #270 : le code étant dans de vrais modules Python, il est maintenant testable unitairement sans lancer un cycle complet.
+- **Doc tech** : [docs/technique/pr-304-ajouter-unittests-fonctions.md](../technique/pr-304-ajouter-unittests-fonctions.md)
+
+---
+
+#### #305 — [M5] Mettre à jour les prompts et api_reference pour Kraken
+
+- **Mergée à** : 15:24 UTC
+- **Issues fermées** : #290
+- **Quoi** : mise à jour de `prompts/shared/api_reference.txt` — le guide de référence des commandes exchange injecté dans chaque cycle. Les exemples Binance (`binance-cli spot market-buy --symbol BTCUSDC`) sont remplacés par leurs équivalents Kraken (`kraken order buy XBT/USDC market`). Les commandes de lecture (prix, solde, ordres ouverts) sont également mises à jour.
+- **Doc tech** : [docs/technique/pr-305-mettre-jour-prompts-api-reference-kraken.md](../technique/pr-305-mettre-jour-prompts-api-reference-kraken.md)
+
+---
+
+#### #310 — [M291] Mettre à jour config.json pour Kraken
+
+- **Mergée à** : 15:42 UTC
+- **Issues fermées** : #291
+- **Quoi** : mise à jour de `config.json` pour refléter l'exchange Kraken. Ajout de la clé `exchange: "kraken"`, mise à jour de `pairs_suffix` (de `USDC` à `/USDC` format Kraken), ajout du paramètre `lot_decimals_default: 8` pour les paires sans données live. La commande `/status` est mise à jour pour afficher "Kraken" au lieu de "Binance".
+- **Doc tech** : [docs/technique/pr-310-mettre-a-jour-config-kraken.md](../technique/pr-310-mettre-a-jour-config-kraken.md)
+
+---
+
+#### #312 — [M1] Refactorer Phase 1 — univers depuis Kraken USDC + seuil 1M
+
+- **Mergée à** : 16:32 UTC (18:32 Europe/Paris)
+- **Issues fermées** : #311
+- **Quoi** : refonte de la Phase 1 (scan de marché). Avant : l'univers de candidats venait de listes TradingView / config statique, validées contre Binance. Après : l'univers est construit directement depuis les paires USDC réellement disponibles sur **Kraken** via `kraken pairs -o json`. Les screeners TradingView (`top_gainers`, `volume_breakout_scanner`) deviennent des enrichisseurs de signal, non plus des définisseurs d'univers. Le seuil de volume est abaissé de 5M à **1M USDC** (configurable via `min_volume_usdc` dans `config.json`), augmentant le nombre de candidats tradables. Les `portfolio_coins` (XBT, XRP, SOL) sont inclus comme fallback même si leur volume 24h tombe sous le seuil. Un mapping explicite `TV_MAP` (XBT→BTC, XDG→DOGE) assure la correspondance entre symboles Kraken et TradingView.
+- **Impact concret** : avant la migration, Phase 1 pouvait proposer 15+ candidats Binance non tradables sur Kraken. Après, l'univers reflète strictement ce qui est exécutable.
+- **Doc tech** : [docs/technique/pr-312-refactor-phase1-kraken-usdc.md](../technique/pr-312-refactor-phase1-kraken-usdc.md)
+
+---
+
+#### #316 — [BUG] Fix phase5_execution.py crash TypeError quand trade=None
+
+- **Mergée à** : 16:49 UTC
+- **Issues fermées** : #315
+- **Quoi** : correction d'un bug introduit lors de la migration Phase 5. Quand aucun BUY n'est exécuté en Phase 4, l'orchestrateur passe `{"trade": null}` en input. Le code original tentait `trade["coin"]` sans vérifier la nullité → `TypeError: 'NoneType' object is not subscriptable`. Fix : remplacement de `.get("trade", {})` par `.get("trade")` suivi d'une garde `if not trade: print("PHASE5_DONE|executed=0|skipped=0"); sys.exit(0)`. 0 ordre exécuté est un cycle valide, pas une erreur — Phase 6 et Phase 7 continuent normalement.
+- **Doc tech** : [docs/technique/pr-316-fix-phase5-nonetype-guard.md](../technique/pr-316-fix-phase5-nonetype-guard.md)
+
+---
+
+#### #317 — [FEAT] Afficher le score par coin dans le rapport Phase 3
+
+- **Mergée à** : 16:50 UTC
+- **Issues fermées** : #314
+- **Quoi** : enrichissement de la notification Telegram Phase 3. Avant : le rapport indiquait uniquement le nombre de BUY candidats et le score top. Après : chaque coin évalué apparaît avec son score/10, sa décision (BUY/HOLD/SKIP TYPE_A/SELL) et les raisons agrégées (signal 4h/1D, RSI, MACD, top gainers). Le JSON de sortie gagne un champ `scores_detail` pour chaque coin. Le message Telegram est tronqué à 4 000 chars si nécessaire. Le heartbeat `hb(3)` inclut un résumé des scores (max 300 chars) pour la relecture des logs.
+- **Doc tech** : [docs/technique/pr-317-score-par-coin-phase-3.md](../technique/pr-317-score-par-coin-phase-3.md)
+
+---
+
+### Issues fermées (23)
+
+Les 23 issues fermées aujourd'hui se répartissent en trois groupes.
+
+**Épic et sous-tickets migration (10)** :
+- **#284** — `epic: Migration exchange Binance → Kraken (MiCA)` [epic · P0] — épic racine, créée et fermée le même jour à 15:45 UTC. Elle couvrait l'ensemble de la migration exchange.
+- **#285** → fermée par PR #293 | **#286** → #294 | **#287** → #296 | **#288** → #298 | **#289** → #295 | **#290** → #305 | **#291** → #310 | **#292** → fermeture manuelle (validation end-to-end planifiée) | **#311** → #312
+
+**Features et bugs (4)** :
+- **#315** — `[BUG] phase5_execution.py crash TypeError quand trade=None` → fermée par PR #316 (créée et fermée le même jour en 27 minutes)
+- **#314** — `[FEAT] Afficher le score par coin dans le rapport Phase 3` → fermée par PR #317 (créée et fermée le même jour en 28 minutes)
+- **#300** — `[REC] Ajouter unittests pour fonctions utilitaires` → fermée par PR #304
+- **#301** — `[REC] Ajouter logs structurés en phase0` → fermée par PR #303
+
+**Tickets REC-AUTO techniques (9)** :
+#297, #299, #307, #308, #309 — tickets de qualité auto-générés par le tech lead reviewer, fermés en batch lors du passage des PRs de migration. #276 fermé manuellement (ticket de test bruit, sans intérêt fonctionnel).
+
+---
+
+### Nouveaux tickets créés (significatifs)
+
+- **#318** — `[EPIC] Amélioration bot — qualité des signaux et expérience utilisateur` [epic] — créé à 16:58 UTC, **OPEN**. Épic de la prochaine phase post-migration. Regroupe les améliorations de la qualité des signaux (combined_analysis Phase 2, meilleure précision scoring) et de l'expérience utilisateur (rapport Phase 3 enrichi, notifications Telegram plus lisibles).
+
+- **#319** — `[M1] Remplacer coin_analysis par combined_analysis en Phase 2` [enhancement] — créé à 16:59 UTC, **OPEN**. L'outil TradingView `coin_analysis` utilisé en Phase 2 serait avantageusement remplacé par `combined_analysis` qui fournit à la fois l'analyse 4h et 1D en un seul appel, réduisant le nombre d'appels MCP et améliorant la cohérence des signaux.
+
+- **#313** — `[FIX] Factoriser STABLECOINS dans trade_helpers pour éviter divergence` [enhancement] — créé à 16:41 UTC, **OPEN**. La liste des stablecoins à exclure du scoring est dupliquée dans plusieurs fichiers de phase. Risque de divergence si un nouveau stablecoin (USDT, DAI, TUSD) est ajouté à un endroit et oublié ailleurs.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "MiCA a forcé la main — une migration exchange en une après-midi". Depuis l'entrée en vigueur du règlement MiCA, Binance a progressivement restreint ses services aux résidents européens. La migration Binance → Kraken n'était pas un choix technique mais une contrainte réglementaire. Ce qui est frappant, c'est la vitesse d'exécution : 12 PRs de migration mergées entre 14:44 et 16:32 UTC (1h48), couvrant CLI, filtres de marché, format JSON, ordres, config, prompts et Phase 1. L'architecture modulaire mise en place lors des semaines précédentes (PR #270, modules de phase séparés, helpers isolés) a rendu cette migration chirurgicale. Chaque PR ne touche qu'une couche : detection → lecture → filtres → ordres → parsing → config → prompts → scan. Article sur ce que ça veut dire de "migrer d'exchange" dans un bot LLM-driven — et comment l'architecture du code détermine si c'est une journée de travail ou un mois.
+
+> **Angle secondaire** : "OCO est mort, vive le Stop-Loss seul". Sur Binance, chaque trade était protégé par un OCO (One-Cancels-Other) : un seul objet exchange gérait simultanément le stop-loss et le take-profit. Kraken ne supporte pas les OCO. Le modèle adopté en PR #296 : BUY MARKET + SELL STOP-LOSS uniquement, avec le take-profit détecté par la boucle cyclique Phase 0. C'est une simplification du modèle de protection, mais elle introduit une latence : si le marché monte très vite entre deux cycles 4h, le bot ne prend son profit qu'au prochain passage. Courte réflexion sur les compromis entre réactivité (TP exchange, instantané) et architecturale (TP piloté par le bot, configurable mais cyclique) — et pourquoi pour un bot 4h, la latence 4h est acceptable.
+
+> **Angle technique** : "Le premier vrai unittest du projet". La PR #304 ajoute `tests/test_phase0_trailing_stop.py` — les premiers tests unitaires Python de l'historique du projet. Ils n'auraient pas été possibles avant la PR #270 : quand les fonctions vivaient dans un fichier `.txt` exécuté via `exec()`, elles n'étaient pas importables. La migration vers de vrais modules Python (`core/trade_helpers.py`, `core/phases/`) a rendu le code testable. Un test unitaire comme signal d'architecture — pas de tests possibles = pas de séparation des responsabilités réelle.
+
+> **Angle narratif** : "Deux améliorations en fin de journée". Après la vague de migration (14:32–15:45 UTC), deux issues "nouvelles" ont été créées et résolues dans la même heure de fin d'après-midi : #315 (bug TypeError Phase 5, 27 minutes), #314 (feature score par coin, 28 minutes). La migration avait révélé un cas non géré (0 ordres = `trade=None`), et l'impulsion de la journée a déclenché une amélioration UX qui attendait dans le backlog. Pattern récurrent dans ce projet : les journées de merge massif finissent toujours par quelques tickets de nettoyage rapides.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **14** (record projet depuis le 13 juin à 73 issues fermées)
+- PRs migration Binance → Kraken : **10** (#293–#305 + #312)
+- Issues fermées : **23**
+- Épic fermée : **#284** (Migration exchange Binance → Kraken — créée et fermée le même jour)
+- Nouveaux tickets ouverts (restants) : **3** (#313, #318, #319)
+- Délai création → merge le plus court du jour : **27 minutes** (#315 → #316)
+- Fenêtre de la vague migration : **1h48** (14:44 → 16:32 UTC)
+- Première PR de la migration arrivée en prod : **#293** (14:44 UTC)
+- Clôture épic migration : **15:45 UTC**
+- Commits dans PR #270 (refacto architecturale) : **8 commits, 28+ fichiers**
+
+---
+
 ## 2026-06-29
 
 ### PRs mergées (1)
