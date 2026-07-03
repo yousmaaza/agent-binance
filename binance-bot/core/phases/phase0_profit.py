@@ -9,6 +9,7 @@ import sys
 import os
 import json
 import datetime
+import time
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
@@ -53,13 +54,17 @@ for pos in history:
         except Exception:
             pass
         try:
-            sell_raw = binance(
-                "spot", "new-order", "--symbol", f"{coin}USDC",
-                "--side", "SELL", "--type", "MARKET", "--quantity", str(qty), "--profile", "agent-profile"
-            )
+            sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
             sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
-            if sell_resp.get("orderId"):
-                exit_price = float(sell_resp.get("cummulativeQuoteQty", 0)) / float(sell_resp.get("executedQty", qty))
+            sell_txid = sell_resp.get("txid", [None])[0]
+            if sell_txid:
+                time.sleep(1)  # laisser le fill se propager
+                fill_raw = binance("query-orders", sell_txid, "-o", "json")
+                fill_data = json.loads(fill_raw) if fill_raw.strip() else {}
+                fill = fill_data.get(sell_txid, {})
+                vol_exec = float(fill.get("vol_exec", qty))
+                cost = float(fill.get("cost", current_price * qty))
+                exit_price = cost / vol_exec if vol_exec else current_price
                 actual_pnl_usdc = (exit_price - entry_price) * qty
                 actual_pnl_pct = (exit_price - entry_price) / entry_price * 100
                 pos.update({
@@ -73,7 +78,7 @@ for pos in history:
                 profit_summary.append(f"✅ {coin} : {actual_pnl_pct:+.1f}% ({actual_pnl_usdc:+.2f} USDC)")
                 tg(f"✅ Phase 0 — {coin} vendu (P&L cible)\n{actual_pnl_pct:+.1f}% | {actual_pnl_usdc:+.2f} USDC")
         except Exception as e:
-            # OCO déjà annulé — marquer la position comme non protégée pour phase0_oco_retry
+            # SL annulé avant SELL MARKET — marquer comme non protégé pour phase0_oco_retry
             pos["protection_failed"] = True
             _save_trade_history_atomic(history)
             tg(f"⚠️ Fermeture P&L {coin} échouée (OCO annulé, position non protégée) : {e}")
