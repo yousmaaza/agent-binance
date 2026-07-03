@@ -1,7 +1,6 @@
 {
-  "binance_profile": "agent-profile",
   "usdc_allocation_pct": 0.70,
-  "portfolio_coins": ["BTC", "STX", "XRP", "SOL", "SUI"],
+  "portfolio_coins": ["XBT", "XRP", "SOL"],
   "quote_asset": "USDC",
   "order_type": "LIMIT",
   "limit_offset_pct": 0.005,
