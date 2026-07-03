@@ -6,6 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-07-03 |
 
 ## Diagrammes
 
@@ -24,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#305](pr-305-mettre-jour-prompts-api-reference-kraken.md) | [M5] Mettre à jour les prompts et api_reference pour Kraken | 2026-07-03 |
 | [#304](pr-304-ajouter-unittests-fonctions.md) | [M0] Ajouter unittests pour fonctions utilitaires | 2026-07-03 |
 | [#303](pr-303-phase0-structured-logs.md) | Ajouter logs structurés pour traçabilité (Phase 0) | 2026-07-03 |
 | [#298](pr-298-kraken-json-parsing.md) | [M4] Migrer parsing réponses JSON Binance → Kraken (phase0_profit) | 2026-07-03 |

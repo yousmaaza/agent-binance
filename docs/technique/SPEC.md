@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-03 (PR #296)
+> **Dernière mise à jour** : 2026-07-03 (PR #305)
 > **Commit** : <current>
 
 ---
@@ -292,6 +292,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#305](pr-305-mettre-jour-prompts-api-reference-kraken.md) | 2026-07-03 | [M5] Mettre à jour prompts et api_reference pour Kraken : migration complète Binance CLI → Kraken CLI dans phases 0 (balance, SL verification, trailing stop), 1 (tradabilité USDC), 4 (sizing, filtres lot_decimals), position_prompt (open-orders, ticker, cancel par txid) ; api_reference.txt rédaction complète avec pièges Kraken (BTCUSDC→XBTUSDC, volume asset base, pas OCO natif) — débloque phases 0-4 pour kraken-cli |
 | [#304](pr-304-ajouter-unittests-fonctions.md) | 2026-07-03 | [M0] Ajouter unittests pour fonctions utilitaires : 17 tests unitaires pour `_round_price()` et `_round_qty()` (arrondi déterministe, sans I/O) — validant comportement critique du dimensionnement ordres ; pas de dépendances externes ajoutées |
 | [#303](pr-303-phase0-structured-logs.md) | 2026-07-03 | Ajouter logs structurés pour traçabilité Phase 0 : nouvelle fonction `log_phase0_event()` écrit chaque événement (protection_recovery_start, sl_retry_success, ts_update_success, etc.) en JSON dans `logs/phase0_events.jsonl` — brique pour audit et debugging des retries OCO + trailing stops |
 | [#298](pr-298-kraken-json-parsing.md) | 2026-07-03 | [M4] Migrer parsing réponses JSON Binance → Kraken (phase0_profit) : remplace `executedQty`, `cummulativeQuoteQty` par `vol_exec`, `cost` via `order sell` + `query-orders <txid>`, ajoute `time.sleep(1)` pour stabilisation fill ; rétro-compatible (anciens trades Binance conservés) |
