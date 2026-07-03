@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
-from core.env import BINANCE_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, POSITION_PROMPT, get_cycle_phases_log_path
+from core.env import KRAKEN_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, POSITION_PROMPT, get_cycle_phases_log_path
 from core.lock import acquire_lock, is_locked, release_lock
 from core.telegram import send_telegram
 from core.timing import fmt_local
@@ -240,7 +240,7 @@ def _write_helpers_file(fd: int, helpers_path: str, cycle_id: str, trigger: str)
     hb_path = get_cycle_phases_log_path(cycle_id)
     helpers_content = f"""import subprocess, json, time as _t, datetime as _hb_dt, os as _hb_os, tempfile as _hb_tempfile, math
 
-BINANCE_CLI = {repr(BINANCE_CLI_PATH)}
+KRAKEN_CLI = {repr(KRAKEN_CLI_PATH)}
 PYTHON_BIN  = {repr(sys.executable)}
 PROJECT_DIR = {repr(PROJECT_DIR)}
 CYCLE_ID    = {repr(cycle_id)}
@@ -265,7 +265,7 @@ def tg(text):
 
 def binance(*args, _retries=3):
     for _attempt in range(_retries):
-        _r = subprocess.run([BINANCE_CLI] + list(args), capture_output=True, text=True, timeout=30)
+        _r = subprocess.run([KRAKEN_CLI] + list(args), capture_output=True, text=True, timeout=30)
         raw = _r.stdout.strip()
         if raw.startswith("Invalid symbol"):
             raise ValueError("Invalid symbol")
@@ -273,7 +273,7 @@ def binance(*args, _retries=3):
             return raw
         if _attempt < _retries - 1:
             _t.sleep(2 * (_attempt + 1))
-    raise RuntimeError(f"binance-cli failed after {{_retries}} retries: {{raw[:120]}}")
+    raise RuntimeError(f"kraken failed after {{_retries}} retries: {{raw[:120]}}")
 
 def _hb_start(phase):
     _hb_phase_start[phase] = _hb_dt.datetime.now(_hb_dt.timezone.utc).timestamp()

@@ -30,7 +30,7 @@ _load_env()
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BINANCE_CLI_PATH = shutil.which("binance-cli") or "binance-cli"
+KRAKEN_CLI_PATH = shutil.which("kraken") or os.path.expanduser("~/.cargo/bin/kraken")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 LOGS_DIR = os.path.join(PROJECT_DIR, "logs")
 MONGO_URI = os.environ.get("MONGODB_URI", "").strip()
@@ -101,13 +101,13 @@ with open(_POSITION_PROMPT_FILE) as _f:
 # usedforsecurity=False supprime le warning Bandit B324 (usage déclaré non-cryptographique)
 PROMPT_VERSION = hashlib.sha1(_TRADE_PROMPT_TEMPLATE.encode(), usedforsecurity=False).hexdigest()[:8]
 
-# Substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) — effectuées une seule fois au démarrage
+# Substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, KRAKEN_CLI_PATH) — effectuées une seule fois au démarrage
 TRADE_PROMPT = (
     _TRADE_PROMPT_TEMPLATE
     .replace("__BOT_TOKEN__", TOKEN)
     .replace("__CHAT_ID__", CHAT_ID)
     .replace("__PROJECT_DIR__", PROJECT_DIR)
-    .replace("__BINANCE_CLI_PATH__", BINANCE_CLI_PATH)
+    .replace("__KRAKEN_CLI_PATH__", KRAKEN_CLI_PATH)
 )
 
 POSITION_PROMPT = (
@@ -115,5 +115,5 @@ POSITION_PROMPT = (
     .replace("__BOT_TOKEN__", TOKEN)
     .replace("__CHAT_ID__", CHAT_ID)
     .replace("__PROJECT_DIR__", PROJECT_DIR)
-    .replace("__BINANCE_CLI_PATH__", BINANCE_CLI_PATH)
+    .replace("__KRAKEN_CLI_PATH__", KRAKEN_CLI_PATH)
 )
