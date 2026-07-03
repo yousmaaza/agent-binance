@@ -3,30 +3,37 @@ PHASE 1 — SCAN MARCHÉ
 ⏱️ HEARTBEAT START PHASE 1
 _hb_start(1)
 
-Univers de candidats de départ (toujours inclus) : portfolio_coins de config.json (BTC, STX, XRP, SOL, SUI) plus les coins listés dans universe_extra de config.json s'il existe. Limiter à universe_scan_top_n (20) coins au total. Exclure les stablecoins (USDT, BUSD, FDUSD, USDC, etc.).
+Univers de candidats : récupère toutes les paires USDC disponibles sur Kraken via :
+    python3 __PROJECT_DIR__/binance-bot/core/phases/phase1_scan.py __CYCLE_ID__
 
-Appelle les trois screeners TradingView pour identifier les opportunités sur le marché BINANCE :
+Ce script appelle `kraken pairs -o json` pour lister les paires USDC, calcule le volume 24h
+de chacune via `kraken ticker` (batches de 10 paires), et retourne uniquement les coins
+au-dessus du seuil min_volume_usdc (config.json, défaut 1M USDC).
+Les coins de portfolio_coins (XBT, XRP, SOL — cf. config.json) sont toujours inclus même si
+leur volume est sous le seuil — rôle de fallback garanti pour les positions déjà ouvertes.
+
+Lis le fichier /tmp/cycle___CYCLE_ID___phase1_output.json pour obtenir la liste tradable.
+Chaque entrée contient : coin (nom Kraken, ex: "XBT"), tv_symbol (nom TradingView, ex: "BTC"), price, volume_24h.
+
+Vérification du mapping Kraken → TradingView (OBLIGATOIRE avant de passer à Phase 2) :
+Pour chaque coin tradable, vérifie que tv_symbol correspond bien au ticker attendu sur BINANCE/TradingView.
+Mappings connus : XBT→BTC, XDG→DOGE. Tous les autres coins ont le même symbole des deux côtés.
+Si un coin a tv_symbol identique à coin mais que le ticker {tv_symbol}USDT n'existe pas sur BINANCE
+(ex: nouveau coin Kraken inconnu de Binance) → exclure ce coin de l'univers Phase 2 et logger un warning.
+Utilise tv_symbol pour tous les appels TradingView/coin_analysis (Phase 2 incluse).
+
+Appelle les deux screeners TradingView pour enrichir le signal sur les coins tradables Kraken :
 1. mcp__tradingview__top_gainers(exchange="BINANCE", timeframe="4h", limit=25)
    → liste des coins avec le meilleur momentum sur 4h (change%, volume). Stocke la liste dans top_gainers_symbols.
 2. mcp__tradingview__volume_breakout_scanner(exchange="BINANCE", timeframe="4h", volume_multiplier=2.0, price_change_min=3.0, limit=25)
    → liste des breakouts volume (symbol, change%, volume). Stocke la liste dans breakout_symbols.
-3. mcp__tradingview__market_sentiment(symbol="BTC", category="crypto", limit=20)
-   → sentiment global du marché crypto. Stocke le résultat dans market_sentiment_data.
 
-Si un appel MCP échoue → continuer avec les données disponibles (top_gainers_symbols ou breakout_symbols = [] si l'appel a échoué), ne pas bloquer le cycle.
+Si un appel MCP échoue → continuer avec les données disponibles ([] si l'appel a échoué), ne pas bloquer le cycle.
 
-Vérification de tradabilité USDC — pour chaque coin candidat de l'univers de départ, exécute :
-kraken ticker {COIN}USDC -o json
-- Si `data["{COIN}USDC"]` présent → tradable. Prix = `data["{COIN}USDC"]["c"][0]`.
-- Volume 24h USDC = `float(data["{COIN}USDC"]["v"][1]) * float(prix)`. Si volume < 5M USDC → ✗
-- Si la commande échoue ou la paire est absente → ✗ (non tradable)
-Note : BTC doit utiliser la paire XBTUSDC (pas BTCUSDC) — mapping à appliquer avant l'appel.
+Note : les screeners TradingView servent à enrichir le signal sur les coins déjà validés par Kraken — ils ne définissent plus l'univers de départ. Un coin absent des screeners mais présent dans tradable reste candidat.
 
-Filtre définitif : éliminer immédiatement les coins marqués ✗ (paire USDC introuvable ou volume insuffisant). Ces coins ne doivent PAS être inclus dans l'univers final transmis à la Phase 2. Seuls les coins avec ✓ passent à la suite.
-
-Calcul du sentiment global :
-- Utilise market_sentiment_data (issu de mcp__tradingview__market_sentiment) si disponible.
-- Sinon, calcule depuis les données kraken ticker : compte les coins avec priceChangePercent > 0 (bullish_count) et < 0 (bearish_count)
+Calcul du sentiment global (depuis les données Kraken ticker) :
+- Compte les coins tradables avec change_pct_24h > 0 (bullish_count) et < 0 (bearish_count)
 - Si bullish_count >= 2 × bearish_count → sentiment = "Bullish"
 - Si bearish_count >= 2 × bullish_count → sentiment = "Bearish"
 - Sinon → sentiment = "Neutral"

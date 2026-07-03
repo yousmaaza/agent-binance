@@ -7,7 +7,7 @@ Pour chaque coin de l'univers tradable issu de Phase 1, exécute l'analyse techn
 
   Étape A — Analyse 4h :
   Pour chaque coin (séquentiel) :
-  mcp__tradingview__coin_analysis(symbol="{COIN}USDT", exchange="BINANCE", timeframe="4h")
+  mcp__tradingview__coin_analysis(symbol="{tv_symbol}USDT", exchange="BINANCE", timeframe="4h")
   → retourne RSI, MACD, BB, EMA, et un signal BUY/SELL/NEUTRAL.
   Si l'appel échoue → signal_4h = "NEUTRAL", rsi_4h = None, signal_4h_failed = True, continuer sans bloquer.
 
@@ -23,7 +23,7 @@ Pour chaque coin de l'univers tradable issu de Phase 1, exécute l'analyse techn
   Pour les coins avec signal_4h NEUTRAL ou SELL :
   - Ne pas lancer d'appel 1D. Leur signal_1d = "NEUTRAL" pour le scoring Phase 3.
   Pour chaque coin dont signal_4h est BUY ou STRONG_BUY :
-  mcp__tradingview__coin_analysis(symbol="{COIN}USDT", exchange="BINANCE", timeframe="1D")
+  mcp__tradingview__coin_analysis(symbol="{tv_symbol}USDT", exchange="BINANCE", timeframe="1D")
   → retourne RSI, MACD, BB, EMA, signal BUY/SELL/NEUTRAL sur journalier.
 
   Gestion d'erreur 1D (OBLIGATOIRE) :
