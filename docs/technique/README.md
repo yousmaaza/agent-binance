@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-07-03 |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-07-04 |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#323](pr-323-enrichir-status-tp-watcher.md) | Enrichir /status avec état TP Watcher et prix courant vs TP | 2026-07-04 |
 | [#321](pr-321-ajouter-thread-watcher-tp-temps-reel.md) | [FEAT] Ajouter thread watcher take profit temps réel | 2026-07-03 |
 | [#317](pr-317-score-par-coin-phase-3.md) | [FEAT] Afficher le score par coin dans le rapport Phase 3 | 2026-07-03 |
 | [#316](pr-316-fix-phase5-nonetype-guard.md) | [BUG] Fix phase5_execution.py crash TypeError quand trade=None (0 ordres) | 2026-07-03 |

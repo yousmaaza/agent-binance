@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-03 (PR #305)
+> **Dernière mise à jour** : 2026-07-04 (PR #323)
 > **Commit** : <current>
 
 ---
@@ -135,7 +135,11 @@ webhook_server.py (process principal)
 | `is_locked()` | :461 | Vérifie si un cycle est en cours (lit `agent_lock.json`) — expire automatiquement après 2h |
 | `acquire_lock()` | :479 | Pose le mutex dans `agent_lock.json` avec timestamp UTC |
 | `release_lock()` | :484 | Libère le mutex dans `agent_lock.json` |
-| `run_status()` | :496 | Handler `/status` : appelle `binance-cli` pour solde + ordres ouverts, format HTML Telegram |
+| `run_status()` | commands/status.py:149 | Handler `/status` : appelle `kraken-cli` pour solde + ordres ouverts, affiche positions avec prix courant + PnL/distance TP, état TP Watcher, format HTML Telegram |
+| `_fetch_current_price(coin)` | commands/status.py:78 | Appelle `kraken-cli ticker {coin}USDC` et retourne prix courant (float) ou `None` si indisponible — silencieuse sur erreur, log debug |
+| `_format_trades_section(fmt_next)` | commands/status.py:92 | Formate la section trades actifs : pour chaque position ouverte, appelle `_fetch_current_price()`, calcule PnL % et distance TP, affiche prix courant et métriques |
+| `_format_watcher_section()` | commands/status.py:120 | Lit `state/tp_watcher_state.json`, retourne section formatée avec emoji d'état (✅⚠️❌), heure dernier tick (local), nb positions surveillées, dernière erreur optionnelle |
+| `_write_watcher_state(status, last_error, positions_checked)` | core/tp_watcher.py:18 | Écrit atomiquement `state/tp_watcher_state.json` via tempfile + `os.replace()` avec timestamp UTC ISO+Z, status (`ok`/`warning`/`error`), erreur optionnelle, compteur positions |
 | `run_perf()` | :548 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
 | `run_eval()` | commands/eval.py:11 | Handler `/eval` : rapport hebdomadaire synthétique (fiabilité cycles, performance, coût abonnement vs API, risque) — accepte `period_days` optionnel (défaut 7) |
 | `_trades_section()` | commands/eval.py:32 | Analyse `trade_history.json` pour extraction win rate, PnL net, ratio gain/perte sur la période cutoff |
@@ -362,5 +366,6 @@ webhook_server.py (process principal)
 | [#242](pr-242-rec-auto-workflow.md) | 2026-06-22 | Workflow [REC] automation : refactoring complet post-review CI/CD — job `create-rec-tickets` détecte 3 formats recommandations + crée issues avec étiquettes `<!-- pr_branch -->` / `<!-- pr_number -->`; `auto-dispatch-on-auto-label` extrait métadonnées du body issue ; `binance-dev-auto` accepte mode REC-AUTO (implémente sur branche existante, ferme issue après commit) → recommandations tech lead intégrées au workflow PR existant |
 | [#268](pr-268-config-min-order-usdc.md) | 2026-06-29 | Configuration : abaissement de `min_order_usdc` de 11 à 9 USDC pour réduire les rejets TYPE_B dus aux dimensionnements ATR légitimes (8–11 USDC) — résout 4 skips/7j observés |
 | [#265](pr-265-supprimer-vars-claude-code.md) | 2026-06-24 | Fix : supprime les 5 variables `CLAUDE_CODE_*` du sous-processus Claude (`_run_claude()`) — empêche la réutilisation d'une session parent expirée en nettoyant l'env avant le lancement du CLI enfant (issue #264) |
+| [#323](pr-323-enrichir-status-tp-watcher.md) | 2026-07-04 | [FEAT] Enrichir `/status` avec prix courant et état TP Watcher : nouvelles fonctions `_fetch_current_price()`, `_format_watcher_section()`, `_write_watcher_state()` + état persistant `state/tp_watcher_state.json` + affichage PnL%/distance TP par position |
 | [#316](pr-316-fix-phase5-nonetype-guard.md) | 2026-07-03 | [BUG] Fix phase5_execution.py crash `TypeError: 'NoneType' object is not subscriptable` quand `trade=null` (0 ordres exécutés en Phase 4) — ajout garde `if not trade:` + sortie propre `PHASE5_DONE\|executed=0\|skipped=0` + `sys.exit(0)` |
 | [#302](pr-302-migrer-helpers-position.md) | 2026-07-03 | Refactoring : élimination de la duplication complète entre `trade_helpers.py` et `position_helpers.py` en faisant du second un ré-export symétrique du premier (réduction 89 → 16 lignes) — fonte unique `trade_helpers.py` pour `tg`, `binance`, `_load_config`, `_save_trade_history_atomic`, `_save_config_atomic` → gains maintenabilité ticket #274 |
