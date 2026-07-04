@@ -1,5 +1,4 @@
 """Orchestration du cycle de trading : sous-processus Claude, streaming."""
-import json
 import os
 import re
 import subprocess
@@ -196,13 +195,6 @@ def _handle_trade_post_run(
             error_type = "quota" if any(k in stderr_content for k in quota_keywords) else "crash"
         except Exception:
             error_type = "crash"
-
-    extras_path = f"/tmp/cycle_{cycle_id}_phase7_extras.json"
-    try:
-        with open(extras_path, "w") as _f:
-            json.dump({"duration_s": duration_s, "error_type": error_type}, _f)
-    except OSError as e:
-        cycle_log.warning(f"Extras write échoué : {e}")
 
     _update_cost_in_mongo(cycle_id, stdout_path, cycle_log)
     _update_billing_mode_in_mongo(cycle_id, "abonnement", cycle_log)
