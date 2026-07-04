@@ -15,12 +15,14 @@ from core.trade_helpers import binance as _cli
 _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "tp_watcher_state.json")
 
 
-def _write_watcher_state(status: str, last_error: str | None, positions_checked: int) -> None:
+def _write_watcher_state(status: str, last_error: str | None, positions_checked: int, total_ticks: int, total_sales: int) -> None:
     state = {
         "last_tick": datetime.now(timezone.utc).isoformat() + "Z",
         "status": status,
         "last_error": last_error,
         "positions_checked": positions_checked,
+        "total_ticks": total_ticks,
+        "total_sales": total_sales,
     }
     tmp = _WATCHER_STATE_PATH + ".tmp"
     with open(tmp, "w") as f:
@@ -41,6 +43,15 @@ def tp_watcher_loop():
 def _tp_watcher_tick():
     if is_locked():
         return
+
+    try:
+        with open(_WATCHER_STATE_PATH) as f:
+            _prev = json.load(f)
+        total_ticks = _prev.get("total_ticks", 0) + 1
+        total_sales = _prev.get("total_sales", 0)
+    except Exception:
+        total_ticks = 1
+        total_sales = 0
 
     history = load_trade_history()
     changed = False
@@ -118,6 +129,7 @@ def _tp_watcher_tick():
                 "exit_date": datetime.now(timezone.utc).isoformat() + "Z",
             })
             changed = True
+            total_sales += 1
             send_telegram(
                 f"TP atteint — {coin} vendu à {exit_price:.4f} USDC\n"
                 f"{pnl_pct:+.1f}% | {pnl_usdc:+.2f} USDC"
@@ -134,4 +146,4 @@ def _tp_watcher_tick():
     if changed:
         save_trade_history(history)
 
-    _write_watcher_state(tick_status, tick_last_error, positions_checked)
+    _write_watcher_state(tick_status, tick_last_error, positions_checked, total_ticks, total_sales)
