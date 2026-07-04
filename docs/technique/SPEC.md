@@ -299,6 +299,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#344](pr-344-recalibrage-tp-phase0.md) | 2026-07-04 | [M343] Recalibrage TP automatique en Phase 0 : intègre `mcp__tradingview__combined_analysis()` 4h pour chaque position ouverte, calcule `tp_smart = min(tp_mécanique, R2 × 0.98)`, met à jour `tp_price` si écart > 0.5%, fallback silencieux si MCP échoue, notification Telegram par coin recalibré |
 | [#342](pr-342-config-augmenter-min-profit-pct-5.md) | 2026-07-04 | [CONFIG] Augmenter `min_profit_pct_take` de 2% à 5% : supprime la clôture prématurée en Phase 0 ; seuil plus restrictif pour réaliser les profits cohérent avec la stratégie reward/risk (ratio 3:2 ATR stop) |
 | [#340](pr-340-trailing-stop-no-tp-override.md) | 2026-07-04 | [FIX] Trailing stop ne modifie plus le TP (Phase 0) : supprime le recalcul `new_tp = max(cur_tp, price + trail_dist × 3)` qui écrasait le TP intelligent ; Phase 0 recentrée sur SL uniquement, TP maintenu exclusivement par Phase 4 + `/calibrage` |
 | [#331](pr-331-calibrage-tp-recalibration.md) | 2026-07-04 | [FEAT] Recalibrage TP via résistances TradingView dans `/calibrage` : tâche 3 appelle MCP `combined_analysis()` 4h, calcule `tp_smart = min(tp_mécanique, r2_4h × 0.98)`, met à jour `tp_price` si écart > 0.5% ; renumérotation tâches 3→4, 4→5, 5→6 ; validation robustesse positions long (assertion `stop < entry`) ; test unitaire `reward_risk_ratio` default 2.0 |
