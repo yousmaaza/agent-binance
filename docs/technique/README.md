@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#340](pr-340-trailing-stop-no-tp-override.md) | [FIX] Trailing stop ne doit pas modifier le TP (Phase 0) | 2026-07-04 |
 | [#331](pr-331-calibrage-tp-recalibration.md) | [FEAT] `/calibrage` recalcule les TP via combined_analysis (TradingView) | 2026-07-04 |
 | [#327](pr-327-tp-intelligent-base-sur-les-resistances.md) | [M1] TP intelligent basé sur les résistances TradingView (Phase 4) | 2026-07-04 |
 | [#326](pr-326-phase2-combined-analysis.md) | [M1] Migrer Phase 2 de coin_analysis vers combined_analysis (4h) | 2026-07-04 |
