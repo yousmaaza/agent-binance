@@ -1,4 +1,5 @@
 """Orchestration du cycle de trading : sous-processus Claude, streaming."""
+import json
 import os
 import re
 import subprocess
@@ -185,8 +186,26 @@ def _handle_trade_post_run(
         )
         cycle_log.error(f"[Cycle {cycle_id}] Quota abonnement épuisé — pas de fallback API configuré")
 
+    duration_s = int(duration)
+    error_type = None
+    if exit_code != 0:
+        try:
+            stderr_content = open(stderr_path).read().lower()
+            quota_keywords = ["rate limit", "credit balance", "quota", "overloaded", "too many requests"]
+            error_type = "quota" if any(k in stderr_content for k in quota_keywords) else "crash"
+        except Exception:
+            error_type = "crash"
+
+    extras_path = f"/tmp/cycle_{cycle_id}_phase7_extras.json"
+    try:
+        with open(extras_path, "w") as _f:
+            json.dump({"duration_s": duration_s, "error_type": error_type}, _f)
+    except OSError as e:
+        cycle_log.warning(f"Extras write échoué : {e}")
+
     _update_cost_in_mongo(cycle_id, stdout_path, cycle_log)
     _update_billing_mode_in_mongo(cycle_id, "abonnement", cycle_log)
+    _update_perf_in_mongo(cycle_id, duration_s, error_type, cycle_log)
 
     if exit_code != 0:
         _handle_error(cycle_id, trigger, started_at, duration, stderr_path, stdout_path, cycle_log)
@@ -405,6 +424,16 @@ def _update_billing_mode_in_mongo(cycle_id: str, billing_mode: str, cycle_log: C
             cycle_log.info(f"Billing mode updated in MongoDB: {billing_mode}")
         except Exception as e:
             cycle_log.error(f"Mongo billing_mode update échec : {e}")
+
+
+def _update_perf_in_mongo(cycle_id: str, duration_s: int, error_type: str | None, cycle_log: CycleLogger) -> None:
+    db = mongo_repo._db()
+    if db is not None:
+        try:
+            db.cycles.update_one({"_id": cycle_id}, {"$set": {"duration_s": duration_s, "error_type": error_type}})
+            cycle_log.info(f"Perf updated in MongoDB: duration_s={duration_s} error_type={error_type}")
+        except Exception as e:
+            cycle_log.error(f"Mongo perf update échec : {e}")
 
 
 def _handle_error(
