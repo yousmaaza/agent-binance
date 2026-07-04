@@ -138,7 +138,10 @@ webhook_server.py (process principal)
 | `run_status()` | commands/status.py:149 | Handler `/status` : appelle `kraken-cli` pour solde + ordres ouverts, affiche positions avec prix courant + PnL/distance TP, état TP Watcher, format HTML Telegram |
 | `_fetch_current_price(coin)` | commands/status.py:78 | Appelle `kraken-cli ticker {coin}USDC` et retourne prix courant (float) ou `None` si indisponible — silencieuse sur erreur, log debug |
 | `_format_trades_section(fmt_next)` | commands/status.py:92 | Formate la section trades actifs : pour chaque position ouverte, appelle `_fetch_current_price()`, calcule PnL % et distance TP, affiche prix courant et métriques |
-| `_format_watcher_section()` | commands/status.py:120 | Lit `state/tp_watcher_state.json`, retourne section formatée avec emoji d'état (✅⚠️❌), heure dernier tick (local), nb positions surveillées, dernière erreur optionnelle |
+| `_parse_last_tick(raw: str)` | commands/status.py:121 | Parse timestamp ISO 8601 du dernier tick, gère le Z redondant `+00:00Z`, retourne `datetime` aware UTC ou `None` |
+| `_tp_watcher_health(last_tick_dt)` | commands/status.py:133 | Classe le watcher en 3 états selon l'âge du tick : `✅ OK` (<5 min), `⚠️ Lent` (5-10 min), `🔴 Inactif` (>10 min) |
+| `_count_tp_watcher_sales_24h()` | commands/status.py:144 | Compte les ventes TP depuis `trade_history.json` : filtre `close_reason` contient `"tp_watcher"` + `exit_date` dans les 24h UTC |
+| `_format_watcher_section()` | commands/status.py:172 | Lit `state/tp_watcher_state.json`, retourne section formatée avec 4 infos : emoji santé + label OK/Lent/Inactif, heure dernier tick (local), nb positions surveillées, ventes TP 24h ; gestion robuste si state absent/corrompu → `"⚠️ État inconnu"` |
 | `_write_watcher_state(status, last_error, positions_checked)` | core/tp_watcher.py:18 | Écrit atomiquement `state/tp_watcher_state.json` via tempfile + `os.replace()` avec timestamp UTC ISO+Z, status (`ok`/`warning`/`error`), erreur optionnelle, compteur positions |
 | `run_perf()` | :548 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
 | `run_eval()` | commands/eval.py:11 | Handler `/eval` : rapport hebdomadaire synthétique (fiabilité cycles, performance, coût abonnement vs API, risque) — accepte `period_days` optionnel (défaut 7) |
@@ -299,6 +302,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#346](pr-346-enrichir-status-tp-watcher.md) | 2026-07-04 | [M345] Enrichir `/status` avec les infos du TP Watcher : 3 nouvelles fonctions (`_parse_last_tick()`, `_tp_watcher_health()`, `_count_tp_watcher_sales_24h()`) + refonte `_format_watcher_section()` pour exposer 4 infos (santé OK/Lent/Inactif, dernier tick locale, positions surveillées, ventes TP 24h) ; gestion robuste si `tp_watcher_state.json` absent |
 | [#344](pr-344-recalibrage-tp-phase0.md) | 2026-07-04 | [M343] Recalibrage TP automatique en Phase 0 : intègre `mcp__tradingview__combined_analysis()` 4h pour chaque position ouverte, calcule `tp_smart = min(tp_mécanique, R2 × 0.98)`, met à jour `tp_price` si écart > 0.5%, fallback silencieux si MCP échoue, notification Telegram par coin recalibré |
 | [#342](pr-342-config-augmenter-min-profit-pct-5.md) | 2026-07-04 | [CONFIG] Augmenter `min_profit_pct_take` de 2% à 5% : supprime la clôture prématurée en Phase 0 ; seuil plus restrictif pour réaliser les profits cohérent avec la stratégie reward/risk (ratio 3:2 ATR stop) |
 | [#340](pr-340-trailing-stop-no-tp-override.md) | 2026-07-04 | [FIX] Trailing stop ne modifie plus le TP (Phase 0) : supprime le recalcul `new_tp = max(cur_tp, price + trail_dist × 3)` qui écrasait le TP intelligent ; Phase 0 recentrée sur SL uniquement, TP maintenu exclusivement par Phase 4 + `/calibrage` |
