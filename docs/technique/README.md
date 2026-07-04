@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#326](pr-326-phase2-combined-analysis.md) | [M1] Migrer Phase 2 de coin_analysis vers combined_analysis (4h) | 2026-07-04 |
 | [#323](pr-323-enrichir-status-tp-watcher.md) | Enrichir /status avec état TP Watcher et prix courant vs TP | 2026-07-04 |
 | [#321](pr-321-ajouter-thread-watcher-tp-temps-reel.md) | [FEAT] Ajouter thread watcher take profit temps réel | 2026-07-03 |
 | [#317](pr-317-score-par-coin-phase-3.md) | [FEAT] Afficher le score par coin dans le rapport Phase 3 | 2026-07-03 |
