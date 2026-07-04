@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#342](pr-342-config-augmenter-min-profit-pct-5.md) | Augmenter min_profit_pct_take de 2% à 5% (Phase 0) | 2026-07-04 |
 | [#340](pr-340-trailing-stop-no-tp-override.md) | [FIX] Trailing stop ne doit pas modifier le TP (Phase 0) | 2026-07-04 |
 | [#331](pr-331-calibrage-tp-recalibration.md) | [FEAT] `/calibrage` recalcule les TP via combined_analysis (TradingView) | 2026-07-04 |
 | [#327](pr-327-tp-intelligent-base-sur-les-resistances.md) | [M1] TP intelligent basé sur les résistances TradingView (Phase 4) | 2026-07-04 |

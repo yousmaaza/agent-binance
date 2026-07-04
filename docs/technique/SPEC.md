@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-04 (PR #331)
+> **Dernière mise à jour** : 2026-07-04 (PR #342)
 > **Commit** : <current>
 
 ---
@@ -276,7 +276,7 @@ webhook_server.py (process principal)
 | `min_adx` | `20` | ADX minimum sur 4h pour valider la tendance (critère de score) |
 | `max_open_positions` | `5` | Nombre maximum de positions ouvertes simultanément |
 | `universe_scan_top_n` | `20` | Nombre maximum de coins dans l'univers de scan par cycle |
-| `min_profit_pct_take` | `2.0` | Seuil de profit (%) pour réaliser les gains via SELL MARKET en cycle position (NEW #241) |
+| `min_profit_pct_take` | `5.0` | Seuil de profit (%) pour réaliser les gains via SELL MARKET en cycle position (NEW #241, augmentation #342) |
 | `max_hold_days` | `14` | Durée maximale (jours) de détention d'une position en perte avant évaluation de cut-loss en cycle position (NEW #241) |
 
 ---
@@ -299,6 +299,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#342](pr-342-config-augmenter-min-profit-pct-5.md) | 2026-07-04 | [CONFIG] Augmenter `min_profit_pct_take` de 2% à 5% : supprime la clôture prématurée en Phase 0 ; seuil plus restrictif pour réaliser les profits cohérent avec la stratégie reward/risk (ratio 3:2 ATR stop) |
 | [#340](pr-340-trailing-stop-no-tp-override.md) | 2026-07-04 | [FIX] Trailing stop ne modifie plus le TP (Phase 0) : supprime le recalcul `new_tp = max(cur_tp, price + trail_dist × 3)` qui écrasait le TP intelligent ; Phase 0 recentrée sur SL uniquement, TP maintenu exclusivement par Phase 4 + `/calibrage` |
 | [#331](pr-331-calibrage-tp-recalibration.md) | 2026-07-04 | [FEAT] Recalibrage TP via résistances TradingView dans `/calibrage` : tâche 3 appelle MCP `combined_analysis()` 4h, calcule `tp_smart = min(tp_mécanique, r2_4h × 0.98)`, met à jour `tp_price` si écart > 0.5% ; renumérotation tâches 3→4, 4→5, 5→6 ; validation robustesse positions long (assertion `stop < entry`) ; test unitaire `reward_risk_ratio` default 2.0 |
 | [#327](pr-327-tp-intelligent-base-sur-les-resistances.md) | 2026-07-04 | [M1] Phase 4 TP intelligent : remplace TP mécanique par un TP plafonné à la résistance TradingView la plus proche au-dessus du prix entry (`nearest_resistance × 0.98`) ; fallback vers TP mécanique si résistance indisponible (Phase 2 échoue ou aucune candidate > entry) ; notification Telegram affiche source TP : `(R X × 0.98)` ou `(mécanique)` |
