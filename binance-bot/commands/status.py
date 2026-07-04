@@ -1,9 +1,13 @@
 """Commande /status — retourne une str (compatible Telegram et CLI)."""
 import json
 import subprocess
+from datetime import datetime, timezone, timedelta
+
+from loguru import logger
 
 from core.env import PROJECT_DIR, KRAKEN_CLI_PATH
 from config.app import APP_CONFIG
+from core.timing import fmt_local
 
 
 def _fetch_account_data() -> dict | None:
@@ -72,6 +76,20 @@ def _format_orders_section(open_orders: dict) -> list[str]:
     return lines
 
 
+def _fetch_current_price(coin: str) -> float | None:
+    """Récupère le prix courant d'un coin depuis Kraken. Retourne None si indisponible."""
+    try:
+        result = subprocess.run(
+            [str(KRAKEN_CLI_PATH), "ticker", f"{coin}USDC", "-o", "json"],
+            capture_output=True, text=True, cwd=PROJECT_DIR, timeout=5,
+        )
+        data = json.loads(result.stdout) if result.stdout.strip() else {}
+        return float(data.get(f"{coin}USDC", {}).get("c", [None])[0])
+    except Exception as e:
+        logger.debug(f"[status] ticker {coin} indisponible : {e}")
+        return None
+
+
 def _format_trades_section(fmt_next: str) -> list[str]:
     """Formate la section des trades actifs."""
     lines = []
@@ -82,10 +100,103 @@ def _format_trades_section(fmt_next: str) -> list[str]:
         if open_trades:
             lines.append(f"\n<b>Trades agent actifs ({len(open_trades)}) :</b>")
             for t in open_trades:
-                lines.append(f"  🎯 {t['coin']} @ {t['entry_price']:.4g} | Stop: {t['stop_price']:.4g} | TP: {t['tp_price']:.4g}")
-    except Exception:
-        pass
+                coin = t['coin']
+                entry = float(t['entry_price'])
+                stop = float(t['stop_price'])
+                tp = float(t['tp_price'])
+                current = _fetch_current_price(coin)
+                if current is not None:
+                    pnl_pct = (current - entry) / entry * 100
+                    dist_to_tp = (tp - current) / current * 100
+                    price_str = f"Actuel: {current:.4g} ({pnl_pct:+.1f}% | {dist_to_tp:+.1f}% → TP)"
+                else:
+                    price_str = "Actuel: n/d"
+                lines.append(f"  🎯 {coin} @ {entry:.4g} | Stop: {stop:.4g} | TP: {tp:.4g} | {price_str}")
+    except Exception as e:
+        logger.warning(f"[status] erreur lecture trades : {e}")
     lines.append(f"\n⏰ <b>Prochain cycle auto</b> : <code>{fmt_next}</code>")
+    return lines
+
+
+def _parse_last_tick(raw: str) -> datetime | None:
+    """Parse le timestamp last_tick (ISO 8601, potentiellement "+00:00Z"). Retourne datetime aware UTC ou None."""
+    if not raw:
+        return None
+    try:
+        # last_tick peut être "...+00:00Z" — le Z final est redondant, on le retire
+        cleaned = raw.rstrip("Z") if raw.endswith("+00:00Z") else raw
+        return datetime.fromisoformat(cleaned)
+    except Exception:
+        return None
+
+
+def _tp_watcher_health(last_tick_dt: datetime) -> str:
+    """Retourne le label santé selon l'âge du dernier tick (comparaison UTC)."""
+    age = datetime.now(timezone.utc) - last_tick_dt
+    minutes = age.total_seconds() / 60
+    if minutes < 5:
+        return "✅ OK"
+    if minutes < 10:
+        return "⚠️ Lent"
+    return "🔴 Inactif"
+
+
+def _count_tp_watcher_sales_24h() -> int:
+    """Compte les ventes TP watcher dans les 24 dernières heures depuis trade_history.json."""
+    history_path = f"{PROJECT_DIR}/state/trade_history.json"
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    try:
+        with open(history_path) as f:
+            history = json.load(f)
+        count = 0
+        for t in history:
+            reason = t.get("close_reason") or ""
+            if "tp_watcher" not in reason:
+                continue
+            exit_raw = t.get("exit_date")
+            if not exit_raw:
+                continue
+            try:
+                exit_dt = datetime.fromisoformat(exit_raw)
+                if exit_dt.tzinfo is None:
+                    exit_dt = exit_dt.replace(tzinfo=timezone.utc)
+                if exit_dt >= cutoff:
+                    count += 1
+            except Exception:
+                continue
+        return count
+    except Exception:
+        return 0
+
+
+def _format_watcher_section() -> list[str]:
+    """Formate la section TP Watcher pour /status."""
+    state_path = f"{PROJECT_DIR}/state/tp_watcher_state.json"
+    try:
+        with open(state_path) as f:
+            state = json.load(f)
+    except FileNotFoundError:
+        return ["\n🤖 <b>TP Watcher</b> : ⚠️ État inconnu"]
+    except Exception:
+        return ["\n🤖 <b>TP Watcher</b> : ⚠️ État inconnu"]
+
+    last_tick_dt = _parse_last_tick(state.get("last_tick", ""))
+    if last_tick_dt is not None:
+        health = _tp_watcher_health(last_tick_dt)
+        tick_str = fmt_local(last_tick_dt)
+    else:
+        health = "⚠️ Lent"
+        tick_str = "–"
+
+    positions_checked = state.get("positions_checked", 0)
+    sales_24h = _count_tp_watcher_sales_24h()
+
+    lines = [
+        f"\n🤖 <b>TP Watcher</b> : {health}",
+        f"  Dernier tick : {tick_str}",
+        f"  Positions surveillées : {positions_checked}",
+        f"  Ventes TP (24h) : {sales_24h}",
+    ]
     return lines
 
 
@@ -104,5 +215,6 @@ def run_status(fmt_next_fn=None) -> str:
     lines.extend(_format_positions_section(balance_data))
     lines.extend(_format_orders_section(open_orders))
     lines.extend(_format_trades_section(fmt_next))
+    lines.extend(_format_watcher_section())
 
     return "\n".join(lines)

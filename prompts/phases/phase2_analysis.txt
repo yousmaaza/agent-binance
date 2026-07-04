@@ -3,21 +3,31 @@ PHASE 2 — ANALYSE MULTI-TIMEFRAME (couplée par coin, séquentiel)
 ⏱️ HEARTBEAT START PHASE 2
 _hb_start(2)
 
-Pour chaque coin de l'univers tradable issu de Phase 1, exécute l'analyse technique via coin_analysis.
+Pour chaque coin de l'univers tradable issu de Phase 1, exécute l'analyse technique.
 
   Étape A — Analyse 4h :
   Pour chaque coin (séquentiel) :
-  mcp__tradingview__coin_analysis(symbol="{tv_symbol}USDT", exchange="BINANCE", timeframe="4h")
-  → retourne RSI, MACD, BB, EMA, et un signal BUY/SELL/NEUTRAL.
-  Si l'appel échoue → signal_4h = "NEUTRAL", rsi_4h = None, signal_4h_failed = True, continuer sans bloquer.
+  mcp__tradingview__combined_analysis(symbol="{tv_symbol}USDT", exchange="BINANCE", timeframe="4h")
+  → retourne RSI, MACD, BB, EMA, signal BUY/SELL/NEUTRAL, ADX, supports/résistances.
+  Si combined_analysis échoue → fallback sur mcp__tradingview__coin_analysis(symbol="{tv_symbol}USDT", exchange="BINANCE", timeframe="4h").
+  Si le fallback échoue aussi → signal_4h = "NEUTRAL", rsi_4h = None, signal_4h_failed = True, continuer sans bloquer.
+  En cas de fallback ou d'échec, stocker : adx_4h = None, adx_trend_4h = None, resistance_1_4h = None, resistance_2_4h = None, nearest_resistance_4h = None, distance_to_resistance_4h_pct = None.
 
-  Interprétation de coin_analysis 4h :
+  Interprétation combined_analysis 4h :
   - Utilise directement le signal retourné par l'outil (BUY/SELL/NEUTRAL).
   - Si le signal est BUY et RSI < 55 → signal_4h = "STRONG_BUY"
   - Si le signal est BUY et RSI >= 55 → signal_4h = "BUY"
   - Si le signal est SELL → signal_4h = "SELL"
   - Sinon → signal_4h = "NEUTRAL"
-  Mémorise pour chaque coin : signal_4h et rsi_4h (valeur numérique depuis la réponse).
+  Mémorise pour chaque coin dans analysis_results[coin] :
+  - signal_4h et rsi_4h (valeur numérique depuis la réponse)
+  - adx_4h : technical.adx.value (None si champ absent)
+  - adx_trend_4h : technical.adx.trend_strength (None si champ absent)
+  - resistance_1_4h : technical.support_resistance.resistance_1 (None si champ absent)
+  - resistance_2_4h : technical.support_resistance.resistance_2 (None si champ absent)
+  - nearest_resistance_4h : technical.support_resistance.nearest_resistance (None si champ absent)
+  - distance_to_resistance_4h_pct : technical.support_resistance.distance_to_resistance_pct (None si champ absent)
+  - resistance_1_1d : None (sera rempli dans un ticket futur quand 1D migre vers combined_analysis)
 
   Étape B — Analyse 1D (uniquement pour les coins signal_4h BUY ou STRONG_BUY) :
   Pour les coins avec signal_4h NEUTRAL ou SELL :
@@ -25,6 +35,7 @@ Pour chaque coin de l'univers tradable issu de Phase 1, exécute l'analyse techn
   Pour chaque coin dont signal_4h est BUY ou STRONG_BUY :
   mcp__tradingview__coin_analysis(symbol="{tv_symbol}USDT", exchange="BINANCE", timeframe="1D")
   → retourne RSI, MACD, BB, EMA, signal BUY/SELL/NEUTRAL sur journalier.
+  coin_analysis 1D ne retourne pas de résistances : resistance_1_1d reste None.
 
   Gestion d'erreur 1D (OBLIGATOIRE) :
   - Si l'appel échoue ou retourne une erreur → signal_1d = "NEUTRAL", signal_1d_rate_limited = True, continuer sans bloquer.
@@ -37,6 +48,6 @@ Après tous les coins, collecte :
 - coins_4h_count = nombre total de coins analysés en 4h (= taille de l'univers)
 - coins_1d_count = nombre total de coins ayant reçu un appel 1D (coins BUY/STRONG_BUY en 4h)
 
-→ tg(f"✓ Phase 2 — {coins_4h_count} coins analysés 4h, {coins_1d_count} coins analysés 1D (signal BUY confirmé)\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d}")
+→ tg(f"✓ Phase 2 — {coins_4h_count} coins analysés\n{1 ligne par coin : COIN — RSI_4h / signal_4h / signal_1d / ADX: adx_4h (adx_trend_4h) si adx_4h disponible, omis sinon}")
 ⏱️ HEARTBEAT END PHASE 2 — appel hb(2) immédiatement ci-dessous
 hb(2, summary=f"{coins_4h_count} coins analysés 4h, {coins_1d_count} analysés 1D")

@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-07-03 |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-07-04 |
 
 ## Diagrammes
 
@@ -25,6 +25,15 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#346](pr-346-enrichir-status-tp-watcher.md) | Enrichir /status avec les infos du TP Watcher | 2026-07-04 |
+| [#344](pr-344-recalibrage-tp-phase0.md) | [M343] Recalibrage TP automatique en Phase 0 | 2026-07-04 |
+| [#342](pr-342-config-augmenter-min-profit-pct-5.md) | Augmenter min_profit_pct_take de 2% à 5% (Phase 0) | 2026-07-04 |
+| [#340](pr-340-trailing-stop-no-tp-override.md) | [FIX] Trailing stop ne doit pas modifier le TP (Phase 0) | 2026-07-04 |
+| [#331](pr-331-calibrage-tp-recalibration.md) | [FEAT] `/calibrage` recalcule les TP via combined_analysis (TradingView) | 2026-07-04 |
+| [#327](pr-327-tp-intelligent-base-sur-les-resistances.md) | [M1] TP intelligent basé sur les résistances TradingView (Phase 4) | 2026-07-04 |
+| [#326](pr-326-phase2-combined-analysis.md) | [M1] Migrer Phase 2 de coin_analysis vers combined_analysis (4h) | 2026-07-04 |
+| [#323](pr-323-enrichir-status-tp-watcher.md) | Enrichir /status avec état TP Watcher et prix courant vs TP | 2026-07-04 |
+| [#321](pr-321-ajouter-thread-watcher-tp-temps-reel.md) | [FEAT] Ajouter thread watcher take profit temps réel | 2026-07-03 |
 | [#317](pr-317-score-par-coin-phase-3.md) | [FEAT] Afficher le score par coin dans le rapport Phase 3 | 2026-07-03 |
 | [#316](pr-316-fix-phase5-nonetype-guard.md) | [BUG] Fix phase5_execution.py crash TypeError quand trade=None (0 ordres) | 2026-07-03 |
 | [#312](pr-312-refactor-phase1-kraken-usdc.md) | [M1] Refactorer Phase 1 — univers depuis Kraken USDC + seuil 1M | 2026-07-03 |

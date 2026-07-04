@@ -56,6 +56,34 @@ Le script affiche sur stdout : PHASE0_OCO_DONE|retried=N
 # Le script affiche sur stdout : PHASE0_TS_DONE|updated=N
 # --- FIN TRAILING STOP ---
 
+# --- RECALIBRAGE TP (Smart TP automatique) ---
+# ⚠️ ÉTAPE OBLIGATOIRE — NE PAS INTÉGRER DANS LE SCRIPT PYTHON PHASE 0
+# Les appels MCP ci-dessous sont des appels directs Claude tools, pas du Python.
+#
+# ÉTAPE 1 — Lire les positions ouvertes depuis trade_history.json (déjà chargé).
+#   TV_MAP = {"XBT": "BTC", "XDG": "DOGE"}
+#   reward_risk_ratio = cfg.get("reward_risk_ratio", 2.0)
+#
+# ÉTAPE 2 — Pour chaque trade "open", appeler DIRECTEMENT le tool MCP (pas via subprocess ni Python) :
+#   mcp__tradingview__combined_analysis(symbol="{TV_MAP.get(coin, coin)}USDT", exchange="BINANCE", timeframe="4h")
+#   Extraire : r2_4h = result["technical"]["support_resistance"]["resistance_2"]
+#   Si l'appel échoue → garder le TP existant (continue silencieux)
+#
+# ÉTAPE 3 — Calculer tp_smart pour chaque coin :
+#   stop_distance_pct = (entry_price - stop_price) / entry_price
+#   tp_mecanique = entry_price × (1 + stop_distance_pct × reward_risk_ratio)
+#   Si r2_4h existe et r2_4h > entry_price : tp_smart = min(tp_mecanique, r2_4h × 0.98)
+#   Sinon : tp_smart = tp_mecanique
+#   Si |tp_smart - tp_actuel| / tp_actuel > 0.005 → ajouter à updates dict
+#
+# ÉTAPE 4 — Sauvegarder les TPs mis à jour via script Python :
+#   Lire __PROJECT_DIR__/prompts/phases/phase0_calibrate_tp.txt
+#   Remplacer __UPDATES__ par repr(updates) et __PROJECT_DIR__ par le chemin réel
+#   Exécuter le script résultant via bash python3
+#   Le script affiche : PHASE0_CALIBRATE_TP_DONE|updated=N
+#   Si updates vide : afficher PHASE0_CALIBRATE_TP_DONE|updated=0 sans exécuter le script
+# --- FIN RECALIBRAGE TP ---
+
 # --- RÉALISATION DE PROFITS (Calibrage intégré Phase 0) ---
 # Évaluer chaque position ouverte : vendre si P&L >= min_profit_pct_take
 # Exécute le script de réalisation de profits :

@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-03 (PR #305)
+> **Dernière mise à jour** : 2026-07-04 (PR #342)
 > **Commit** : <current>
 
 ---
@@ -135,7 +135,14 @@ webhook_server.py (process principal)
 | `is_locked()` | :461 | Vérifie si un cycle est en cours (lit `agent_lock.json`) — expire automatiquement après 2h |
 | `acquire_lock()` | :479 | Pose le mutex dans `agent_lock.json` avec timestamp UTC |
 | `release_lock()` | :484 | Libère le mutex dans `agent_lock.json` |
-| `run_status()` | :496 | Handler `/status` : appelle `binance-cli` pour solde + ordres ouverts, format HTML Telegram |
+| `run_status()` | commands/status.py:149 | Handler `/status` : appelle `kraken-cli` pour solde + ordres ouverts, affiche positions avec prix courant + PnL/distance TP, état TP Watcher, format HTML Telegram |
+| `_fetch_current_price(coin)` | commands/status.py:78 | Appelle `kraken-cli ticker {coin}USDC` et retourne prix courant (float) ou `None` si indisponible — silencieuse sur erreur, log debug |
+| `_format_trades_section(fmt_next)` | commands/status.py:92 | Formate la section trades actifs : pour chaque position ouverte, appelle `_fetch_current_price()`, calcule PnL % et distance TP, affiche prix courant et métriques |
+| `_parse_last_tick(raw: str)` | commands/status.py:121 | Parse timestamp ISO 8601 du dernier tick, gère le Z redondant `+00:00Z`, retourne `datetime` aware UTC ou `None` |
+| `_tp_watcher_health(last_tick_dt)` | commands/status.py:133 | Classe le watcher en 3 états selon l'âge du tick : `✅ OK` (<5 min), `⚠️ Lent` (5-10 min), `🔴 Inactif` (>10 min) |
+| `_count_tp_watcher_sales_24h()` | commands/status.py:144 | Compte les ventes TP depuis `trade_history.json` : filtre `close_reason` contient `"tp_watcher"` + `exit_date` dans les 24h UTC |
+| `_format_watcher_section()` | commands/status.py:172 | Lit `state/tp_watcher_state.json`, retourne section formatée avec 4 infos : emoji santé + label OK/Lent/Inactif, heure dernier tick (local), nb positions surveillées, ventes TP 24h ; gestion robuste si state absent/corrompu → `"⚠️ État inconnu"` |
+| `_write_watcher_state(status, last_error, positions_checked)` | core/tp_watcher.py:18 | Écrit atomiquement `state/tp_watcher_state.json` via tempfile + `os.replace()` avec timestamp UTC ISO+Z, status (`ok`/`warning`/`error`), erreur optionnelle, compteur positions |
 | `run_perf()` | :548 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
 | `run_eval()` | commands/eval.py:11 | Handler `/eval` : rapport hebdomadaire synthétique (fiabilité cycles, performance, coût abonnement vs API, risque) — accepte `period_days` optionnel (défaut 7) |
 | `_trades_section()` | commands/eval.py:32 | Analyse `trade_history.json` pour extraction win rate, PnL net, ratio gain/perte sur la période cutoff |
@@ -181,6 +188,9 @@ webhook_server.py (process principal)
 | `_run_claude()` | runner.py:336 | Lance le sous-processus Claude CLI avec flags configurables : nettoie d'abord l'env en supprimant les 5 variables `CLAUDE_CODE_*` héritées du daemon parent (évite que l'enfant réutilise une session parente expirée) ; streame les événements stream-json depuis stdout, parse chaque ligne via `parse_stream_event()`, écrit les lignes formatées dans le fichier log stdout. Exécution en mode abonnement uniquement (pas de retry fallback API). Timeout 3600s (CLAUDE_PROCESS_TIMEOUT_S) avec timer. |
 | `parse_stream_event()` | stream_parser.py:8 | Parse une ligne stream-json de Claude CLI en log humain lisible, sans paramètre `session_cb` (mécanisme supprimé avec le fallback API). Transforme : `system/init` → log d'init, `assistant` → blocs texte + tool_use, `user` → tool_result, `result` → résumé + durée + coût. |
 | `_update_billing_mode_in_mongo()` | runner.py:156 | Enregistre le mode de facturation (`"abonnement"` ou `"api"`) dans Mongo après chaque cycle (distinction primaire vs fallback API) |
+| `tp_watcher_loop()` | core/tp_watcher.py:14 | Boucle principale du thread daemon TP watcher : exécute `_tp_watcher_tick()` toutes les 2 min en capturant les exceptions |
+| `_tp_watcher_tick()` | core/tp_watcher.py:24 | Cœur de la surveillance TP : charge `trade_history.json`, itère sur positions ouvertes, compare prix courant vs `tp_price`, déclenche vente MARKET + annulation SL si TP atteint, met à jour position avec `exit_price`/`pnl_usdc`/`pnl_pct`/`close_reason="tp_watcher"` |
+| Bloc Tâche 3 — Recalibrage TP _(cycle position)_ | prompts/position_prompt.txt | Exécuté par le sous-processus Claude dans le cycle `/calibrage` : pour chaque position ouverte, appelle MCP `mcp__tradingview__combined_analysis()` en 4h pour récupérer `resistance_2`, calcule `tp_smart = min(tp_mécanique, r2_4h × 0.98)`, met à jour `tp_price` si écart absolu > 0.5%, sauvegarde atomique via `_save_trade_history_atomic()`, notification Telegram si recalibrage ; gestion d'erreur silencieuse (continue au coin suivant si MCP échoue) |
 | `run_raisonnement()` | :864 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
 | `handle_cout()` | :1078 | Handler `/cout` : pipeline d'agrégation MongoDB (total cumulé, moyenne, dernier cycle, top 5 des cycles les plus chers) — silencieux si MongoDB absent |
 | `handle_callback()` | :912 | Gère les réponses aux inline keyboards Telegram (CONFIRM/CANCEL → `pending_callback.json`) |
@@ -269,7 +279,7 @@ webhook_server.py (process principal)
 | `min_adx` | `20` | ADX minimum sur 4h pour valider la tendance (critère de score) |
 | `max_open_positions` | `5` | Nombre maximum de positions ouvertes simultanément |
 | `universe_scan_top_n` | `20` | Nombre maximum de coins dans l'univers de scan par cycle |
-| `min_profit_pct_take` | `2.0` | Seuil de profit (%) pour réaliser les gains via SELL MARKET en cycle position (NEW #241) |
+| `min_profit_pct_take` | `5.0` | Seuil de profit (%) pour réaliser les gains via SELL MARKET en cycle position (NEW #241, augmentation #342) |
 | `max_hold_days` | `14` | Durée maximale (jours) de détention d'une position en perte avant évaluation de cut-loss en cycle position (NEW #241) |
 
 ---
@@ -292,6 +302,15 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#346](pr-346-enrichir-status-tp-watcher.md) | 2026-07-04 | [M345] Enrichir `/status` avec les infos du TP Watcher : 3 nouvelles fonctions (`_parse_last_tick()`, `_tp_watcher_health()`, `_count_tp_watcher_sales_24h()`) + refonte `_format_watcher_section()` pour exposer 4 infos (santé OK/Lent/Inactif, dernier tick locale, positions surveillées, ventes TP 24h) ; gestion robuste si `tp_watcher_state.json` absent |
+| [#344](pr-344-recalibrage-tp-phase0.md) | 2026-07-04 | [M343] Recalibrage TP automatique en Phase 0 : intègre `mcp__tradingview__combined_analysis()` 4h pour chaque position ouverte, calcule `tp_smart = min(tp_mécanique, R2 × 0.98)`, met à jour `tp_price` si écart > 0.5%, fallback silencieux si MCP échoue, notification Telegram par coin recalibré |
+| [#342](pr-342-config-augmenter-min-profit-pct-5.md) | 2026-07-04 | [CONFIG] Augmenter `min_profit_pct_take` de 2% à 5% : supprime la clôture prématurée en Phase 0 ; seuil plus restrictif pour réaliser les profits cohérent avec la stratégie reward/risk (ratio 3:2 ATR stop) |
+| [#340](pr-340-trailing-stop-no-tp-override.md) | 2026-07-04 | [FIX] Trailing stop ne modifie plus le TP (Phase 0) : supprime le recalcul `new_tp = max(cur_tp, price + trail_dist × 3)` qui écrasait le TP intelligent ; Phase 0 recentrée sur SL uniquement, TP maintenu exclusivement par Phase 4 + `/calibrage` |
+| [#331](pr-331-calibrage-tp-recalibration.md) | 2026-07-04 | [FEAT] Recalibrage TP via résistances TradingView dans `/calibrage` : tâche 3 appelle MCP `combined_analysis()` 4h, calcule `tp_smart = min(tp_mécanique, r2_4h × 0.98)`, met à jour `tp_price` si écart > 0.5% ; renumérotation tâches 3→4, 4→5, 5→6 ; validation robustesse positions long (assertion `stop < entry`) ; test unitaire `reward_risk_ratio` default 2.0 |
+| [#327](pr-327-tp-intelligent-base-sur-les-resistances.md) | 2026-07-04 | [M1] Phase 4 TP intelligent : remplace TP mécanique par un TP plafonné à la résistance TradingView la plus proche au-dessus du prix entry (`nearest_resistance × 0.98`) ; fallback vers TP mécanique si résistance indisponible (Phase 2 échoue ou aucune candidate > entry) ; notification Telegram affiche source TP : `(R X × 0.98)` ou `(mécanique)` |
+| [#326](pr-326-phase2-combined-analysis.md) | 2026-07-04 | [M1] Phase 2 : migration `coin_analysis` 4h → `combined_analysis` 4h + extraction ADX (`adx_4h`, `adx_trend_4h`) + niveaux de résistance (`resistance_1_4h`, `resistance_2_4h`, `nearest_resistance_4h`, `distance_to_resistance_4h_pct`) ; fallback automatique sur `coin_analysis` si `combined_analysis` échoue (nouveaux champs = None) ; `resistance_1_1d = None` en attente migration 1D future |
+| [#323](pr-323-enrichir-status-tp-watcher.md) | 2026-07-04 | [FEAT] Enrichir `/status` avec prix courant et état TP Watcher : nouvelles fonctions `_fetch_current_price()`, `_format_watcher_section()`, `_write_watcher_state()` + état persistant `state/tp_watcher_state.json` + affichage PnL%/distance TP par position |
+| [#321](pr-321-ajouter-thread-watcher-tp-temps-reel.md) | 2026-07-03 | [FEAT] Thread daemon TP watcher : surveillance continu du take-profit toutes les 2 min, vente MARKET automatique dès TP atteint, coordination via lock avec cycle 4h, notification Telegram immédiate |
 | [#317](pr-317-score-par-coin-phase-3.md) | 2026-07-03 | [FEAT] Afficher le score par coin dans le rapport Phase 3 : enrichit la notification Telegram Phase 3 avec le détail par coin (score /10, décision BUY/HOLD/SKIP/SELL, raisons) ; ajoute champ `scores_detail` en output JSON ; heartbeat Phase 3 inclut résumé des scores (max 300 chars) |
 | [#312](pr-312-refactor-phase1-kraken-usdc.md) | 2026-07-03 | [M1] Refactorer Phase 1 : univers de candidats défini par les paires USDC réellement disponibles sur Kraken (`kraken pairs`) au lieu de TradingView/Binance; seuil volume baissé de 5M à 1M USDC (configurable `min_volume_usdc`); `portfolio_coins` inclus systématiquement même sous seuil (fallback garanti); appels ticker par batch de 10 paires; prompts Phase 1 et Phase 2 mis à jour pour cohérence |
 | [#310](pr-310-mettre-a-jour-config-kraken.md) | 2026-07-03 | [M291] Mettre à jour `config.json` pour Kraken : suppression clé obsolète `binance_profile` (Kraken utilise credentials globaux via `kraken setup`, pas de profil par commande), migration `portfolio_coins` vers paires USDC disponibles sur Kraken (`["XBT", "XRP", "SOL"]` — remplace `["BTC", "STX", "SUI", "XRP", "SOL"]`), retrait STX et SUI dont STXUSDC/SUIUSDC introuvables sur Kraken, utilisation XBT (pas BTC) pour construction paire correcte XBTUSDC |
@@ -359,5 +378,6 @@ webhook_server.py (process principal)
 | [#242](pr-242-rec-auto-workflow.md) | 2026-06-22 | Workflow [REC] automation : refactoring complet post-review CI/CD — job `create-rec-tickets` détecte 3 formats recommandations + crée issues avec étiquettes `<!-- pr_branch -->` / `<!-- pr_number -->`; `auto-dispatch-on-auto-label` extrait métadonnées du body issue ; `binance-dev-auto` accepte mode REC-AUTO (implémente sur branche existante, ferme issue après commit) → recommandations tech lead intégrées au workflow PR existant |
 | [#268](pr-268-config-min-order-usdc.md) | 2026-06-29 | Configuration : abaissement de `min_order_usdc` de 11 à 9 USDC pour réduire les rejets TYPE_B dus aux dimensionnements ATR légitimes (8–11 USDC) — résout 4 skips/7j observés |
 | [#265](pr-265-supprimer-vars-claude-code.md) | 2026-06-24 | Fix : supprime les 5 variables `CLAUDE_CODE_*` du sous-processus Claude (`_run_claude()`) — empêche la réutilisation d'une session parent expirée en nettoyant l'env avant le lancement du CLI enfant (issue #264) |
+| [#323](pr-323-enrichir-status-tp-watcher.md) | 2026-07-04 | [FEAT] Enrichir `/status` avec prix courant et état TP Watcher : nouvelles fonctions `_fetch_current_price()`, `_format_watcher_section()`, `_write_watcher_state()` + état persistant `state/tp_watcher_state.json` + affichage PnL%/distance TP par position |
 | [#316](pr-316-fix-phase5-nonetype-guard.md) | 2026-07-03 | [BUG] Fix phase5_execution.py crash `TypeError: 'NoneType' object is not subscriptable` quand `trade=null` (0 ordres exécutés en Phase 4) — ajout garde `if not trade:` + sortie propre `PHASE5_DONE\|executed=0\|skipped=0` + `sys.exit(0)` |
 | [#302](pr-302-migrer-helpers-position.md) | 2026-07-03 | Refactoring : élimination de la duplication complète entre `trade_helpers.py` et `position_helpers.py` en faisant du second un ré-export symétrique du premier (réduction 89 → 16 lignes) — fonte unique `trade_helpers.py` pour `tg`, `binance`, `_load_config`, `_save_trade_history_atomic`, `_save_config_atomic` → gains maintenabilité ticket #274 |

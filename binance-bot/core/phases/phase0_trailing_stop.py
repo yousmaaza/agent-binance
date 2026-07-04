@@ -36,7 +36,6 @@ for t in history:
     coin = t["coin"]
     entry = float(t["entry_price"])
     cur_stop = float(t["stop_price"])
-    cur_tp = float(t["tp_price"])
     trail_dist = entry - cur_stop
 
     try:
@@ -68,8 +67,6 @@ for t in history:
         })
         continue
 
-    new_tp = max(cur_tp, round(price + trail_dist * 3, 8))
-
     try:
         sl_txid = t["sl_order_txid"]
         binance("order", "cancel", sl_txid, "-o", "json", "--yes")
@@ -89,10 +86,9 @@ for t in history:
         lot = 10 ** (-lot_dec)
         qty = _round_qty(float(t["quantity"]), lot)
         new_stop_r = _round_price(new_stop, tick)
-        new_tp_r = _round_price(new_tp, tick)
     except Exception:
         qty = float(t["quantity"])
-        new_stop_r, new_tp_r = new_stop, new_tp
+        new_stop_r = new_stop
 
     try:
         sl_raw = binance(
@@ -107,30 +103,25 @@ for t in history:
             "reason": "sl_placement_error",
             "error": str(e),
             "attempted_new_stop": new_stop_r,
-            "attempted_new_tp": new_tp_r,
         })
         tg(f"⚠️ Trailing stop {coin} : échec placement nouvel SL ({e})")
         continue
 
     t["stop_price"] = new_stop_r
-    t["tp_price"] = new_tp_r
     t["sl_order_txid"] = new_sl_txid
     _save_trade_history_atomic(history)
 
     log_phase0_event(CYCLE_ID, "phase0_trailing_stop", coin, "ts_update_success", {
         "old_stop": cur_stop,
         "new_stop": new_stop_r,
-        "old_tp": cur_tp,
-        "new_tp": new_tp_r,
         "current_price": price,
         "new_sl_txid": new_sl_txid,
     })
 
-    ts_updates.append(f"{coin}: stop {cur_stop:.4g}→{new_stop_r:.4g} | TP {cur_tp:.4g}→{new_tp_r:.4g}")
+    ts_updates.append(f"{coin}: stop {cur_stop:.4g}→{new_stop_r:.4g}")
     tg(
         f"📈 {coin} trailing stop remonté\n"
         f"Stop : {cur_stop:.4g} → {new_stop_r:.4g}\n"
-        f"TP : {cur_tp:.4g} → {new_tp_r:.4g}\n"
         f"Prix actuel : {price:.4g}"
     )
 

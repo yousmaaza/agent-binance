@@ -21,6 +21,7 @@ from core.lock import release_lock
 from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
 from core.timing import fmt_local, next_4h_slot
+from core.tp_watcher import tp_watcher_loop
 from orchestration.runner import run_trade_workflow, run_position_check_workflow
 
 NEXT_AUTO_TRADE = None
@@ -70,6 +71,9 @@ def main_loop():
         f"⏰ Prochain cycle auto : {fmt_next()}",
         parse_mode=None,
     )
+
+    threading.Thread(target=tp_watcher_loop, daemon=True, name="tp-watcher").start()
+    logger.info("TP Watcher démarré (interval=120s)")
 
     while True:
         try:

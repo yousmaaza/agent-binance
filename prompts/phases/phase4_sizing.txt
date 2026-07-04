@@ -17,7 +17,25 @@ stop_distance_pct = atr_pct × atr_stop_multiplier       # ex: 0.02 × 2 = 4%
 # Calcul des prix
 prix_entry = prix_actuel × (1 - limit_offset_pct)
 prix_stop = prix_entry × (1 - stop_distance_pct)
-prix_tp = prix_entry × (1 + stop_distance_pct × reward_risk_ratio)
+# TP mécanique (base)
+tp_mecanique = prix_entry × (1 + stop_distance_pct × reward_risk_ratio)
+
+# TP intelligent : plafonner à la prochaine résistance réelle (depuis Phase 2 combined_analysis)
+# Résistances disponibles dans analysis_results[coin] (None si combined_analysis avait échoué)
+r2_4h = analysis_results[coin].get("resistance_2_4h")   # résistance 2 sur 4h
+r1_1d = analysis_results[coin].get("resistance_1_1d")   # résistance 1 sur 1D (None pour l'instant, 1D pas encore migré)
+
+# Prendre la résistance la plus proche strictement au-dessus du prix entry
+candidates = [r for r in [r2_4h, r1_1d] if r and float(r) > prix_entry]
+nearest_resistance = min(candidates) if candidates else None
+
+if nearest_resistance:
+    tp_resistance = float(nearest_resistance) × 0.98    # marge de 2% sous la résistance
+    prix_tp = min(tp_mecanique, tp_resistance)
+    tp_source = f"R {nearest_resistance:.4g} × 0.98"
+else:
+    prix_tp = tp_mecanique
+    tp_source = "mécanique"
 
 # Quantité
 quantite = risk_usdc / (prix_entry × stop_distance_pct)
@@ -36,6 +54,6 @@ Vérifications :
 - prix_stop < 0 → SKIP (erreur)
 - Re-vérifier budget total de tous les ordres ≤ budget_disponible
 
-→ tg("💰 Phase 4 — Ordres préparés\n{pour chaque ordre : COIN qty @ entry | Stop: stop | TP: tp | Risque: risk_usdc USDC}")
+→ tg("💰 Phase 4 — Ordres préparés\n{pour chaque ordre : COIN qty @ entry | Stop: stop | TP: tp (tp_source) | Risque: risk_usdc USDC}")
 ⏱️ HEARTBEAT END PHASE 4 — appel hb(4) immédiatement ci-dessous
 hb(4, summary=f"{len(ordres_prepares)} ordres dimensionnés")

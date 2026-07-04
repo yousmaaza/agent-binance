@@ -37,6 +37,8 @@ cfg = inp.get("config") or _load_config()
 
 risk_per_trade_pct = cfg.get("risk_per_trade_pct", 0.01)
 atr_stop_multiplier = cfg.get("atr_stop_multiplier", 2)
+# reward_risk_ratio : chargé depuis config.json, détermine le rapport TP/SL
+# Si absent : défaut 2. Affecte le calcul du prix_tp en phase 4 (ligne 57)
 reward_risk_ratio = cfg.get("reward_risk_ratio", 2)
 limit_offset_pct = cfg.get("limit_offset_pct", 0.001)
 min_order_usdc = cfg.get("min_order_usdc", 9)
@@ -54,6 +56,7 @@ for candidate in buy_candidates:
     stop_distance_pct = atr_pct * atr_stop_multiplier
     prix_entry = prix_actuel * (1 - limit_offset_pct)
     prix_stop = prix_entry * (1 - stop_distance_pct)
+    # TP smart : basé sur reward_risk_ratio (config.json). TP = Entry * (1 + SL_distance * ratio)
     prix_tp = prix_entry * (1 + stop_distance_pct * reward_risk_ratio)
 
     if prix_stop <= 0:
