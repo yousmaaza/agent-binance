@@ -298,6 +298,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#327](pr-327-tp-intelligent-base-sur-les-resistances.md) | 2026-07-04 | [M1] Phase 4 TP intelligent : remplace TP mécanique par un TP plafonné à la résistance TradingView la plus proche au-dessus du prix entry (`nearest_resistance × 0.98`) ; fallback vers TP mécanique si résistance indisponible (Phase 2 échoue ou aucune candidate > entry) ; notification Telegram affiche source TP : `(R X × 0.98)` ou `(mécanique)` |
 | [#326](pr-326-phase2-combined-analysis.md) | 2026-07-04 | [M1] Phase 2 : migration `coin_analysis` 4h → `combined_analysis` 4h + extraction ADX (`adx_4h`, `adx_trend_4h`) + niveaux de résistance (`resistance_1_4h`, `resistance_2_4h`, `nearest_resistance_4h`, `distance_to_resistance_4h_pct`) ; fallback automatique sur `coin_analysis` si `combined_analysis` échoue (nouveaux champs = None) ; `resistance_1_1d = None` en attente migration 1D future |
 | [#323](pr-323-enrichir-status-tp-watcher.md) | 2026-07-04 | [FEAT] Enrichir `/status` avec prix courant et état TP Watcher : nouvelles fonctions `_fetch_current_price()`, `_format_watcher_section()`, `_write_watcher_state()` + état persistant `state/tp_watcher_state.json` + affichage PnL%/distance TP par position |
 | [#321](pr-321-ajouter-thread-watcher-tp-temps-reel.md) | 2026-07-03 | [FEAT] Thread daemon TP watcher : surveillance continu du take-profit toutes les 2 min, vente MARKET automatique dès TP atteint, coordination via lock avec cycle 4h, notification Telegram immédiate |
