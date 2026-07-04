@@ -1,6 +1,9 @@
 """Commande /status — retourne une str (compatible Telegram et CLI)."""
 import json
 import subprocess
+from datetime import datetime
+
+from loguru import logger
 
 from core.env import PROJECT_DIR, KRAKEN_CLI_PATH
 from config.app import APP_CONFIG
@@ -72,6 +75,20 @@ def _format_orders_section(open_orders: dict) -> list[str]:
     return lines
 
 
+def _fetch_current_price(coin: str) -> float | None:
+    """Récupère le prix courant d'un coin depuis Kraken. Retourne None si indisponible."""
+    try:
+        result = subprocess.run(
+            [str(KRAKEN_CLI_PATH), "ticker", f"{coin}USDC", "-o", "json"],
+            capture_output=True, text=True, cwd=PROJECT_DIR, timeout=5,
+        )
+        data = json.loads(result.stdout) if result.stdout.strip() else {}
+        return float(data.get(f"{coin}USDC", {}).get("c", [None])[0])
+    except Exception as e:
+        logger.debug(f"[status] ticker {coin} indisponible : {e}")
+        return None
+
+
 def _format_trades_section(fmt_next: str) -> list[str]:
     """Formate la section des trades actifs."""
     lines = []
@@ -82,10 +99,50 @@ def _format_trades_section(fmt_next: str) -> list[str]:
         if open_trades:
             lines.append(f"\n<b>Trades agent actifs ({len(open_trades)}) :</b>")
             for t in open_trades:
-                lines.append(f"  🎯 {t['coin']} @ {t['entry_price']:.4g} | Stop: {t['stop_price']:.4g} | TP: {t['tp_price']:.4g}")
-    except Exception:
-        pass
+                coin = t['coin']
+                entry = float(t['entry_price'])
+                stop = float(t['stop_price'])
+                tp = float(t['tp_price'])
+                current = _fetch_current_price(coin)
+                if current is not None:
+                    pnl_pct = (current - entry) / entry * 100
+                    dist_to_tp = (tp - current) / current * 100
+                    price_str = f"Actuel: {current:.4g} ({pnl_pct:+.1f}% | {dist_to_tp:+.1f}% → TP)"
+                else:
+                    price_str = "Actuel: n/d"
+                lines.append(f"  🎯 {coin} @ {entry:.4g} | Stop: {stop:.4g} | TP: {tp:.4g} | {price_str}")
+    except Exception as e:
+        logger.warning(f"[status] erreur lecture trades : {e}")
     lines.append(f"\n⏰ <b>Prochain cycle auto</b> : <code>{fmt_next}</code>")
+    return lines
+
+
+def _format_watcher_section() -> list[str]:
+    """Formate la section TP Watcher."""
+    state_path = f"{PROJECT_DIR}/state/tp_watcher_state.json"
+    try:
+        with open(state_path) as f:
+            state = json.load(f)
+    except FileNotFoundError:
+        return ["\n🤖 <b>TP Watcher</b> : Non démarré"]
+    except Exception:
+        return ["\n🤖 <b>TP Watcher</b> : Erreur lecture état"]
+
+    status = state.get("status", "?")
+    emoji = {"ok": "✅", "warning": "⚠️", "error": "❌"}.get(status, "❓")
+    positions_checked = state.get("positions_checked", 0)
+
+    last_tick_raw = state.get("last_tick", "")
+    try:
+        last_tick_dt = datetime.fromisoformat(last_tick_raw.replace("Z", "+00:00"))
+        last_tick_str = last_tick_dt.astimezone().strftime("%d/%m %H:%M")
+    except Exception:
+        last_tick_str = last_tick_raw[:16]
+
+    lines = [f"\n🤖 <b>TP Watcher</b> : {emoji} Dernier tick {last_tick_str} — {positions_checked} pos. surveillée(s)"]
+    last_error = state.get("last_error")
+    if last_error:
+        lines.append(f"  ⚠️ Dernière erreur : {str(last_error)[:80]}")
     return lines
 
 
@@ -104,5 +161,6 @@ def run_status(fmt_next_fn=None) -> str:
     lines.extend(_format_positions_section(balance_data))
     lines.extend(_format_orders_section(open_orders))
     lines.extend(_format_trades_section(fmt_next))
+    lines.extend(_format_watcher_section())
 
     return "\n".join(lines)
