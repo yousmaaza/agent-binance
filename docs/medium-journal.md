@@ -10,6 +10,147 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-04
+
+### PRs mergées (8)
+
+Journée thématique : 8 PRs mergées entre 07:47 et 18:58 UTC, toutes reliées à un même fil directeur — la construction d'un système de take-profit intelligent, adaptatif et visible. La vague migration Kraken de hier (14 PRs, 3 juillet) avait posé les fondations ; aujourd'hui, le TP reçoit sa couche de cerveau.
+
+#### #323 — feat(status): enrichir /status avec état TP Watcher et prix courant vs TP
+
+- **Mergée à** : 07:47 UTC (09:47 Europe/Paris)
+- **Branche** : `feat/issue-322-status-tp-watcher-state`
+- **Issues fermées** : #322
+- **Quoi** : la PR #321 (hier soir, 21:37 UTC) avait ajouté un thread TP Watcher qui tourne toutes les 2 minutes — mais son état était invisible depuis Telegram. Cette PR rend le watcher lisible : `/status` affiche désormais le prix courant Kraken de chaque position ouverte avec le PnL% en temps réel et la distance au TP, plus une section "TP Watcher" avec emoji d'état (✅⚠️❌), heure du dernier tick et nombre de positions surveillées. Deux nouvelles fonctions dans `commands/status.py` : `_fetch_current_price()` (appelle `kraken-cli ticker {coin}USDC`) et `_format_watcher_section()` (lit `state/tp_watcher_state.json`). Le watcher lui-même gagne `_write_watcher_state()` pour écriture atomique de son état.
+- **Doc tech** : [docs/technique/pr-323-enrichir-status-tp-watcher.md](../technique/pr-323-enrichir-status-tp-watcher.md)
+
+---
+
+#### #326 — [M1] Migrer Phase 2 de coin_analysis vers combined_analysis (4h)
+
+- **Mergée à** : 08:10 UTC
+- **Branche** : `feat/issue-319-combined-analysis-phase2`
+- **Issues fermées** : #319 (créée le 3 juillet)
+- **Quoi** : `coin_analysis` 4h ne retournait pas de données de support/résistance ni d'ADX — deux informations critiques pour les PRs suivantes. `combined_analysis` les fournit en un seul appel. `phase2_analysis.txt` migre son étape A vers `mcp__tradingview__combined_analysis` 4h et extrait six nouveaux champs : `adx_4h`, `adx_trend_4h`, `resistance_1_4h`, `resistance_2_4h`, `nearest_resistance_4h`, `distance_to_resistance_4h_pct`. L'appel 1D (`coin_analysis`) reste inchangé. Fallback sur `coin_analysis` si `combined_analysis` échoue — les nouveaux champs sont alors `None`, sans bloquer le cycle.
+- **Décision notable** : `resistance_1_1d` est initialisé à `None` explicitement — la 1D n'expose pas encore les résistances, c'est documenté, pas un oubli.
+- **Doc tech** : [docs/technique/pr-326-phase2-combined-analysis.md](../technique/pr-326-phase2-combined-analysis.md)
+
+---
+
+#### #327 — [M1] TP intelligent basé sur les résistances TradingView (Phase 4)
+
+- **Mergée à** : 08:33 UTC
+- **Branche** : `feat/issue-325-smart-tp-resistance`
+- **Issues fermées** : #325
+- **Quoi** : conséquence directe de la PR #326. Phase 4 calculait le TP mécaniquement (`entry × (1 + stop_distance_pct × reward_risk_ratio)`), souvent trop agressif et déconnecté du marché réel. Nouveau calcul : `tp_smart = min(tp_mécanique, nearest_resistance × 0.98)` si la résistance est au-dessus du prix d'entrée. Fallback vers TP mécanique si aucune résistance disponible. La notification Telegram Phase 4 indique désormais la source : `TP: 1.2460 (R 1.271 × 0.98)` ou `TP: 1.2902 (mécanique)`. Seul `prompts/phases/phase4_sizing.txt` est modifié — aucun fichier Python touché.
+- **Pourquoi c'est structurant** : c'est la première fois que le bot calibre son TP sur une réalité de marché (niveau de résistance TradingView) plutôt qu'une formule aveugle. La chaîne Phase 2 → Phase 4 devient une vraie pipeline d'enrichissement de signal.
+- **Doc tech** : [docs/technique/pr-327-tp-intelligent-base-sur-les-resistances.md](../technique/pr-327-tp-intelligent-base-sur-les-resistances.md)
+
+---
+
+#### #331 — feat: /calibrage recalcule les TP des positions ouvertes via combined_analysis
+
+- **Mergée à** : 09:33 UTC
+- **Branche** : `feat/issue-330-calibrage-tp-recalibration`
+- **Issues fermées** : #330 + 7 tickets [REC] (#332–#338)
+- **Quoi** : la commande `/calibrage` gagnait en PR #329 une sous-commande `/calibrage tp COIN PRIX` pour modifier le TP manuellement — mais cette PR a été **fermée sans merge** (voir section issues). Cette PR-ci adopte une approche différente : `/calibrage` recalcule automatiquement les TPs de toutes les positions ouvertes via `combined_analysis`, en appliquant la même logique `min(tp_mécanique, R2 × 0.98)` que Phase 4. Mise à jour conditionnelle : seuil de 0.5% de delta avant de persister le changement. Notification Telegram par coin mis à jour. Le recalibrage est la tâche 3 de `position_prompt.txt`, insérée avant les tâches d'évaluation existantes (renumérotation 3→4→5→6).
+- **Incident PR #329** : la PR `/calibrage tp COIN PRIX` (modification manuelle du TP) a été ouverte à 08:41 UTC et fermée sans merge à 08:42 UTC — 1 minute de vie. Cause probable : approche jugée inférieure à la recalibration automatique par résistances. L'issue #328 a été fermée manuellement dans la foulée.
+- **Doc tech** : [docs/technique/pr-331-calibrage-tp-recalibration.md](../technique/pr-331-calibrage-tp-recalibration.md)
+
+---
+
+#### #340 — fix: trailing stop ne doit pas modifier le TP (Phase 0)
+
+- **Mergée à** : 17:21 UTC
+- **Branche** : `feat/issue-339-trailing-stop-no-tp-override`
+- **Issues fermées** : #339
+- **Contexte** : bug découvert en production le jour même sur la position ETH. Le TP avait été recalibré intelligemment à 1851 USDC (R2×0.98 via Phase 4) mais le trailing stop du cycle suivant l'écrasait à 2159 USDC via le calcul `new_tp = max(cur_tp, round(price + trail_dist * 3, 8))`. Le TP intelligent n'avait ainsi aucun effet durable.
+- **Quoi** : suppression du calcul de TP dans `phase0_trailing_stop.py`. Le trailing stop ne touche plus que `stop_price` (SL). Les variables `cur_tp`, `new_tp`, `new_tp_r` sont supprimées. Le message Telegram et les logs ne mentionnent plus de changement de TP. Séparation nette des responsabilités : trailing stop → SL uniquement / TP intelligent → Phase 4 et `/calibrage`.
+- **Délai bug → fix** : moins de 8 heures (découvert en production dans la matinée, mergé à 17:21 UTC).
+- **Doc tech** : [docs/technique/pr-340-trailing-stop-no-tp-override.md](../technique/pr-340-trailing-stop-no-tp-override.md)
+
+---
+
+#### #342 — config: augmenter min_profit_pct_take de 2% à 5% (Phase 0)
+
+- **Mergée à** : 17:35 UTC
+- **Branche** : `feat/issue-341-min-profit-pct-5`
+- **Issues fermées** : #341
+- **Quoi** : modification d'un seul paramètre dans `config.json` — `min_profit_pct_take` passe de `2.0` à `5.0`. Ce seuil contrôle Phase 0 : si le P&L d'une position ouverte atteint ce pourcentage, elle est clôturée. À 2%, Phase 0 pouvait fermer une position à +3% alors que le TP visé (via résistances) était à +6% ou plus. À 5%, le bot laisse les positions respirer jusqu'à leurs cibles réelles. Aucun changement de code : `phase0_profit.py` lit déjà la valeur via `_load_config()`.
+- **Cohérence** : le seuil de 5% reste en deçà du reward_risk_ratio appliqué en Phase 4 (× 2 ATR stop), donc cohérent avec la stratégie de risk management.
+
+---
+
+#### #344 — feat: recalibrage TP automatique en Phase 0
+
+- **Mergée à** : 18:00 UTC
+- **Branche** : `feat/issue-343-phase0-calibrate-tp`
+- **Issues fermées** : #343
+- **Quoi** : intégration du recalibrage TP dans le cycle automatique 4h. Avant cette PR, le TP intelligent n'était recalculé que lors d'un `/calibrage` manuel ou à l'ouverture d'une position (Phase 4). Après, Phase 0 recalibre les TPs à chaque cycle via une nouvelle section `# --- RECALIBRAGE TP ---` insérée dans `phase0_snapshot.txt` entre le trailing stop et la réalisation de profits. Pour chaque position ouverte : appel `combined_analysis` (4h, BINANCE) → calcul `tp_smart = min(tp_mécanique, R2 × 0.98)` → mise à jour si delta > 0.5% → notification Telegram. Nouveau fichier `prompts/phases/phase0_calibrate_tp.txt` : template Python inline exécuté par Claude pour persister les TPs dans `trade_history.json` via `_save_trade_history_atomic`. Fallback silencieux si `combined_analysis` échoue pour un coin.
+- **Doc tech** : [docs/technique/pr-344-recalibrage-tp-phase0.md](../technique/pr-344-recalibrage-tp-phase0.md)
+
+---
+
+#### #346 — [M345] Enrichir /status avec les infos du TP Watcher (v2)
+
+- **Mergée à** : 18:58 UTC (20:58 Europe/Paris)
+- **Branche** : `feat/issue-345-status-tp-watcher`
+- **Issues fermées** : #345
+- **Quoi** : réécriture de `_format_watcher_section()` dans `commands/status.py` pour une section TP Watcher plus complète. Quatre informations exposées : statut santé calculé depuis l'âge du `last_tick` (< 5 min = ✅ OK, 5–10 min = ⚠️ Lent, > 10 min = 🔴 Inactif), heure du dernier tick en heure locale, nombre de positions surveillées, et nombre de ventes TP exécutées dans les dernières 24h (filtre sur `close_reason` contenant `"tp_watcher"` + `exit_date` dans les 24h). Gestion robuste : `tp_watcher_state.json` absent ou corrompu → "⚠️ État inconnu" sans exception. Note technique : `last_tick` dans le JSON avait un format inhabituel `"+00:00Z"` (Z redondant après offset explicite) — `_parse_last_tick()` le nettoie avant `fromisoformat()`.
+- **Doc tech** : [docs/technique/pr-346-enrichir-status-tp-watcher.md](../technique/pr-346-enrichir-status-tp-watcher.md)
+
+---
+
+### Issues fermées (16)
+
+**Issues fonctionnelles (9)** :
+- **#322** → PR #323 (enrichir /status TP Watcher) — créée et fermée le même jour
+- **#319** → PR #326 (combined_analysis Phase 2) — créée le 3 juillet, fermée ce matin
+- **#325** → PR #327 (TP intelligent résistances) — créée et fermée le même jour
+- **#328** → PR #329 (fermée sans merge) — issue fermée manuellement après abandon de la PR
+- **#330** → PR #331 (/calibrage recalcule TPs) — créée et fermée le même jour
+- **#339** → PR #340 (trailing stop no TP override) — créée 17:11 UTC, mergée 17:21 UTC (10 min)
+- **#341** → PR #342 (min_profit_pct_take 5%) — créée 17:29 UTC, mergée 17:35 UTC (6 min)
+- **#343** → PR #344 (recalibrage TP Phase 0) — créée 17:53 UTC, mergée 18:00 UTC (7 min)
+- **#345** → PR #346 (enrichir /status v2) — créée 18:48 UTC, mergée 18:58 UTC (10 min)
+
+**Tickets [REC] auto-générés par le tech lead reviewer (7)** :
+#332–#338 — créés à 08:51 UTC après merge de PR #327 et PR #329, fermés en batch à 08:52–08:54 UTC (2 minutes de cycle de vie). Sujets : formatage `.4g` prix résistance, robustesse `stop_distance_pct`, dépendance `reward_risk_ratio` dans config, test cycle sans MCP, test update `trade_history` après calibrage, stabilité seuil 0.5%, test `reward_risk_ratio` absent.
+
+---
+
+### Nouveaux tickets créés (significatifs)
+
+- **#324** — `refactor: extraire _execute_tp_sell() depuis _tp_watcher_tick (CC=20)` [enhancement] — créé à 07:47 UTC, **OPEN**. La fonction `_tp_watcher_tick()` de `tp_watcher.py` atteint une complexité cyclomatique CC=20, jugée trop élevée pour la maintenance. La recommandation est d'extraire la logique de vente effective dans une fonction `_execute_tp_sell()` dédiée. Seul ticket encore ouvert en fin de journée.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "Construire un cerveau pour le take-profit en une journée". En 11 heures (07:47–18:58 UTC), 8 PRs ont bâti une chaîne complète : Phase 2 extrait les résistances → Phase 4 plafonne le TP sur la résistance la plus proche → `/calibrage` recalibre les TPs existants → Phase 0 le fait automatiquement à chaque cycle 4h → le trailing stop apprend à ne plus toucher le TP → le seuil de prise de profit est relevé pour laisser le TP s'exprimer → `/status` montre tout ça en temps réel. Ce type de chaîne enchaînée — où chaque PR suppose la précédente et prépare la suivante — est rare dans les projets humains parce qu'il requiert une vision globale maintenue sur la durée. Ici, elle s'est construite en une seule session, dans un ordre quasiment optimal. Article sur la question : est-ce que l'agent "voit" la chaîne entière avant d'écrire la première PR, ou est-ce qu'il découvre les pièces suivantes au fil de l'avancement ?
+
+> **Angle incident** : "Le TP intelligent écrasé par le trailing stop". Le bug découvert sur ETH le matin même est un cas d'école de régression de raisonnement : Phase 4 calcule un TP intelligent à 1851 USDC basé sur les résistances TradingView. Mais le cycle suivant, le trailing stop — qui n'avait pas encore été mis à jour — calculait son propre TP à 2159 USDC et l'écrasait. Le TP intelligent n'avait aucune durée de vie supérieure à un cycle. La séparation des responsabilités (trailing stop → SL uniquement, TP → Phase 4 et `/calibrage`) est la réponse architecturale à ce conflit de compétences entre deux composants qui ne se "parlaient" pas. Court article sur ce que "séparation des responsabilités" veut dire concrètement dans un bot de trading piloté par des prompts imbriqués.
+
+> **Angle technique** : "La PR d'une minute". PR #329 (/calibrage tp COIN PRIX) ouverte à 08:41 UTC, fermée sans merge à 08:42 UTC. 1 minute de vie. Elle proposait de modifier le TP manuellement via une commande Telegram. Elle a été abandonnée au profit de la PR #331 qui recalcule les TPs automatiquement via les résistances TradingView. Ce n'est pas un bug ou une erreur de l'agent — c'est une décision de design prise en cours de route : le TP manuel est inférieur au TP calculé depuis le marché. La trajectoire PR #329 (abandonée) → PR #331 (mergée) illustre comment une approche "manuelle" peut être remplacée par une approche "basée sur les données" dans la même journée.
+
+> **Angle UX** : "Rendre l'invisible visible". La première PR de la journée (#323) et la dernière (#346) partagent le même objectif : rendre l'état interne du bot lisible depuis Telegram. Le TP Watcher tournait depuis la veille en tâche de fond invisible — l'utilisateur ne savait pas s'il était actif, en erreur, ou combien de ventes il avait déclenchées. Les deux PRs de `/status` (07:47 et 18:58) encadrent la journée comme des bornes d'observabilité. Ce pattern — construire une feature puis construire son tableau de bord — est systématique dans ce projet. Article sur l'idée que dans un bot LLM-driven, l'observabilité n'est pas un add-on : c'est la condition pour savoir si le bot fait bien ce qu'on pense qu'il fait.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **8**
+- PR fermée sans merge : **1** (#329 — 1 minute de vie)
+- Issues fermées : **16** (9 fonctionnelles + 7 [REC])
+- Tickets créés : **16** (15 fermés le même jour, 1 ouvert : #324)
+- Fenêtre de la journée : **11h11** (07:47 → 18:58 UTC)
+- Bug production découvert et corrigé le même jour : **1** (ETH TP écrasé par trailing stop, PR #340)
+- Délai le plus court ticket → merge : **6 min** (#341 → #342, 17:29 → 17:35 UTC)
+- Délais en fin de journée (3 dernières PRs) : 7 min, 6 min, 10 min
+- Seul ticket resté ouvert en fin de journée : **#324** (refactor `_execute_tp_sell`, CC=20)
+
+---
+
 ## 2026-07-03
 
 ### PRs mergées (14)
