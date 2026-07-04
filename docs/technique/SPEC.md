@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-04 (PR #323)
+> **Dernière mise à jour** : 2026-07-04 (PR #331)
 > **Commit** : <current>
 
 ---
@@ -187,6 +187,7 @@ webhook_server.py (process principal)
 | `_update_billing_mode_in_mongo()` | runner.py:156 | Enregistre le mode de facturation (`"abonnement"` ou `"api"`) dans Mongo après chaque cycle (distinction primaire vs fallback API) |
 | `tp_watcher_loop()` | core/tp_watcher.py:14 | Boucle principale du thread daemon TP watcher : exécute `_tp_watcher_tick()` toutes les 2 min en capturant les exceptions |
 | `_tp_watcher_tick()` | core/tp_watcher.py:24 | Cœur de la surveillance TP : charge `trade_history.json`, itère sur positions ouvertes, compare prix courant vs `tp_price`, déclenche vente MARKET + annulation SL si TP atteint, met à jour position avec `exit_price`/`pnl_usdc`/`pnl_pct`/`close_reason="tp_watcher"` |
+| Bloc Tâche 3 — Recalibrage TP _(cycle position)_ | prompts/position_prompt.txt | Exécuté par le sous-processus Claude dans le cycle `/calibrage` : pour chaque position ouverte, appelle MCP `mcp__tradingview__combined_analysis()` en 4h pour récupérer `resistance_2`, calcule `tp_smart = min(tp_mécanique, r2_4h × 0.98)`, met à jour `tp_price` si écart absolu > 0.5%, sauvegarde atomique via `_save_trade_history_atomic()`, notification Telegram si recalibrage ; gestion d'erreur silencieuse (continue au coin suivant si MCP échoue) |
 | `run_raisonnement()` | :864 | Handler `/raisonnement` : lit le dernier cycle depuis MongoDB et renvoie l'explication vulgarisée en français |
 | `handle_cout()` | :1078 | Handler `/cout` : pipeline d'agrégation MongoDB (total cumulé, moyenne, dernier cycle, top 5 des cycles les plus chers) — silencieux si MongoDB absent |
 | `handle_callback()` | :912 | Gère les réponses aux inline keyboards Telegram (CONFIRM/CANCEL → `pending_callback.json`) |
@@ -298,6 +299,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#331](pr-331-calibrage-tp-recalibration.md) | 2026-07-04 | [FEAT] Recalibrage TP via résistances TradingView dans `/calibrage` : tâche 3 appelle MCP `combined_analysis()` 4h, calcule `tp_smart = min(tp_mécanique, r2_4h × 0.98)`, met à jour `tp_price` si écart > 0.5% ; renumérotation tâches 3→4, 4→5, 5→6 ; validation robustesse positions long (assertion `stop < entry`) ; test unitaire `reward_risk_ratio` default 2.0 |
 | [#327](pr-327-tp-intelligent-base-sur-les-resistances.md) | 2026-07-04 | [M1] Phase 4 TP intelligent : remplace TP mécanique par un TP plafonné à la résistance TradingView la plus proche au-dessus du prix entry (`nearest_resistance × 0.98`) ; fallback vers TP mécanique si résistance indisponible (Phase 2 échoue ou aucune candidate > entry) ; notification Telegram affiche source TP : `(R X × 0.98)` ou `(mécanique)` |
 | [#326](pr-326-phase2-combined-analysis.md) | 2026-07-04 | [M1] Phase 2 : migration `coin_analysis` 4h → `combined_analysis` 4h + extraction ADX (`adx_4h`, `adx_trend_4h`) + niveaux de résistance (`resistance_1_4h`, `resistance_2_4h`, `nearest_resistance_4h`, `distance_to_resistance_4h_pct`) ; fallback automatique sur `coin_analysis` si `combined_analysis` échoue (nouveaux champs = None) ; `resistance_1_1d = None` en attente migration 1D future |
 | [#323](pr-323-enrichir-status-tp-watcher.md) | 2026-07-04 | [FEAT] Enrichir `/status` avec prix courant et état TP Watcher : nouvelles fonctions `_fetch_current_price()`, `_format_watcher_section()`, `_write_watcher_state()` + état persistant `state/tp_watcher_state.json` + affichage PnL%/distance TP par position |
