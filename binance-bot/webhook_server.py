@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Telegram polling bot — point d'entrée. Dispatch les commandes vers les handlers."""
+import json
 import os
 import sys
 import threading
@@ -17,6 +18,7 @@ from commands.eval import run_eval
 from commands.perf import run_perf
 from commands.raisonnement import run_raisonnement
 from commands.status import run_status
+from core.env import PROJECT_DIR
 from core.lock import release_lock
 from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
@@ -43,6 +45,40 @@ def _check_and_run_scheduled(next_time, slot_fn, workflow_fn, label, fmt_next_fn
         ).start()
         return next_slot
     return next_time
+
+
+def _handle_set_tp(coin: str, prix_str: str) -> None:
+    try:
+        new_tp = float(prix_str)
+        if new_tp <= 0:
+            raise ValueError
+    except ValueError:
+        send_telegram(f"❌ Prix invalide : {prix_str}")
+        return
+
+    th_path = f"{PROJECT_DIR}/state/trade_history.json"
+    try:
+        with open(th_path) as f:
+            history = json.load(f)
+    except Exception as e:
+        send_telegram(f"❌ Erreur lecture trade_history : {e}")
+        return
+
+    for pos in history:
+        if pos.get("coin") == coin and pos.get("status") == "open":
+            old_tp = pos.get("tp_price")
+            pos["tp_price"] = new_tp
+            tmp = th_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(history, f, indent=2)
+            os.replace(tmp, th_path)
+            send_telegram(
+                f"✅ TP {coin} mis à jour : {old_tp} → {new_tp}\n"
+                f"Le watcher surveillera ce nouveau seuil."
+            )
+            return
+
+    send_telegram(f"❌ Aucune position ouverte pour {coin}")
 
 
 def main_loop():
@@ -138,6 +174,12 @@ def main_loop():
                         target=lambda: send_telegram(run_eval(), parse_mode="HTML"),
                         daemon=True,
                     ).start()
+                elif text.lower().startswith("/calibrage tp"):
+                    parts = text.split()
+                    if len(parts) != 4:
+                        send_telegram("Usage : /calibrage tp COIN PRIX\nEx : /calibrage tp XRP 1.25")
+                    else:
+                        _handle_set_tp(parts[2].upper(), parts[3])
                 elif text.startswith("/calibrage"):
                     send_telegram("⚙️ Calibrage des positions en cours...")
                     threading.Thread(
