@@ -1,7 +1,9 @@
 """Commande /status — retourne une str (compatible Telegram et CLI)."""
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime
+
+from loguru import logger
 
 from core.env import PROJECT_DIR, KRAKEN_CLI_PATH
 from config.app import APP_CONFIG
@@ -82,7 +84,8 @@ def _fetch_current_price(coin: str) -> float | None:
         )
         data = json.loads(result.stdout) if result.stdout.strip() else {}
         return float(data.get(f"{coin}USDC", {}).get("c", [None])[0])
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[status] ticker {coin} indisponible : {e}")
         return None
 
 
@@ -108,8 +111,8 @@ def _format_trades_section(fmt_next: str) -> list[str]:
                 else:
                     price_str = "Actuel: n/d"
                 lines.append(f"  🎯 {coin} @ {entry:.4g} | Stop: {stop:.4g} | TP: {tp:.4g} | {price_str}")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[status] erreur lecture trades : {e}")
     lines.append(f"\n⏰ <b>Prochain cycle auto</b> : <code>{fmt_next}</code>")
     return lines
 

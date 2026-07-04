@@ -103,8 +103,8 @@ def _tp_watcher_tick():
                     cost = float(fill.get("cost", current_price * qty))
                     if vol_exec > 0:
                         exit_price = cost / vol_exec
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[TP Watcher] Fill query {sell_txid} indisponible, exit_price = current_price : {e}")
 
             pnl_usdc = (exit_price - entry_price) * qty
             pnl_pct = (exit_price - entry_price) / entry_price * 100
