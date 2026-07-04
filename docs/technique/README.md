@@ -25,6 +25,8 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#351](pr-351-ajouter-duration-error-type-mongo.md) | [M347] Ajouter duration_s et error_type dans les cycles Mongo | 2026-07-04 |
+| [#350](pr-350-watcher-cumulative-counters.md) | Compteurs cumulatifs total_ticks et total_sales dans tp_watcher_state.json | 2026-07-04 |
 | [#346](pr-346-enrichir-status-tp-watcher.md) | Enrichir /status avec les infos du TP Watcher | 2026-07-04 |
 | [#344](pr-344-recalibrage-tp-phase0.md) | [M343] Recalibrage TP automatique en Phase 0 | 2026-07-04 |
 | [#342](pr-342-config-augmenter-min-profit-pct-5.md) | Augmenter min_profit_pct_take de 2% à 5% (Phase 0) | 2026-07-04 |

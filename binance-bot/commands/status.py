@@ -7,7 +7,7 @@ from loguru import logger
 
 from core.env import PROJECT_DIR, KRAKEN_CLI_PATH
 from config.app import APP_CONFIG
-from core.timing import fmt_local
+from core.timing import fmt_local, parse_dt
 
 
 def _fetch_account_data() -> dict | None:
@@ -118,17 +118,6 @@ def _format_trades_section(fmt_next: str) -> list[str]:
     return lines
 
 
-def _parse_last_tick(raw: str) -> datetime | None:
-    """Parse le timestamp last_tick (ISO 8601, potentiellement "+00:00Z"). Retourne datetime aware UTC ou None."""
-    if not raw:
-        return None
-    try:
-        # last_tick peut être "...+00:00Z" — le Z final est redondant, on le retire
-        cleaned = raw.rstrip("Z") if raw.endswith("+00:00Z") else raw
-        return datetime.fromisoformat(cleaned)
-    except Exception:
-        return None
-
 
 def _tp_watcher_health(last_tick_dt: datetime) -> str:
     """Retourne le label santé selon l'âge du dernier tick (comparaison UTC)."""
@@ -180,7 +169,7 @@ def _format_watcher_section() -> list[str]:
     except Exception:
         return ["\n🤖 <b>TP Watcher</b> : ⚠️ État inconnu"]
 
-    last_tick_dt = _parse_last_tick(state.get("last_tick", ""))
+    last_tick_dt = parse_dt(state.get("last_tick", ""))
     if last_tick_dt is not None:
         health = _tp_watcher_health(last_tick_dt)
         tick_str = fmt_local(last_tick_dt)
