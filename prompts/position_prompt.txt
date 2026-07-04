@@ -103,6 +103,8 @@ for pos in positions:
     except:
         continue
 
+    # Assumes long position (stop < entry); short positions would produce negative distance and invalid tp_mecanique
+    assert stop_price < entry_price, f"stop_price {stop_price} must be < entry_price {entry_price} for long position (coin {coin})"
     stop_distance_pct = (entry_price - stop_price) / entry_price
     tp_mecanique = entry_price * (1 + stop_distance_pct * reward_risk_ratio)
 
