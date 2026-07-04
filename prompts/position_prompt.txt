@@ -110,7 +110,7 @@ for pos in positions:
 
     if r2_4h and float(r2_4h) > entry_price:
         tp_smart = min(tp_mecanique, float(r2_4h) * 0.98)
-        source = f"R {float(r2_4h):.4g} × 0.98"
+        source = f"R {float(r2_4h):.6f} × 0.98"
     else:
         tp_smart = tp_mecanique
         source = "mécanique"
@@ -118,7 +118,7 @@ for pos in positions:
     if abs(tp_smart - tp_actuel) / tp_actuel > 0.005:
         pos["tp_price"] = tp_smart
         changed = True
-        tg(f"📐 TP {coin} recalibré : {tp_actuel:.4g} → {tp_smart:.4g} ({source})")
+        tg(f"📐 TP {coin} recalibré : {tp_actuel:.6f} → {tp_smart:.6f} ({source})")
 
 if changed:
     _save_trade_history_atomic(trade_history)
