@@ -36,6 +36,11 @@ skip_detail = skip_detail if 'skip_detail' in locals() else None
 sentiment = sentiment if 'sentiment' in locals() else "NEUTRAL"
 open_positions = open_positions if 'open_positions' in locals() else 0
 
+# duration_s et error_type sont injectés après le cycle par runner.py via _update_perf_in_mongo.
+# Mettre null ici — les vraies valeurs sont écrites directement en Mongo après la fin du subprocess.
+duration_s = None
+error_type = None
+
 Construis un document Python `doc` représentant ce cycle :
 
 doc = {
@@ -89,6 +94,8 @@ doc = {
     "stdout": f"logs/stdout/cycle_{CYCLE_ID}.log",
     "stderr": f"logs/stderr/cycle_{CYCLE_ID}.log"
   },
+  "duration_s": duration_s,
+  "error_type": error_type,
   "explanation_fr": "Paragraphe de 3 à 5 phrases en FRANÇAIS expliquant à un non-expert en crypto : (a) ce qu'on a fait ce cycle, (b) pourquoi on a (ou pas) placé des ordres, (c) la météo du marché. ÉVITE le jargon technique. Au lieu de 'RSI à 32', dis 'l'indicateur de pression vendeuse'. Au lieu de 'score 7/10', dis 'signal solide'. Au lieu de 'ATR×2', dis 'protection ajustée à la volatilité'."
 }
 
