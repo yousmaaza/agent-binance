@@ -1,5 +1,6 @@
 """Utilitaires de temps : calcul du prochain slot 4h UTC, formatage heure locale."""
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 
 def next_4h_slot() -> datetime:
@@ -27,3 +28,17 @@ def fmt_local(dt_utc: datetime) -> str:
     """Convertit un datetime UTC en heure locale lisible, ex: '22/05 14:05 (heure locale)'."""
     local = dt_utc.astimezone()
     return local.strftime("%d/%m %H:%M") + " (heure locale)"
+
+
+def parse_dt(raw: Optional[str]) -> Optional[datetime]:
+    """Parse un timestamp ISO 8601 en datetime aware UTC. Gère le suffixe +00:00Z redondant."""
+    if not raw:
+        return None
+    try:
+        cleaned = raw.rstrip("Z") if raw.endswith("+00:00Z") else raw
+        dt = datetime.fromisoformat(cleaned)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None

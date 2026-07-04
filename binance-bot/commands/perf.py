@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from core.env import PROJECT_DIR
+from core.timing import parse_dt
 
 
 def _load_history() -> list:
@@ -12,20 +13,6 @@ def _load_history() -> list:
             return json.load(f)
     except Exception:
         return []
-
-
-def _parse_dt(raw: Optional[str]) -> Optional[datetime]:
-    if not raw:
-        return None
-    try:
-        # Handles "+00:00Z" (redundant Z suffix from tp_watcher_state)
-        cleaned = raw.rstrip("Z") if raw.endswith("+00:00Z") else raw
-        dt = datetime.fromisoformat(cleaned)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except Exception:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -41,11 +28,11 @@ def _bloc_pnl(closed: list) -> list[str]:
         return t.get("pnl_usdc") or 0
 
     def exit_dt(t):
-        return _parse_dt(t.get("exit_date"))
+        return parse_dt(t.get("exit_date"))
 
     total_pnl = sum(pnl(t) for t in closed)
-    pnl_7d = sum(pnl(t) for t in closed if exit_dt(t) and exit_dt(t) >= cutoff_7d)
-    pnl_30d = sum(pnl(t) for t in closed if exit_dt(t) and exit_dt(t) >= cutoff_30d)
+    pnl_7d = sum(pnl(t) for t in closed if (dt := exit_dt(t)) and dt >= cutoff_7d)
+    pnl_30d = sum(pnl(t) for t in closed if (dt := exit_dt(t)) and dt >= cutoff_30d)
 
     wins = [t for t in closed if pnl(t) > 0]
     win_rate = len(wins) / len(closed) * 100 if closed else 0
@@ -61,7 +48,7 @@ def _bloc_pnl(closed: list) -> list[str]:
 
     durations = []
     for t in closed:
-        e = _parse_dt(t.get("date"))
+        e = parse_dt(t.get("date"))
         x = exit_dt(t)
         if e and x:
             durations.append((x - e).total_seconds())
@@ -110,6 +97,30 @@ def _load_cycles_jsonl() -> list:
         return []
 
 
+def _format_cycle_lines(
+    total: int,
+    with_buy: int,
+    skip_counts: dict,
+    avg_dur: Optional[float] = None,
+    errors: Optional[int] = None,
+    quota: Optional[int] = None,
+    source: str = "",
+) -> list[str]:
+    lines = [
+        f"Total : <code>{total}</code>"
+        f"  |  Avec BUY : <code>{with_buy}</code>"
+        f"  |  Sans trade : <code>{total - with_buy}</code>"
+    ]
+    skip_str = "  ".join(f"{k}: {v}" for k, v in skip_counts.items())
+    lines.append(f"Skips : <code>{skip_str}</code>")
+    if avg_dur is not None:
+        lines.append(f"Durée moy. : <code>{avg_dur:.0f}s</code>")
+    if errors is not None:
+        lines.append(f"Erreurs : <code>{errors}</code>  |  Quota Claude : <code>{quota}</code>")
+    lines.append(f"(source : {source})")
+    return lines
+
+
 def _bloc_cycles() -> list[str]:
     lines = ["\n🔄 <b>Bloc 2 — Cycles</b>"]
 
@@ -126,11 +137,6 @@ def _bloc_cycles() -> list[str]:
         pass
 
     if mongo_rows is not None:
-        total = len(mongo_rows)
-        with_buy = sum(
-            1 for c in mongo_rows
-            if (c.get("execution") or {}).get("executed", 0) > 0
-        )
         skip_counts = {"TYPE_A": 0, "TYPE_B": 0, "TYPE_C": 0, "TYPE_D": 0}
         for c in mongo_rows:
             for d in (c.get("decisions") or []):
@@ -138,38 +144,28 @@ def _bloc_cycles() -> list[str]:
                 if st in skip_counts:
                     skip_counts[st] += 1
         durations = [c["duration_s"] for c in mongo_rows if c.get("duration_s") is not None]
-        avg_dur = sum(durations) / len(durations) if durations else None
-        errors = sum(1 for c in mongo_rows if c.get("error_type") is not None)
-        quota = sum(1 for c in mongo_rows if c.get("error_type") == "quota")
-
-        lines.append(
-            f"Total : <code>{total}</code>"
-            f"  |  Avec BUY : <code>{with_buy}</code>"
-            f"  |  Sans trade : <code>{total - with_buy}</code>"
-        )
-        skip_str = "  ".join(f"{k}: {v}" for k, v in skip_counts.items())
-        lines.append(f"Skips : <code>{skip_str}</code>")
-        if avg_dur is not None:
-            lines.append(f"Durée moy. : <code>{avg_dur:.0f}s</code>")
-        lines.append(f"Erreurs : <code>{errors}</code>  |  Quota Claude : <code>{quota}</code>")
-        lines.append("(source : Mongo)")
+        lines.extend(_format_cycle_lines(
+            total=len(mongo_rows),
+            with_buy=sum(1 for c in mongo_rows if (c.get("execution") or {}).get("executed", 0) > 0),
+            skip_counts=skip_counts,
+            avg_dur=sum(durations) / len(durations) if durations else None,
+            errors=sum(1 for c in mongo_rows if c.get("error_type") is not None),
+            quota=sum(1 for c in mongo_rows if c.get("error_type") == "quota"),
+            source="Mongo",
+        ))
     else:
         cycles = _load_cycles_jsonl()
-        total = len(cycles)
-        with_buy = sum(1 for c in cycles if c.get("executed", 0) > 0)
         skip_counts = {"TYPE_A": 0, "TYPE_B": 0, "TYPE_C": 0, "TYPE_D": 0}
         for c in cycles:
             st = c.get("skip_type")
             if st in skip_counts:
                 skip_counts[st] += 1
-        lines.append(
-            f"Total : <code>{total}</code>"
-            f"  |  Avec BUY : <code>{with_buy}</code>"
-            f"  |  Sans trade : <code>{total - with_buy}</code>"
-        )
-        skip_str = "  ".join(f"{k}: {v}" for k, v in skip_counts.items())
-        lines.append(f"Skips : <code>{skip_str}</code>")
-        lines.append("(source : cycle_log.jsonl — duration_s/erreurs non disponibles)")
+        lines.extend(_format_cycle_lines(
+            total=len(cycles),
+            with_buy=sum(1 for c in cycles if c.get("executed", 0) > 0),
+            skip_counts=skip_counts,
+            source="cycle_log.jsonl — duration_s/erreurs non disponibles",
+        ))
 
     return lines
 
@@ -195,7 +191,6 @@ def _bloc_positions(history: list) -> list[str]:
         if t.get("close_reason") == "profit_target_phase0"
     )
 
-    # Consecutive streak from the end of sorted closed trades
     sorted_closed = sorted(
         [t for t in closed if t.get("exit_date")],
         key=lambda t: t.get("exit_date", ""),
@@ -238,9 +233,7 @@ def _bloc_watcher(closed: list) -> list[str]:
     try:
         with open(state_path) as f:
             state = json.load(f)
-    except FileNotFoundError:
-        return ["\n🤖 <b>Bloc 4 — TP Watcher</b> : ⚠️ État inconnu"]
-    except Exception:
+    except (FileNotFoundError, Exception):
         return ["\n🤖 <b>Bloc 4 — TP Watcher</b> : ⚠️ État inconnu"]
 
     total_ticks = state.get("total_ticks", "N/A")
@@ -253,7 +246,7 @@ def _bloc_watcher(closed: list) -> list[str]:
     tp_trades = [t for t in closed if "tp_watcher" in (t.get("close_reason") or "")]
 
     def in_period(t, cutoff):
-        dt = _parse_dt(t.get("exit_date"))
+        dt = parse_dt(t.get("exit_date"))
         return dt is not None and dt >= cutoff
 
     sales_24h = sum(1 for t in tp_trades if in_period(t, cutoff_24h))
@@ -297,7 +290,6 @@ def run_perf() -> str:
 
     msg = "\n".join(lines)
 
-    # Telegram 4096 chars limit
     if len(msg) > 4000:
         msg = msg[:3970] + "\n\n⚠️ <i>(message tronqué)</i>"
 
