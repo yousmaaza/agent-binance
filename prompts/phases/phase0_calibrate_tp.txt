@@ -1,0 +1,25 @@
+# Script généré par Claude en Phase 0 pour sauvegarder les TPs recalibrés.
+# Claude remplace __UPDATES__ par le dict réel avant d'exécuter ce script via exec().
+import json, os, sys
+PROJECT_DIR = "__PROJECT_DIR__"
+sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
+from core.trade_helpers import tg, _save_trade_history_atomic, _load_config
+
+updates = __UPDATES__  # dict {trade_id: {"old_tp": float, "new_tp": float, "coin": str}}
+
+with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
+    history = json.load(f)
+
+changed = 0
+for trade in history:
+    tid = trade.get("trade_id")
+    if tid in updates and trade.get("status") == "open":
+        u = updates[tid]
+        trade["tp_price"] = u["new_tp"]
+        changed += 1
+        tg(f"📐 TP {u['coin']} recalibré : {u['old_tp']:.6f} → {u['new_tp']:.6f}")
+
+if changed:
+    _save_trade_history_atomic(history)
+
+print(f"PHASE0_CALIBRATE_TP_DONE|updated={changed}")
