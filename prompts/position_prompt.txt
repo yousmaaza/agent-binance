@@ -81,7 +81,48 @@ for coin in all_coins:
         current_prices[coin] = 0
 ```
 
-### 3. Évalue chaque position (bot et manuelles)
+### 3. Recalibrage TP via résistances TradingView
+```python
+TV_MAP = {"XBT": "BTC", "XDG": "DOGE"}
+reward_risk_ratio = cfg.get("reward_risk_ratio", 2.0)
+changed = False
+
+for pos in positions:
+    coin = pos["coin"]
+    tv_symbol = TV_MAP.get(coin, coin)
+    entry_price = float(pos.get("entry_price", 0))
+    stop_price = float(pos.get("stop_price", 0))
+    tp_actuel = float(pos.get("tp_price", 0))
+
+    if entry_price <= 0 or stop_price <= 0 or tp_actuel <= 0:
+        continue
+
+    try:
+        analysis = mcp__tradingview__combined_analysis(symbol=f"{tv_symbol}USDT", exchange="BINANCE", timeframe="4h")
+        r2_4h = analysis.get("technical", {}).get("support_resistance", {}).get("resistance_2")
+    except:
+        continue
+
+    stop_distance_pct = (entry_price - stop_price) / entry_price
+    tp_mecanique = entry_price * (1 + stop_distance_pct * reward_risk_ratio)
+
+    if r2_4h and float(r2_4h) > entry_price:
+        tp_smart = min(tp_mecanique, float(r2_4h) * 0.98)
+        source = f"R {float(r2_4h):.4g} × 0.98"
+    else:
+        tp_smart = tp_mecanique
+        source = "mécanique"
+
+    if abs(tp_smart - tp_actuel) / tp_actuel > 0.005:
+        pos["tp_price"] = tp_smart
+        changed = True
+        tg(f"📐 TP {coin} recalibré : {tp_actuel:.4g} → {tp_smart:.4g} ({source})")
+
+if changed:
+    _save_trade_history_atomic(trade_history)
+```
+
+### 4. Évalue chaque position (bot et manuelles)
 ```python
 actions = []
 now = datetime.now(timezone.utc)
@@ -142,7 +183,7 @@ for coin in all_coins:
                 # Sinon, laisser Binance gérer l'OCO actif
 ```
 
-### 4. Exécute les ventes (et annule OCO si manuel)
+### 5. Exécute les ventes (et annule OCO si manuel)
 ```python
 for action in actions:
     coin = action["coin"]
@@ -174,7 +215,7 @@ for action in actions:
         tg(f"❌ Vente {coin} échouée: {e}")
 ```
 
-### 5. Résumé
+### 6. Résumé
 ```python
 # Résumé des positions surveillées
 summary_lines = []
