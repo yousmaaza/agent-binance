@@ -64,7 +64,7 @@ try:
         f"cd {PROJECT_DIR}\n"
         "git add state/cycle_log.jsonl\n"
         f"git diff --cached --quiet || "
-        f"(git commit -m 'chore: cycle log {CYCLE_ID}' && git pull --rebase origin main && git push origin main)\n"
+        f"(git commit -m 'chore: cycle log {CYCLE_ID}' && git pull --rebase --autostash origin main && git push origin main)\n"
     )
     script_path = f"/tmp/_cl_push_{CYCLE_ID}.sh"
     with open(script_path, "w") as f:
