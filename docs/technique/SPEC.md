@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-04 (PR #353)
+> **Dernière mise à jour** : 2026-07-05 (PR #356)
 > **Commit** : <current>
 
 ---
@@ -310,6 +310,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#356](pr-356-fiabilite-cycles.md) | 2026-07-05 | [FIX] Fiabilité cycles — autostash push + détection quota stdout : ajout du flag `--autostash` à `git pull --rebase` dans Phase 8 pour éviter les conflits silencieux avec `state/trade_history.json` ; extension détection erreur quota en vérifiée aussi stdout via `is_resource_error(stdout_path)` pour capturer "You've hit your session limit" qui apparaît en stdout, pas stderr |
 | [#353](pr-353-perf-kpis.md) | 2026-07-04 | [M349] Enrichir `/perf` avec KPIs P&L, cycles, positions et watcher : réorganisation en 4 blocs (P&L réalisé/7j/30j + win rate + top coins, Cycles + répartition TYPE_A/B/C/D + fallback Mongo/JSONL, Positions ouvertes/fermées/SL/TP/streak, TP Watcher totaux + ventes 24h/7j) ; nouvelles fonctions `_bloc_pnl()`, `_bloc_cycles()`, `_bloc_positions()`, `_bloc_watcher()`, `_load_cycles_jsonl()`, `_format_cycle_lines()` ; ajout `parse_dt()` de timing.py pour parsing ISO 8601 robuste ; format HTML Telegram |
 | [#351](pr-351-ajouter-duration-error-type-mongo.md) | 2026-07-04 | [M347] Traçabilité cycles : nouvelle fonction `_update_perf_in_mongo()` persiste `duration_s` (entier, secondes) et `error_type` (null/"quota"/"crash") dans MongoDB après chaque cycle — classification automatique des erreurs par analyse stderr (rate limit/credit/quota/overloaded → "quota", sinon → "crash") ; débogue et optimise performance stratégie |
 | [#350](pr-350-watcher-cumulative-counters.md) | 2026-07-04 | [M348] Compteurs cumulatifs TP Watcher : ajout `total_ticks` (incrément chaque tick, ~2 min) et `total_sales` (ventes TP réussies cumulées) dans `state/tp_watcher_state.json` ; persistence inter-redémarrages bot via lecture atomique en début de chaque tick ; gestion démarrage à froid (fichier absent/corrompu → compteurs initialisés 1/0) ; signature `_write_watcher_state()` étendue `sales_delta` param |

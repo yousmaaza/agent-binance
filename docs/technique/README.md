@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-07-04 |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-07-05 |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#356](pr-356-fiabilite-cycles.md) | [FIX] Fiabilité cycles — autostash push + détection quota stdout | 2026-07-05 |
 | [#353](pr-353-perf-kpis.md) | [M3] Enrichir /perf avec KPIs P&L, cycles, positions et watcher | 2026-07-04 |
 | [#351](pr-351-ajouter-duration-error-type-mongo.md) | [M347] Ajouter duration_s et error_type dans les cycles Mongo | 2026-07-04 |
 | [#350](pr-350-watcher-cumulative-counters.md) | Compteurs cumulatifs total_ticks et total_sales dans tp_watcher_state.json | 2026-07-04 |
