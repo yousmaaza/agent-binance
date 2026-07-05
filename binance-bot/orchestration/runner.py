@@ -192,7 +192,7 @@ def _handle_trade_post_run(
             with open(stderr_path) as _f:
                 stderr_content = _f.read().lower()
             quota_keywords = ["rate limit", "credit balance", "quota", "overloaded", "too many requests"]
-            error_type = "quota" if any(k in stderr_content for k in quota_keywords) else "crash"
+            error_type = "quota" if is_resource_error(stdout_path) or any(k in stderr_content for k in quota_keywords) else "crash"
         except Exception:
             error_type = "crash"
 
