@@ -10,6 +10,48 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-05
+
+### PRs mergées (1)
+
+Journée minimaliste : 1 seule PR, 2 fichiers modifiés, 2 lignes changées. Après la vague intense du 4 juillet (8 PRs en 11 heures sur le système TP intelligent), le 5 juillet ressemble à un debrief de production. Deux bugs ont été détectés la nuit précédente sur des cycles réels — l'un causait une erreur silencieuse de push git à chaque cycle, l'autre classifiait mal les fins de session quota — et corrigés ensemble avant 08:05 UTC.
+
+#### #356 — fix: fiabilité cycles — autostash push + détection quota stdout
+
+- **Mergée à** : 08:04 UTC (10:04 Europe/Paris)
+- **Branche** : `feat/issue-354-355-cycle-reliability`
+- **Issues résolues** : #354, #355
+- **Quoi** : deux micro-bugfixes distincts, livrés ensemble en une seule PR car ils partagent le même fil directeur — deux situations où une information existait mais n'était pas lue.
+  - **#354 (`phase8_cycle_log.py`)** : `git pull --rebase` échouait silencieusement à chaque cycle car `state/trade_history.json` est constamment modifié par le bot en live. Git refusait le rebase avec des changements non stagés. Résultat : le commit cycle log était créé localement mais jamais poussé, et une notification `⚠️ cycle_log push échoué` arrivait à chaque cycle. Correction : ajout du flag `--autostash` à la commande `git pull --rebase --autostash origin main`. Une ligne.
+  - **#355 (`runner.py`)** : lorsque le quota d'abonnement Claude est épuisé, le message `You've hit your session limit` apparaît dans **stdout** du sous-processus, pas dans stderr. La détection d'`error_type` ne lisait que stderr → les fins de cycle quota étaient classifiées `"crash"` dans MongoDB au lieu de `"quota"`. Correction : ajout de `is_resource_error(stdout_path)` dans la condition de détection (fonction déjà importée de `stream_parser`). Une ligne.
+- **Délai issue → merge** : issues créées à 07:41–07:42 UTC, PR ouverte à 08:01 UTC, mergée à 08:04 UTC — 23 minutes bout-en-bout.
+- **Doc tech** : [docs/technique/pr-356-fiabilite-cycles.md](../technique/pr-356-fiabilite-cycles.md)
+
+---
+
+### Issues fermées (0)
+
+Aucune issue formellement fermée. Les issues #354 et #355, bien qu'adressées par PR #356, restent en état `open` — le corps de la PR utilise des en-têtes markdown (`### #354 —`) plutôt que les mots-clés GitHub de fermeture automatique (`Closes #354`).
+
+---
+
+### Nouveaux tickets créés (2)
+
+- **#354** — `fix: git pull --autostash dans phase8_cycle_log pour éviter l'échec de push` [bug, size:XS] — créé à 07:41 UTC, résolu dans la même matinée. Bug constaté sur les cycles live : `state/trade_history.json` (modifié à chaque cycle) empêchait le rebase, silencieusement.
+- **#355** — `fix: error_type=quota mal classifié (crash) quand quota Claude abonnement épuisé` [bug, size:XS] — créé à 07:42 UTC, résolu dans la même matinée. Découvert sur le cycle `20260705_000507` : stderr vide, stdout contenait le message de limite de session, MongoDB avait reçu `error_type=crash`.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "Deux bugs, une information non lue". #354 et #355 ont le même schéma d'origine : une donnée existait, était produite correctement, mais n'était pas lue par le code. Dans #354, `trade_history.json` était modifié en live — git le savait, mais le script l'ignorait. Dans #355, stdout portait le message de quota — Claude le produisait, mais `runner.py` ne lisait que stderr. Ce n'est pas un bug de logique, c'est un bug d'attention : la frontière entre "ce que le système sait" et "ce que le code lit" n'était pas synchrone. Court article sur l'idée que dans un bot piloté par un LLM avec des sous-processus, les conventions stdout/stderr ne sont pas garanties — un agent peut choisir de logguer n'importe où, et le harness doit l'anticiper.
+
+> **Angle opérationnel** : "23 minutes de bug à merge". Les deux issues ont été créées à 07:41–07:42 UTC après un cycle nocturne défaillant, et la PR était mergée à 08:04 UTC. Ce n'est pas un exploit technique — les fixes font chacun une ligne — mais c'est une illustration du pipeline de correction : observation en production → issue documentée avec reproduction → PR → merge. La rapidité vient du fait que les bugs étaient des cas simples et bien diagnostiqués dès la création de l'issue. Contraster avec des bugs plus ambigus (ex. le TP écrasé par le trailing stop, découvert en prod le 4 juillet, également corrigé en moins d'8h mais sur une logique plus profonde).
+
+> **Angle fiabilité** : "Les alertes silencieuses". La notification `⚠️ cycle_log push échoué` arrivait à chaque cycle depuis un temps indéterminé. C'est le type d'alerte qu'on finit par ignorer — elle est là, elle s'explique probablement, elle ne bloque pas le trading. Puis un jour on réalise que des dizaines de commits de cycle log ne sont jamais arrivés sur GitHub. Le `--autostash` est la correction technique, mais l'article pourrait porter sur la question plus large : comment un bot auto-piloté communique-t-il ses pannes partielles à son propriétaire ? Une panne totale est visible. Une panne silencieuse sur une feature secondaire peut durer des cycles entiers sans être détectée.
+
+---
+
 ## 2026-07-04
 
 ### PRs mergées (8)
