@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-04 (PR #342)
+> **Dernière mise à jour** : 2026-07-05 (PR #356)
 > **Commit** : <current>
 
 ---
@@ -142,8 +142,14 @@ webhook_server.py (process principal)
 | `_tp_watcher_health(last_tick_dt)` | commands/status.py:133 | Classe le watcher en 3 états selon l'âge du tick : `✅ OK` (<5 min), `⚠️ Lent` (5-10 min), `🔴 Inactif` (>10 min) |
 | `_count_tp_watcher_sales_24h()` | commands/status.py:144 | Compte les ventes TP depuis `trade_history.json` : filtre `close_reason` contient `"tp_watcher"` + `exit_date` dans les 24h UTC |
 | `_format_watcher_section()` | commands/status.py:172 | Lit `state/tp_watcher_state.json`, retourne section formatée avec 4 infos : emoji santé + label OK/Lent/Inactif, heure dernier tick (local), nb positions surveillées, ventes TP 24h ; gestion robuste si state absent/corrompu → `"⚠️ État inconnu"` |
-| `_write_watcher_state(status, last_error, positions_checked)` | core/tp_watcher.py:18 | Écrit atomiquement `state/tp_watcher_state.json` via tempfile + `os.replace()` avec timestamp UTC ISO+Z, status (`ok`/`warning`/`error`), erreur optionnelle, compteur positions |
-| `run_perf()` | :548 | Handler `/perf` : stats avancées depuis `trade_history.json` (win rate, Sharpe annualisé, max drawdown, t-test, p-value) — tout calculé à la main sans scipy |
+| `_write_watcher_state(status, last_error, positions_checked, sales_delta=0)` | core/tp_watcher.py:18 | Écrit atomiquement `state/tp_watcher_state.json` via tempfile + `os.replace()` avec timestamp UTC ISO+Z, status (`ok`/`warning`/`error`), erreur optionnelle, compteur positions, compteurs cumulatifs `total_ticks` (incrément 1 à chaque appel) et `total_sales` (ajout `sales_delta` — nombre ventes TP ce tick) ; lecture persistence des compteurs précédents, initialise `total_ticks=1` à froid |
+| `run_perf()` | commands/perf.py:273 | Handler `/perf` : orchestre 4 blocs de KPIs (P&L réalisé, Cycles, Positions, TP Watcher) depuis `trade_history.json` et MongoDB/Mongo fallback `cycle_log.jsonl` ; format HTML Telegram ; troncature si > 4000 chars |
+| `_bloc_pnl()` | commands/perf.py:22 | Bloc 1 — P&L réalisé : stats totales/7j/30j, win rate, meilleur/pire trade, top 3 coins par P&L, durée moyenne de détention |
+| `_bloc_cycles()` | commands/perf.py:124 | Bloc 2 — Cycles : total cycles, avec BUY, répartition TYPE_A/B/C/D, durée moyenne, erreurs/quota. Source Mongo en priorité, fallback `cycle_log.jsonl` transparent |
+| `_load_cycles_jsonl()` | commands/perf.py:84 | Charge `state/cycle_log.jsonl` (fallback si Mongo non disponible) |
+| `_format_cycle_lines()` | commands/perf.py:100 | Helper formatage unifié Bloc 2 (réutilisé Mongo et JSONL) |
+| `_bloc_positions()` | commands/perf.py:177 | Bloc 3 — Positions : ouvertes/fermées, décomposition SL / TP Watcher / Profit Phase 0, série consécutive en cours (Win/Loss streak) |
+| `_bloc_watcher()` | commands/perf.py:231 | Bloc 4 — TP Watcher : total_ticks, total_sales, ventes 24h/7j, USDC réalisés. Fallback "État inconnu" si `tp_watcher_state.json` absent |
 | `run_eval()` | commands/eval.py:11 | Handler `/eval` : rapport hebdomadaire synthétique (fiabilité cycles, performance, coût abonnement vs API, risque) — accepte `period_days` optionnel (défaut 7) |
 | `_trades_section()` | commands/eval.py:32 | Analyse `trade_history.json` pour extraction win rate, PnL net, ratio gain/perte sur la période cutoff |
 | `_cycles_and_cost_section()` | commands/eval.py:73 | Interroge MongoDB `cycles` pour taux complétude + ventilation coût abonnement proratisé vs surcoût API réel |
@@ -176,12 +182,14 @@ webhook_server.py (process principal)
 | `get_cycle_phases_log_path(cycle_id)` | core/env.py:39 | Retourne le chemin du fichier heartbeat JSONL pour un cycle : `logs/cycle_{cycle_id}_phases.jsonl` |
 | `PROMPT_VERSION` _(constante module)_ | core/env.py:102 | Hash SHA-1 (8 chars hex) du `_TRADE_PROMPT_TEMPLATE` assemblé, calculé au boot — injecté dans le document Mongo comme `prompt_version` pour tracer la version du prompt par cycle |
 | `POSITION_PROMPT` _(constante module)_ | core/env.py:113–119 | Prompt pour cycle horaire de gestion des positions : template chargé depuis `prompts/position_prompt.txt` avec substitutions statiques (TOKEN, CHAT_ID, PROJECT_DIR, BINANCE_CLI_PATH) |
-| `next_1h_slot()` | timing.py:15 | Calcule le prochain slot horaire `:05 UTC` en sautant les slots 4h (00:05, 04:05, ..., 20:05) pour éviter collision avec `next_4h_slot()` — retourne un datetime UTC |
+| `next_1h_slot()` | timing.py:16 | Calcule le prochain slot horaire `:05 UTC` en sautant les slots 4h (00:05, 04:05, ..., 20:05) pour éviter collision avec `next_4h_slot()` — retourne un datetime UTC |
+| `parse_dt()` | timing.py:33 | Parse un timestamp ISO 8601 en datetime aware UTC, gère le suffixe redondant `+00:00Z` généralement par Phase 8 — utilisé par perf.py et status.py pour parsing robuste des champs `exit_date` |
 | `run_trade_workflow()` | runner.py:23 | Orchestre un cycle complet de trading : appelle `_run_workflow_cycle()` avec callbacks spécialisés pour trade (watchdog=True, post-processing avec gestion quota abonnement) |
 | `run_position_check_workflow()` | runner.py:46 | Orchestre un cycle horaire de gestion des positions : appelle `_run_workflow_cycle()` avec cycle_type="position", watchdog=False (cycle léger), post-processing minimaliste |
 | `_run_workflow_cycle()` | runner.py:64 | Fonction commune d'orchestration pour tous les cycles : gère lock, cycle_id, logging, fichier helpers, invocation Claude, watchdog conditionnel, callbacks (on_lock_busy, on_start, on_post_run), cleanup. Permet la réutilisation entre cycles trade et position sans duplication |
-| `_handle_trade_post_run()` | runner.py:157 | Post-processing du cycle trade : détecte erreur ressource Claude, met à jour Mongo (api_cost_usd, billing_mode), gère erreur avec notification Telegram explicite |
-| `_handle_position_post_run()` | runner.py:182 | Post-processing du cycle position : erreur détectée → notification Telegram minimaliste (max 400 chars, HTML) pour éviter spam en arrière-plan |
+| `_handle_trade_post_run()` | runner.py:170 | Post-processing du cycle trade : calcule `duration_s` (entier, en secondes) et classe `error_type` (null/"quota"/"crash"), met à jour Mongo (api_cost_usd, billing_mode, duration_s, error_type), gère erreur avec notification Telegram explicite |
+| `_handle_position_post_run()` | runner.py:207 | Post-processing du cycle position : erreur détectée → notification Telegram minimaliste (max 400 chars, HTML) pour éviter spam en arrière-plan |
+| `_update_perf_in_mongo()` | runner.py:422 | Persiste `duration_s` (int, durée du cycle en secondes) et `error_type` (null/‟quota"/‟crash") dans MongoDB via `update_one()` avec `$set` — appelée après chaque cycle de trade pour traçabilité performance et debugging des erreurs |
 | `_check_and_run_scheduled()` | webhook_server.py:34 | Utilitaire de scheduling unifié : vérifie si c'est l'heure, calcule prochain slot, lance workflow en thread daemon, retourne le prochain slot — utilisé pour scheduler 1h (position) et 4h (trade) |
 | `_write_helpers_file()` | runner.py:116 | Génère le fichier temporaire des helpers (tg, binance, hb, _hb_start, _save_trade_history_atomic) via `tempfile.mkstemp()` : permissions 0o600 garanties, secrets lus depuis `os.environ` au runtime (jamais substitués en dur), injectables dans le TRADE_PROMPT |
 | `_send_start_notification()` | runner.py:99 | Envoie la notification Telegram de démarrage d'un cycle : affiche le modèle Claude utilisé (extrait depuis `CLAUDE_CLI_FLAGS`), le mode de facturation (abonnement), et l'heure du prochain cycle auto en heure locale ; différencie cycles manuels vs auto |
@@ -302,6 +310,10 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#356](pr-356-fiabilite-cycles.md) | 2026-07-05 | [FIX] Fiabilité cycles — autostash push + détection quota stdout : ajout du flag `--autostash` à `git pull --rebase` dans Phase 8 pour éviter les conflits silencieux avec `state/trade_history.json` ; extension détection erreur quota en vérifiée aussi stdout via `is_resource_error(stdout_path)` pour capturer "You've hit your session limit" qui apparaît en stdout, pas stderr |
+| [#353](pr-353-perf-kpis.md) | 2026-07-04 | [M349] Enrichir `/perf` avec KPIs P&L, cycles, positions et watcher : réorganisation en 4 blocs (P&L réalisé/7j/30j + win rate + top coins, Cycles + répartition TYPE_A/B/C/D + fallback Mongo/JSONL, Positions ouvertes/fermées/SL/TP/streak, TP Watcher totaux + ventes 24h/7j) ; nouvelles fonctions `_bloc_pnl()`, `_bloc_cycles()`, `_bloc_positions()`, `_bloc_watcher()`, `_load_cycles_jsonl()`, `_format_cycle_lines()` ; ajout `parse_dt()` de timing.py pour parsing ISO 8601 robuste ; format HTML Telegram |
+| [#351](pr-351-ajouter-duration-error-type-mongo.md) | 2026-07-04 | [M347] Traçabilité cycles : nouvelle fonction `_update_perf_in_mongo()` persiste `duration_s` (entier, secondes) et `error_type` (null/"quota"/"crash") dans MongoDB après chaque cycle — classification automatique des erreurs par analyse stderr (rate limit/credit/quota/overloaded → "quota", sinon → "crash") ; débogue et optimise performance stratégie |
+| [#350](pr-350-watcher-cumulative-counters.md) | 2026-07-04 | [M348] Compteurs cumulatifs TP Watcher : ajout `total_ticks` (incrément chaque tick, ~2 min) et `total_sales` (ventes TP réussies cumulées) dans `state/tp_watcher_state.json` ; persistence inter-redémarrages bot via lecture atomique en début de chaque tick ; gestion démarrage à froid (fichier absent/corrompu → compteurs initialisés 1/0) ; signature `_write_watcher_state()` étendue `sales_delta` param |
 | [#346](pr-346-enrichir-status-tp-watcher.md) | 2026-07-04 | [M345] Enrichir `/status` avec les infos du TP Watcher : 3 nouvelles fonctions (`_parse_last_tick()`, `_tp_watcher_health()`, `_count_tp_watcher_sales_24h()`) + refonte `_format_watcher_section()` pour exposer 4 infos (santé OK/Lent/Inactif, dernier tick locale, positions surveillées, ventes TP 24h) ; gestion robuste si `tp_watcher_state.json` absent |
 | [#344](pr-344-recalibrage-tp-phase0.md) | 2026-07-04 | [M343] Recalibrage TP automatique en Phase 0 : intègre `mcp__tradingview__combined_analysis()` 4h pour chaque position ouverte, calcule `tp_smart = min(tp_mécanique, R2 × 0.98)`, met à jour `tp_price` si écart > 0.5%, fallback silencieux si MCP échoue, notification Telegram par coin recalibré |
 | [#342](pr-342-config-augmenter-min-profit-pct-5.md) | 2026-07-04 | [CONFIG] Augmenter `min_profit_pct_take` de 2% à 5% : supprime la clôture prématurée en Phase 0 ; seuil plus restrictif pour réaliser les profits cohérent avec la stratégie reward/risk (ratio 3:2 ATR stop) |
