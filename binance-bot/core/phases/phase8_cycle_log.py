@@ -63,6 +63,7 @@ try:
         "git-perso 2>/dev/null || true\n"
         f"cd {PROJECT_DIR}\n"
         "git add state/cycle_log.jsonl\n"
+        "git add state/trade_history.json\n"
         f"git diff --cached --quiet || "
         f"(git commit -m 'chore: cycle log {CYCLE_ID}' && git pull --rebase --autostash origin main && git push origin main)\n"
     )
