@@ -8,6 +8,11 @@ state/agent_lock.json
 state/pending_callback.json
 state/pending_trades.json
 state/webhook_pids.json
+state/tp_watcher_state.json
+
+# Scripts de debug ponctuels et backups manuels
+state/tp_watcher_*.py
+state/trade_history_backup_*.json
 
 # Rapports générés à chaque cycle
 reports/
