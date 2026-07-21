@@ -20,7 +20,7 @@
   "min_adx": 20,
   "max_open_positions": 4,
   "universe_scan_top_n": 20,
-  "min_volume_usdc": 1000000,
+  "min_volume_usdc": 500000,
 
   "min_profit_pct_take": 5.0,
   "max_hold_days": 14,
