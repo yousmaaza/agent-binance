@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#363](pr-363-abaisser-min-volume-usdc.md) | [M1] Abaisser min_volume_usdc de 1M à 500k | 2026-07-21 |
 | [#362](pr-362-clarifier-prompt-phase1.md) | [BUG] Clarifier le prompt Phase 1 — TypeError unhashable slice | 2026-07-21 |
 | [#361](pr-361-phase8-trade-history-git-add.md) | [BUG] phase8_cycle_log.py ne commit jamais state/trade_history.json | 2026-07-20 |
 | [#356](pr-356-fiabilite-cycles.md) | [FIX] Fiabilité cycles — autostash push + détection quota stdout | 2026-07-05 |

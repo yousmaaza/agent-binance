@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-21 (PR #362)
+> **Dernière mise à jour** : 2026-07-21 (PR #363)
 > **Commit** : <current>
 
 ---
@@ -270,7 +270,7 @@ webhook_server.py (process principal)
 | `usdc_allocation_pct` | `0.70` | Fraction du USDC libre allouée au trading (70%) |
 | `portfolio_coins` | `["XBT", "XRP", "SOL"]` | Coins systématiquement inclus dans l'univers de scan (coins Kraken avec paires USDC tradables : XBTUSDC, XRPUSDC, SOLUSDC) |
 | `quote_asset` | `"USDC"` | Asset de cotation pour toutes les paires tradées |
-| `min_volume_usdc` | `1000000` | Seuil volume 24h (USDC) pour inclure un coin dans l'univers Phase 1 — coins sous ce seuil ignorés sauf s'ils figurent dans `portfolio_coins` (fallback garanti). Baissé de 5M à 1M via PR #312 pour couvrir alt-coins de taille moyenne (SOL, XRP) |
+| `min_volume_usdc` | `500000` | Seuil volume 24h (USDC) pour inclure un coin dans l'univers Phase 1 — coins sous ce seuil ignorés sauf s'ils figurent dans `portfolio_coins` (fallback garanti). Baissé de 5M → 1M via PR #312, puis de 1M → 500k via PR #363 pour couvrir alt-coins de taille moyenne (SOL, XRP) et gain net d'ADA |
 | `order_type` | `"LIMIT"` | Type d'ordre d'entrée (ordre working de l'OTOCO) |
 | `limit_offset_pct` | `0.005` | Décalage du prix limite par rapport au prix actuel (−0.5%) |
 | `min_order_usdc` | `9` | Montant minimum d'un ordre en USDC (contrainte Binance) — abaissé de 11 à 9 via PR #268 pour couvrir dimensionnements ATR légitimes (8–11 USDC) |
@@ -310,6 +310,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#363](pr-363-abaisser-min-volume-usdc.md) | 2026-07-21 | [M1] Configuration : abaissement de `min_volume_usdc` de 1M à 500k USDC dans `config.json` — élargit l'univers de coins tradables en Phase 1 de 3 (XBT, ETH, SOL) à 5 (+ XRP, ADA), gain net observable : ADA devient candidat stable (XRP déjà inclus via `portfolio_coins`) |
 | [#361](pr-361-phase8-trade-history-git-add.md) | 2026-07-20 | [BUG] Phase 8 : staging explicite de `state/trade_history.json` — ajout `git add state/trade_history.json` dans le script bash généré par `phase8_cycle_log.py`, garantissant que les deux fichiers d'état (`cycle_log.jsonl` + `trade_history.json`) sont committés ensemble à chaque cycle, éliminant le drift silencieux |
 | [#356](pr-356-fiabilite-cycles.md) | 2026-07-05 | [FIX] Fiabilité cycles — autostash push + détection quota stdout : ajout du flag `--autostash` à `git pull --rebase` dans Phase 8 pour éviter les conflits silencieux avec `state/trade_history.json` ; extension détection erreur quota en vérifiée aussi stdout via `is_resource_error(stdout_path)` pour capturer "You've hit your session limit" qui apparaît en stdout, pas stderr |
 | [#353](pr-353-perf-kpis.md) | 2026-07-04 | [M349] Enrichir `/perf` avec KPIs P&L, cycles, positions et watcher : réorganisation en 4 blocs (P&L réalisé/7j/30j + win rate + top coins, Cycles + répartition TYPE_A/B/C/D + fallback Mongo/JSONL, Positions ouvertes/fermées/SL/TP/streak, TP Watcher totaux + ventes 24h/7j) ; nouvelles fonctions `_bloc_pnl()`, `_bloc_cycles()`, `_bloc_positions()`, `_bloc_watcher()`, `_load_cycles_jsonl()`, `_format_cycle_lines()` ; ajout `parse_dt()` de timing.py pour parsing ISO 8601 robuste ; format HTML Telegram |
