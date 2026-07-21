@@ -12,8 +12,13 @@ au-dessus du seuil min_volume_usdc (config.json, défaut 1M USDC).
 Les coins de portfolio_coins (XBT, XRP, SOL — cf. config.json) sont toujours inclus même si
 leur volume est sous le seuil — rôle de fallback garanti pour les positions déjà ouvertes.
 
-Lis le fichier /tmp/cycle___CYCLE_ID___phase1_output.json pour obtenir la liste tradable.
-Chaque entrée contient : coin (nom Kraken, ex: "XBT"), tv_symbol (nom TradingView, ex: "BTC"), price, volume_24h.
+Lis le fichier /tmp/cycle___CYCLE_ID___phase1_output.json. Ce fichier contient un OBJET JSON racine
+(un dict, pas une liste) avec exactement deux clés : {"tradable": [...], "non_tradable": [...]}.
+La liste tradable est dans la clé "tradable" — accède-y par sa clé, ne slice jamais le dict racine.
+Exemple de lecture correcte :
+    data = json.load(f)
+    tradable = data["tradable"]
+Chaque entrée de tradable contient : coin (nom Kraken, ex: "XBT"), tv_symbol (nom TradingView, ex: "BTC"), price, volume_24h.
 
 Vérification du mapping Kraken → TradingView (OBLIGATOIRE avant de passer à Phase 2) :
 Pour chaque coin tradable, vérifie que tv_symbol correspond bien au ticker attendu sur BINANCE/TradingView.
