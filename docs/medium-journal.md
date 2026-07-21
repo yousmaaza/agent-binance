@@ -10,6 +10,75 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-21
+
+### PRs mergées (2)
+
+Journée concise : 2 PRs mergées en 13 minutes (08:30–08:43 UTC), toutes deux issues de tickets créés la veille (20 juillet). L'une corrige un comportement erratique dans les logs de cycle, l'autre ajuste un paramètre de risque. Pas de modification de code Python — uniquement un prompt et un fichier de configuration.
+
+#### #362 — [BUG] Clarifier le prompt Phase 1 — TypeError unhashable slice
+
+- **Mergée à** : 08:30 UTC (10:30 Europe/Paris)
+- **Branche** : `feat/issue-359-clarifier-prompt-phase1-typeerror-slice`
+- **Issues fermées** : #359
+- **Quoi** : depuis plusieurs cycles (logs du 4, 6, 10 juillet), une `TypeError: unhashable type: 'slice'` apparaissait intermittente dans `logs/stderr/`. Origine : le prompt Phase 1 décrivait `phase1_output.json` sans préciser que c'est un dict racine `{"tradable": [...], "non_tradable": [...]}` et non une liste. Claude générrait parfois du code qui tentait de slicer le dict entier (`tradable[:30]` sur l'objet au lieu de la clé), causant l'exception. Le bot avait un fallback qui couvrait le cas sans bloquer le cycle — mais chaque occurrence polluait les logs et gaspillait du temps cycle. Fix : ajout de 7 lignes dans `prompts/phases/phase1_scan.txt` avec un exemple de lecture correcte (`data = json.load(f); tradable = data["tradable"]`) et une instruction explicite : "accède-y par sa clé, ne slice jamais le dict racine".
+- **Nature** : correctif préventif — prompt engineering pur, zéro modification Python.
+- **Doc tech** : [docs/technique/pr-362-clarifier-prompt-phase1.md](../technique/pr-362-clarifier-prompt-phase1.md)
+
+---
+
+#### #363 — [M1] Abaisser min_volume_usdc de 1M à 500k
+
+- **Mergée à** : 08:43 UTC (10:43 Europe/Paris)
+- **Branche** : `feat/issue-357-evaluer-un-abaissement-de-min-volume`
+- **Issues fermées** : #357
+- **Quoi** : analyse de 90 cycles récents montrait que la Phase 1 ne retournait quasiment jamais plus de 4–5 coins tradables (XBT, ETH, SOL, XRP, parfois ADA/EURC en oscillation au seuil). Le seuil `min_volume_usdc: 1000000` était trop restrictif pour les paires USDC Kraken, structurellement moins liquides que Binance. Évaluation Kraken live : à 1M USDC, 3 coins passent (XBT 28.6M, ETH 5.8M, SOL 1.8M) ; à 500k, 5 coins passent (+ XRP 0.98M, + ADA 0.59M). Le gain net réel est **ADA** uniquement — XRP est déjà inclus via `portfolio_coins` (bypass du filtre volume). Changement : 1 paramètre dans `config.json`, `min_volume_usdc: 1000000 → 500000`. Aucun code Python modifié — `phase1_scan.py` lit déjà la valeur depuis la config.
+- **Note détectée** : divergence doc/code signalée (non corrigée, hors scope) — `CLAUDE.md` mentionne un seuil TYPE_D de 5M USDC pour la tradabilité, mais le code n'implémente que `min_volume_usdc`. À clarifier séparément.
+- **Doc tech** : [docs/technique/pr-363-abaisser-min-volume-usdc.md](../technique/pr-363-abaisser-min-volume-usdc.md)
+
+---
+
+### Issues fermées (2)
+
+- **#359** — `[BUG] Clarifier le prompt Phase 1 — TypeError unhashable slice` [bug · enhancement] — créée le 20 juillet à 15:21 UTC, fermée le 21 juillet à 08:30 UTC par PR #362. Durée de vie : ~17 heures.
+- **#357** — `[M1] Évaluer un abaissement de min_volume_usdc (1M → 500k)` [enhancement] — créée le 20 juillet à 15:20 UTC, fermée le 21 juillet à 08:43 UTC par PR #363. Durée de vie : ~17 heures. Issue créée suite au ticket #311 (abaissement 5M → 1M, 3 juillet), lui-même déclenché par l'analyse de l'univers Kraken au moment de la migration.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé le 21 juillet.
+
+---
+
+### Cycles d'auto-trading observés
+
+4 cycles exécutés : `08:47` (juste après les merges), `12:05`, `16:05`, `20:05` UTC — cycles de routine sans anomalie visible dans les commits `chore: cycle log`.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "Le prompt comme code, le bug comme ambiguïté"**. La PR #362 corrige un bug sans écrire une seule ligne de Python. L'erreur `TypeError: unhashable type: 'slice'` est causée par une phrase absente dans un fichier `.txt` — le prompt ne précisait pas explicitement la structure JSON produite par Phase 1. Claude, face à une description ambiguë, choisissait parfois une interprétation erronée et générait du code défaillant. Le fix, c'est ajouter 7 lignes de prose et un exemple. Dans ce bot, la frontière entre "bug" et "ambiguïté de prompt" est floue : corriger un bug peut vouloir dire réécrire du code Python, réécrire un prompt, ou les deux. Ce déplacement de la logique vers le langage naturel a des avantages (itération rapide, lisible) et des risques structurels (non typé, non testé statiquement, non reproductible à l'identique entre deux invocations).
+
+> **Angle 2 — "Calibrer l'univers de coins : une décision de risque, pas de code"**. La PR #363 est une décision de gestion de risque matérialisée par 1 entier dans un fichier JSON. Passer de 1M à 500k USDC comme seuil de volume élargit l'univers de coins candidats de 3 à 5 — un gain net de 1 coin réel (ADA) après déduplication avec `portfolio_coins`. Ce qui est frappant : la décision n'est pas prise par l'agent. La PR attend explicitement la review de l'utilisateur avant merge. L'agent documente, mesure, présente le choix — mais la décision finale sur un paramètre de risque reste humaine. Article sur la séparation des responsabilités dans un bot semi-autonome : quelles décisions peut-on déléguer à l'agent, et lesquelles doivent rester à la main de l'opérateur ?
+
+> **Angle 3 — "La divergence silencieuse doc/code"**. La note en bas de la PR #363 signale que `CLAUDE.md` mentionne un seuil TYPE_D de 5M USDC pour la tradabilité, mais que le code n'implémente que `min_volume_usdc` (500k depuis ce matin). Cette divergence est hors scope de la PR — elle est documentée, pas corrigée. Un signal typique d'une codebase qui vieillit : la documentation capture l'intention originale, le code évolue différemment, et les deux dérivent silencieusement. Dans un bot piloté par un LLM qui lit `CLAUDE.md` pour ses instructions, cette divergence peut produire des comportements inattendus si un agent suit la doc plutôt que le code. Le fait que l'agent l'ait détectée et documentée plutôt que de l'ignorer est lui-même notable.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **2**
+- Fenêtre de merge : **13 minutes** (08:30 → 08:43 UTC)
+- Issues fermées : **2** (#359, #357 — toutes deux créées la veille)
+- Tickets créés : **0**
+- Fichiers Python modifiés : **0** (1 prompt `.txt` + 1 `config.json`)
+- Durée de vie des tickets : **~17 heures** (créés 20 juillet après-midi, fermés 21 juillet matin)
+- Cycles auto-trading : **4**
+
+---
+
 ## 2026-07-05
 
 ### PRs mergées (1)
