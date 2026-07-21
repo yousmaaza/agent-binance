@@ -985,5 +985,25 @@
     "pnl_usdc": 2.319220000000011,
     "pnl_pct": 2.3140079285417636,
     "close_reason": "signal_sell_score3"
+  },
+  {
+    "trade_id": "246f2bd5",
+    "date": "2026-07-21T12:12:00.780980+00:00",
+    "coin": "ETH",
+    "side": "BUY",
+    "signal_score": 4,
+    "entry_price": 1933.87,
+    "stop_price": 1798.5,
+    "tp_price": 2204.61,
+    "quantity": 0.05784999,
+    "risk_usdc": 7.7882,
+    "entry_order_id": "OGTQWD-L6KLG-CLZQZL",
+    "sl_order_txid": "OESPOH-TRMDB-QNAW5I",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null
   }
 ]
