@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-20 (PR #361)
+> **Dernière mise à jour** : 2026-07-21 (PR #362)
 > **Commit** : <current>
 
 ---
