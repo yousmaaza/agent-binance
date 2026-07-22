@@ -1020,11 +1020,12 @@
     "entry_order_id": "OYDQ56-3PD6V-MUAVW7",
     "sl_order_txid": "O5KATV-FNCDZ-SO5YWR",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 1.1460200000180087,
+    "exit_date": "2026-07-22T00:22:51.773809+00:00Z",
+    "pnl_usdc": -0.5083376800000011,
+    "pnl_pct": -0.640490433219464,
+    "close_reason": "tp_watcher"
   },
   {
     "trade_id": "a4c0706a",
