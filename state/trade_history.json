@@ -1000,11 +1000,12 @@
     "entry_order_id": "OGTQWD-L6KLG-CLZQZL",
     "sl_order_txid": "OESPOH-TRMDB-QNAW5I",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 1919.6499947536724,
+    "exit_date": "2026-07-22T08:13:18+00:00",
+    "pnl_usdc": -0.8226,
+    "pnl_pct": -0.7353,
+    "close_reason": "signal_sell_score3"
   },
   {
     "trade_id": "6c9d26d2",
@@ -1041,10 +1042,11 @@
     "entry_order_id": "OLHSUS-XHOOM-SSAFAH",
     "sl_order_txid": "OEHZQQ-FUTHU-N7OWH4",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 65991.81982364815,
+    "exit_date": "2026-07-22T08:13:22+00:00",
+    "pnl_usdc": -0.5308,
+    "pnl_pct": -0.9406,
+    "close_reason": "signal_sell_score3"
   }
 ]
