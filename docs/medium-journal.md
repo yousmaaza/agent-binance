@@ -10,6 +10,80 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-22
+
+### PRs mergées (0)
+
+Aucune PR mergée le 22 juillet. Journée sans ticket GitHub fermé ni billet ouvert — mais pas sans activité : deux commits de documentation ont été poussés directement sur `main` (hors workflow PR habituel), signalant une décision d'architecture majeure.
+
+---
+
+### Commits de documentation notables (2, directs sur `main`)
+
+#### `0227334` — Spec : hébergement autonome sur VM Oracle Cloud
+
+- **Heure** : 20:04 CEST (18:04 UTC)
+- **Fichier créé** : `docs/superpowers/specs/2026-07-22-vm-oracle-hebergement-autonome-design.md` (71 lignes)
+- **Décision documentée** : migrer le bot de son hébergement actuel (`nohup` sur le Mac de l'utilisateur) vers une VM Oracle Cloud "Always Free" (ARM Ampere A1). La décision résulte d'un brainstorming entre l'utilisateur et l'agent. Deux options avaient été évaluées :
+  - **Option écartée** — routines cloud Claude Code (CCR) : les serveurs MCP locaux du projet (`tradingview`, `telegram-assistant`) ne sont pas accessibles dans l'environnement isolé Anthropic. Sans TradingView, les Phases 1-2 (analyse marché) ne peuvent pas fonctionner. Option abandonnée.
+  - **Option retenue** — VM Oracle Always Free (Ampere A1, ARM/Ubuntu) : environnement Linux classique où `claude` CLI, `.mcp.json` et les secrets `.env` fonctionnent comme sur le Mac. Gratuite en permanence (jusqu'à 4 OCPU / 24 Go RAM ARM). systemd remplace `nohup`.
+- **Architecture choisie** : un seul process `webhook_server.py` tourne en continu sur la VM via systemd (`Restart=on-failure`, activé au boot). État (`state/`, `logs/`) sur disque local. Aucune modification de la logique de trading — migration d'hébergement uniquement.
+- **Point d'incertitude documenté** : quota Claude Pro partagé entre la VM (cycles automatiques) et le Mac (usage interactif dev). Décision pragmatique : observer une semaine, isoler une `ANTHROPIC_API_KEY` si besoin.
+
+#### `53db2b3` — Plan d'implémentation : hébergement VM Oracle Cloud
+
+- **Heure** : 20:07 CEST (18:07 UTC)
+- **Fichier créé** : `docs/superpowers/plans/2026-07-22-vm-oracle-hebergement-autonome.md` (528 lignes)
+- **Contenu** : plan d'implémentation pas-à-pas couvrant 6 tâches principales : provisioning de l'instance Oracle (action utilisateur), installation de l'environnement (Python 3.11 venv, uv/uvx, kraken-cli via cargo, Claude Code CLI), clone du repo + recréation du `.env`, correction du chemin `.mcp.json` (serveur `telegram-assistant` référence un chemin absolu Mac à corriger sur la VM), configuration systemd, tests de validation et bascule.
+- **Format** : plan "agentic" avec checkboxes `- [ ]`, tâches classées par responsabilité (`[Action utilisateur]` / `[Via SSH]` / `[Repo local]`).
+- **Contraintes non négociables listées** : polling-only (aucun port entrant), Python via venv 3.11, aucun secret commité, `PROJECT_DIR` dynamique, `kraken-cli` compilé via cargo (pas de binaire x86 copié — ARM natif requis).
+
+---
+
+### Issues fermées (0)
+
+Aucune issue fermée le 22 juillet.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé le 22 juillet. La décision VM Oracle est documentée directement dans `docs/superpowers/` sans passer par le board GitHub — ce qui est inhabituel par rapport au workflow habituel (brainstorming → spec → plan → tickets → `binance-dev`). Les tickets d'implémentation seront probablement créés lors de l'exécution du plan.
+
+---
+
+### Cycles d'auto-trading observés
+
+5 cycle logs automatiques : `00:05`, `04:05`, `08:05`, `16:05`, `20:05` UTC — routines sans anomalie visible. Le cycle `12:05` est absent des commits visibles, probablement un gap de log ou un cycle skip.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "Quand le bot outgrow le Mac"**. Le bot tourne en `nohup` sur un Mac depuis le début du projet. C'est le pattern classique du side-project : on commence localement, ça marche, et on ne change pas. Mais les limites s'accumulent silencieusement : le Mac doit rester allumé pour que les cycles automatiques tournent, si l'utilisateur est en déplacement ou que la machine dort, les signaux de marché de 04:05 UTC passent silencieusement. La décision VM Oracle n'est pas déclenchée par un bug — c'est une décision de confiance : le bot a assez prouvé sa valeur pour mériter un environnement stable. Article sur le moment où un projet personnel franchit le seuil de l'hébergement "sérieux".
+
+> **Angle 2 — "Évaluer des options d'hébergement avec un LLM"**. La spec `0227334` documente deux options — les routines cloud CCR vs VM Oracle — avec les raisons précises d'élimination de la première. Ce n'est pas du hand-waving : l'option écartée a été investiguée concrètement (vérification de l'accès MCP dans l'environnement CCR), et l'impossibilité est documentée. L'agent a fourni une analyse structurée à l'utilisateur qui a ensuite choisi. Cet exemple illustre comment un LLM peut être utile dans la phase d'évaluation d'architecture — pas comme décideur, mais comme assistant d'analyse. La décision finale reste humaine (l'utilisateur a validé).
+
+> **Angle 3 — "Le `.mcp.json` comme point de fragilité de portabilité"**. Le plan d'implémentation identifie un obstacle concret : le serveur MCP `telegram-assistant` référence un chemin absolu Mac (`/Users/yousrimaazaoui/.claude/mcp-servers/...`). Sur une VM Ubuntu ARM, ce chemin n'existe pas. C'est un petit problème de configuration, pas un bug de code — mais il aurait silencieusement cassé les commandes Telegram si non anticipé. La migration vers une VM force à rendre explicites toutes les dépendances implicites de l'environnement local. Article sur la portabilité : ce qui "fonctionne sur ma machine" et ce qui le rend fragile.
+
+> **Angle 4 — "Le quota partagé : décision sans données"**. La spec documente honnêtement un point d'incertitude : les cycles automatiques sur la VM (6/jour × ~2 USD équivalent) et l'usage interactif dev du Mac partagent le même abonnement Claude Pro. Personne ne sait exactement où est la limite. La décision documentée est "observer empiriquement une semaine" plutôt que chercher une garantie a priori. C'est une décision technique mature : plutôt que de modéliser dans le vide, collecter des données réelles. Article sur la gestion de l'incertitude dans les décisions d'infrastructure pour un side-project.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **0**
+- Issues fermées : **0**
+- Tickets créés : **0**
+- Commits de doc directs sur `main` : **2** (hors workflow PR)
+- Lignes de documentation ajoutées : **599** (71 spec + 528 plan)
+- Cycles auto-trading : **5** (logs visibles)
+- Décisions architecturales majeures : **1** (migration Mac → VM Oracle Cloud)
+
+---
+
+---
+
 ## 2026-07-21
 
 ### PRs mergées (2)
