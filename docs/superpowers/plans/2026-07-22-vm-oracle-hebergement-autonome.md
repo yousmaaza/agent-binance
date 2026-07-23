@@ -502,7 +502,7 @@ Envoyer `/trade` depuis Telegram. Suivre `tail -f ~/agent-binance/logs/stdout/cy
 
 Résultat réel (cycle `20260723_160933`) : succès complet, 348s, 0 BUY (marché Bearish, cohérent avec l'historique), coût $1.57 en mode abonnement. **Gap découvert** : le commit Phase 8 a échoué silencieusement car `botuser` n'avait pas d'identité git configurée (`git config user.name`/`user.email` manquants) — corrigé manuellement puis documenté à la Task 3 Step 3 pour que les prochains cycles committent automatiquement sans intervention.
 
-- [ ] **Step 6 : Test de reboot**
+- [x] **Step 6 : Test de reboot**
 
 ```bash
 ssh -i <clé> root@<IP> "reboot"
