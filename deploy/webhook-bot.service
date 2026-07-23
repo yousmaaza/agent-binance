@@ -1,0 +1,20 @@
+# Installer avec : sudo cp deploy/webhook-bot.service /etc/systemd/system/
+# puis : sudo systemctl daemon-reload && sudo systemctl enable --now webhook-bot
+[Unit]
+Description=Binance trading bot (Telegram polling + auto-scheduler)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/agent-binance
+Environment="PATH=/root/.local/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/root/agent-binance/.venv/bin/python -u binance-bot/webhook_server.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/root/agent-binance/state/daemon.log
+StandardError=append:/root/agent-binance/state/daemon.log
+
+[Install]
+WantedBy=multi-user.target
