@@ -201,35 +201,40 @@ Expected: un numéro de version affiché, sans erreur `Exec format error` (qui i
 - Consumes: `build-essential` (Task 2), venv non requis (binaire Rust indépendant)
 - Produces: `~/.cargo/bin/kraken` — chemin attendu par `binance-bot/core/trade_helpers.py` (`KRAKEN_CLI` déjà résolu dynamiquement, aucune modification de code nécessaire si le binaire atterrit au même chemin relatif `~/.cargo/bin/kraken`)
 
-- [ ] **Step 1 [Via SSH] : Installer Rust/cargo**
+- [x] **Step 1 [Via SSH] : Installer kraken-cli**
+
+`kraken-cli` n'est pas publié sur crates.io — c'est un installeur `cargo-dist` qui télécharge un binaire précompilé depuis les releases GitHub `krakenfx/kraken-cli` (confirmé via `~/.config/kraken-cli/kraken-cli-receipt.json` sur le Mac : `"source":{"owner":"krakenfx","name":"kraken-cli","release_type":"github"}`). Pas besoin de Rust/cargo pour l'installer (juste pour le binaire final déjà compilé) :
 
 ```bash
-ssh -i <clé> ubuntu@<IP> "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+ssh -i <clé> root@<IP> "curl -sL -o /tmp/installer.sh https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh && sh /tmp/installer.sh"
 ```
 
-- [ ] **Step 2 [Via SSH] : Installer kraken-cli**
+- [x] **Step 2 [Via SSH] : Vérifier**
 
 ```bash
-ssh -i <clé> ubuntu@<IP> "source ~/.cargo/env && cargo install kraken-cli"
+ssh -i <clé> root@<IP> "~/.cargo/bin/kraken --version"
 ```
 
-(Remplacer `kraken-cli` par le nom exact du crate/repo source utilisé sur le Mac — vérifier `cargo install --list` ou l'historique d'installation sur le Mac avant cette étape si le nom du package diffère.)
+Expected: un numéro de version identique à celui du Mac (`cargo install --list` ne montre rien pour ce package — c'est normal, ce n'est pas installé via le registre cargo, cf. ci-dessus).
 
-- [ ] **Step 3 [Via SSH] : Vérifier**
-
-```bash
-ssh -i <clé> ubuntu@<IP> "~/.cargo/bin/kraken --version"
-```
-
-Expected: un numéro de version, sans erreur de compilation liée à l'architecture ARM. **Si la compilation échoue pour une raison liée à l'architecture**, documenter l'erreur précise et arrêter le plan ici (retour à l'utilisateur avant de continuer).
-
-- [ ] **Step 4 [Via SSH] : Test fonctionnel minimal (lecture seule, sans clé API nécessaire pour un ticker public)**
+- [x] **Step 3 [Via SSH] : Test fonctionnel minimal (lecture seule, sans clé API nécessaire pour un ticker public)**
 
 ```bash
-ssh -i <clé> ubuntu@<IP> "~/.cargo/bin/kraken ticker XBTUSDC -o json"
+ssh -i <clé> root@<IP> "~/.cargo/bin/kraken ticker XBTUSDC -o json"
 ```
 
 Expected: un JSON avec les données de ticker XBT/USDC, pas de timeout ni d'erreur réseau.
+
+- [x] **Step 4 [Via SSH] : Configurer l'authentification Kraken (gap découvert à l'exécution)**
+
+`kraken-cli` gère ses credentials API dans **son propre store, séparé du `.env` du projet** (commande `kraken auth`). Sur macOS : `~/Library/Application Support/kraken/config.toml`. Sur Linux, l'équivalent XDG est `~/.config/kraken/config.toml`. Copier ce fichier via `scp` (canal chiffré, jamais coller le contenu en clair dans une commande ou un chat) :
+
+```bash
+scp -i <clé> "/Users/yousrimaazaoui/Library/Application Support/kraken/config.toml" root@<IP>:~/.config/kraken/config.toml
+ssh -i <clé> root@<IP> "chmod 600 ~/.config/kraken/config.toml && ~/.cargo/bin/kraken auth test"
+```
+
+Expected: `Status: Authentication successful`.
 
 ---
 
@@ -257,14 +262,17 @@ Ne jamais transmettre les secrets en clair dans un canal non chiffré autre que 
 scp -i <clé> /Users/yousrimaazaoui/Documents/projets/perso/agent-binance/.env ubuntu@<IP>:~/agent-binance/.env
 ```
 
-- [ ] **Step 3 [Via SSH] : Vérifier que le fichier est bien chargé (sans afficher les valeurs)**
+- [x] **Step 3 [Via SSH] : Vérifier que le fichier est bien chargé (sans afficher les valeurs)**
+
+Note : les variables exportées par `core/env.py` sont nommées `TOKEN`/`CHAT_ID` (pas `TELEGRAM_TOKEN`/`TELEGRAM_CHAT_ID`, malgré les noms des clés dans `.env`) :
 
 ```bash
-ssh -i <clé> ubuntu@<IP> "cd ~/agent-binance && .venv/bin/python -c \"
+ssh -i <clé> root@<IP> "cd ~/agent-binance && .venv/bin/python -c \"
 import sys; sys.path.insert(0,'binance-bot')
-from core.env import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-print('TELEGRAM_TOKEN set:', bool(TELEGRAM_TOKEN))
-print('TELEGRAM_CHAT_ID set:', bool(TELEGRAM_CHAT_ID))
+from core.env import TOKEN, CHAT_ID, MONGO_URI
+print('TOKEN set:', bool(TOKEN))
+print('CHAT_ID set:', bool(CHAT_ID))
+print('MONGO_URI set:', bool(MONGO_URI))
 \""
 ```
 
