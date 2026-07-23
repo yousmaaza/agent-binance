@@ -1,12 +1,14 @@
-# Hébergement autonome sur VM Oracle Cloud Implementation Plan
+# Hébergement autonome sur VM Hostinger Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Faire tourner `binance-bot/webhook_server.py` (interactif + auto-scheduler) en continu sur une VM Oracle Cloud "Always Free" (ARM), de façon totalement indépendante du Mac, sans changer la logique de trading.
+**Goal:** Faire tourner `binance-bot/webhook_server.py` (interactif + auto-scheduler) en continu sur une VM Hostinger, de façon totalement indépendante du Mac, sans changer la logique de trading.
 
-**Architecture:** Une VM Ampere A1 (ARM/Ubuntu) héberge le process unique via systemd. État (`state/`, `logs/`) sur disque local de la VM. Secrets dans un `.env` recréé sur la VM (jamais commité). Les deux serveurs MCP du projet (`tradingview` via `uvx`, `telegram-assistant` via un script Python local) tournent sur la VM exactement comme sur le Mac aujourd'hui.
+**Architecture:** Une VM Hostinger (KVM, x86_64, Ubuntu) héberge le process unique via systemd. État (`state/`, `logs/`) sur disque local de la VM. Secrets dans un `.env` recréé sur la VM (jamais commité). Les deux serveurs MCP du projet (`tradingview` via `uvx`, `telegram-assistant` via un script Python local) tournent sur la VM exactement comme sur le Mac aujourd'hui.
 
-**Tech Stack:** Python 3.11 (venv), systemd, Claude Code CLI, `uv`/`uvx`, Rust/cargo (`kraken-cli`), Oracle Cloud Ampere A1 (Ubuntu).
+**Tech Stack:** Python 3.11 (venv), systemd, Claude Code CLI, `uv`/`uvx`, Rust/cargo (`kraken-cli`), VPS Hostinger x86_64 (Ubuntu).
+
+**Note de pivot (2026-07-23) :** Ce plan visait initialement une VM Oracle Cloud "Always Free" (Ampere A1, ARM) — abandonné après plusieurs erreurs `Out of capacity` bloquantes sur les shapes ARM et AMD gratuits dans la région testée (`EU-PARIS-1-AD-1`), un problème connu et récurrent sur ce tier gratuit. Bascule sur une VPS Hostinger payante (quelques euros/mois) pour débloquer, en x86_64 standard — ce qui simplifie même le plan (plus de question de compatibilité ARM pour `kraken-cli` ou le CLI Claude, retour à Ubuntu/`apt` sans détour par Oracle Linux/`dnf`).
 
 ## Global Constraints
 
@@ -23,39 +25,58 @@
 
 ## Note sur l'exécution de ce plan
 
-Contrairement à un plan de code pur, plusieurs tâches ci-dessous nécessitent un accès réel à une VM (création via la console Oracle Cloud, accès SSH). Chaque tâche précise si elle est :
-- **[Action utilisateur]** — doit être faite par l'utilisateur (compte Oracle, console web), résultat à rapporter avant de continuer.
+Contrairement à un plan de code pur, plusieurs tâches ci-dessous nécessitent un accès réel à une VM (création via hPanel Hostinger, accès SSH). Chaque tâche précise si elle est :
+- **[Action utilisateur]** — doit être faite par l'utilisateur (compte Hostinger, hPanel), résultat à rapporter avant de continuer.
 - **[Via SSH]** — exécutable par l'agent une fois l'IP et l'accès SSH de la VM disponibles.
 - **[Repo local]** — modification de fichiers dans le repo `agent-binance`, testable/committable normalement.
 
 ---
 
-### Task 1: Provisionner l'instance Oracle Cloud
+### Task 1: Commander et provisionner la VPS Hostinger
 
 **Files:** Aucun (infrastructure)
 
 **Interfaces:**
-- Produces: adresse IP publique de la VM, clé SSH privée pour s'y connecter — nécessaires à toutes les tâches suivantes.
+- Produces: adresse IP publique de la VM, accès SSH (clé privée ou mot de passe root) — nécessaires à toutes les tâches suivantes.
 
-- [ ] **Step 1 [Action utilisateur] : Créer l'instance**
+- [ ] **Step 1 [Action utilisateur] : Commander le plan VPS**
 
-Dans la console Oracle Cloud (https://cloud.oracle.com) :
-- Compute → Create Instance
-- Nom : `agent-binance-vm`
-- Image : Ubuntu 24.04 (dernière LTS disponible dans le catalogue Oracle)
-- Shape : `VM.Standard.A1.Flex` (Ampere, ARM) — allouer 2 OCPU / 12 Go RAM (dans le pool always-free de 4 OCPU/24 Go)
-- Réseau : VCN par défaut, IP publique activée
-- Clé SSH : générer une nouvelle paire ou uploader une clé publique existante — **conserver la clé privée**, elle sera nécessaire pour toutes les tâches suivantes
+Dans hPanel Hostinger (https://hpanel.hostinger.com) → VPS → Get Started / Choisir un plan :
+- **Plan** : le plus petit tier KVM proposé suffit (charge légère, pics ponctuels toutes les 4h — pas besoin de surdimensionner). Si un doute sur la RAM (1 Go vs 2 Go+), préférer le palier juste au-dessus du minimum pour laisser de la marge pendant l'exécution d'un cycle (Claude CLI + serveurs MCP + kraken-cli tournent en même temps).
+- **Datacenter/localisation** : sans impact fonctionnel (tous les appels réseau du bot vont vers Telegram/Kraken/MongoDB/Anthropic, pas vers l'utilisateur) — choisir la plus proche par confort de latence SSH.
 
-- [ ] **Step 2 [Action utilisateur] : Vérifier l'accès SSH**
+- [ ] **Step 2 [Action utilisateur] : Choisir le template OS**
 
+Dans l'assistant de configuration du VPS :
+- **Operating System** : Ubuntu 24.04 LTS (chercher "Ubuntu 24.04" dans la liste des templates — pas de souci d'architecture ARM à vérifier ici, tout est x86_64 standard chez Hostinger)
+- **Ne pas choisir de template avec panel préinstallé** (ex: "Ubuntu 24.04 with CyberPanel", "... with Docker", etc.) — on veut l'OS nu, on installe nous-mêmes ce qu'il faut (cf. Task 2)
+
+- [ ] **Step 3 [Action utilisateur] : Configurer l'authentification SSH**
+
+Si l'assistant propose d'ajouter une clé SSH publique : le faire (méthode recommandée, cohérente avec le reste du plan). Sinon, Hostinger génère/affiche un mot de passe root à la création — **le noter immédiatement**, il ne sera pas toujours réaffichable ensuite (comme pour Oracle, ce type d'information n'est montré qu'une fois).
+
+- [ ] **Step 4 [Action utilisateur] : Finaliser la commande et attendre le provisioning**
+
+Une fois la VM provisionnée (quelques minutes), récupérer l'**adresse IP publique** depuis le dashboard hPanel de la VPS.
+
+- [ ] **Step 5 [Action utilisateur] : Vérifier l'accès SSH**
+
+Avec clé SSH :
 ```bash
-ssh -i <chemin_clé_privée> ubuntu@<IP_PUBLIQUE_VM> "echo OK"
+ssh -i <chemin_clé_privée> root@<IP_PUBLIQUE_VM> "echo OK"
 ```
 
-Expected: `OK` affiché. Si erreur `Connection refused`, vérifier la security list Oracle (port 22 doit être ouvert en entrée — c'est la seule exception au principe "aucun port entrant", strictement nécessaire pour l'administration).
+Avec mot de passe root (si pas de clé SSH configurée) :
+```bash
+ssh root@<IP_PUBLIQUE_VM> "echo OK"
+```
+(saisir le mot de passe noté à la Step 3 quand demandé)
 
-- [ ] **Step 3 : Rapporter l'IP et confirmer l'accès SSH avant de continuer sur la Task 2.**
+Expected: `OK` affiché. Le port 22 est généralement ouvert par défaut sur une VPS Hostinger (contrairement à Oracle, pas de security list à configurer manuellement) — si `Connection refused`, vérifier le pare-feu dans hPanel (section Firewall du VPS).
+
+- [ ] **Step 6 : Rapporter l'IP et confirmer l'accès SSH avant de continuer sur la Task 2.**
+
+**Note pour la suite du plan** : les tâches suivantes utilisent `ubuntu@<IP>` comme utilisateur SSH (convention Oracle) — sur Hostinger, l'utilisateur par défaut est **`root`**. Adapter toutes les commandes SSH des tâches suivantes en conséquence (`root@<IP>` au lieu de `ubuntu@<IP>`, et les chemins `/home/ubuntu/...` deviennent `/root/...` ou un chemin équivalent choisi à la Task 3).
 
 ---
 

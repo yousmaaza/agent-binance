@@ -4,7 +4,9 @@
 
 Le bot (`binance-bot/webhook_server.py`) tourne aujourd'hui exclusivement sur le Mac de l'utilisateur, lancé en `nohup`. Il dépend donc de la machine allumée : si le Mac est éteint ou en veille, ni les cycles de trading automatiques (toutes les 4h) ni les commandes Telegram interactives (`/trade`, `/status`, `/perf`, `/reset`) ne fonctionnent.
 
-Un plan de déploiement VPS Hetzner avait été évoqué avant ce projet mais jamais implémenté (cf. `CLAUDE.md`). Cette évolution le remplace par une VM Oracle Cloud "Always Free" (gratuite en permanence), suite à une demande explicite de l'utilisateur.
+Un plan de déploiement VPS Hetzner avait été évoqué avant ce projet mais jamais implémenté (cf. `CLAUDE.md`). Cette évolution le remplace par une VM toujours active, suite à une demande explicite de l'utilisateur.
+
+**Pivot (2026-07-23)** : l'option initialement retenue (VM Oracle Cloud "Always Free", Ampere A1 ARM) a été abandonnée en pratique après plusieurs erreurs `Out of capacity` bloquantes sur les shapes ARM et AMD gratuits d'Oracle, dans la seule région disponible pour ce compte (`EU-PARIS-1-AD-1`) — un problème connu et récurrent sur ce tier gratuit, pas un choix de conception à remettre en cause. Bascule sur une **VPS Hostinger payante** (x86_64, quelques euros/mois), qui simplifie même l'exécution (plus de question de compatibilité ARM, retour à un Ubuntu/`apt` standard). Le reste de l'analyse ci-dessous (architecture, MCP, quota Claude Pro, fiabilité) reste valide à l'identique — seul le choix du fournisseur de VM change.
 
 ## Objectif
 
