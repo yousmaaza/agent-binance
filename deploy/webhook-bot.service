@@ -7,14 +7,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/agent-binance
-Environment="PATH=/root/.local/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/root/agent-binance/.venv/bin/python -u binance-bot/webhook_server.py
+User=botuser
+WorkingDirectory=/home/botuser/agent-binance
+Environment="PATH=/home/botuser/.local/bin:/home/botuser/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/botuser/agent-binance/.venv/bin/python -u binance-bot/webhook_server.py
 Restart=on-failure
 RestartSec=5
-StandardOutput=append:/root/agent-binance/state/daemon.log
-StandardError=append:/root/agent-binance/state/daemon.log
+StandardOutput=append:/home/botuser/agent-binance/state/daemon.log
+StandardError=append:/home/botuser/agent-binance/state/daemon.log
 
 [Install]
 WantedBy=multi-user.target
