@@ -1,0 +1,1900 @@
+# Journal quotidien — agent-binance
+
+Récaps quotidiens auto-générés par l'agent `daily-recap` (PR mergées, issues fermées, nouveaux tickets, angles narratifs). Matière première pour des articles Medium réguliers.
+
+**Trigger 1** : slash command `/journal` lancée manuellement par l'utilisateur (mode interactif, pas de commit auto).
+
+**Trigger 2** : routine Claude Code remote (cron `0 21 * * *` UTC = 23h Europe/Paris) qui tourne chaque soir et commit+push le récap du jour sur la branche dédiée `doc/medium-report` (pas main). Pilotée depuis https://claude.ai/code/routines.
+
+Les entrées les plus récentes sont en haut. Le fichier de référence chronologique du projet reste `docs/medium-recap.md` (récap des 9 étapes structurantes du POC à v2, couvre la période 19→21 mai 2026).
+
+---
+
+## 2026-07-23
+
+### PRs mergées (0)
+
+Aucune PR mergée le 23 juillet. Journée entièrement consacrée à l'exécution du plan de déploiement VM — 7 commits directs sur `main` (hors workflow PR), qui décrivent pas à pas le démarrage du bot sur une VPS Hostinger en production.
+
+---
+
+### Commits notables (7, directs sur `main`)
+
+#### `54a6aba` — Pivot : Oracle Cloud → Hostinger
+
+- **Heure** : 14:20 CEST
+- **Contexte** : la veille (22 juillet), l'utilisateur avait choisi Oracle Always Free (ARM Ampere A1) pour héberger le bot. Ce matin, Oracle bloque toutes les tentatives de provisioning avec une erreur de capacité indisponible sur `EU-PARIS-1-AD-1`. Après quelques tentatives, décision de pivoter vers une VPS Hostinger payante en x86_64.
+- **Impact** : supprime la contrainte ARM (kraken-cli compilé natif ARM, Claude CLI ARM) et simplifie le déploiement. Le reste de l'architecture — spec polling-only, venv Python 3.11, systemd — reste strictement identique.
+- **Fichiers** : `docs/superpowers/plans/2026-07-22-vm-oracle-hebergement-autonome.md` (+44 / -21 lignes), spec mise à jour en conséquence.
+
+#### `f7061eb` — Fix : chemin MCP `telegram-assistant` portable
+
+- **Heure** : 15:08 CEST
+- **Problème** : `.mcp.json` contenait un chemin absolu Mac hardcodé (`/Users/yousrimaazaoui/.claude/mcp-servers/...`). Sur la VM Linux, ce chemin n'existe pas — le serveur MCP `telegram-assistant` (qui permet à l'agent sous-processus d'envoyer des notifications Telegram) serait introuvable.
+- **Fix** : remplacement par `$HOME/.claude/mcp-servers/...`. Une ligne modifiée, 0 régression côté Mac.
+
+#### `5dc6f8f` — Ajout : fichier systemd `deploy/webhook-bot.service`
+
+- **Heure** : 17:58 CEST
+- **Contenu** : unité systemd (`Type=simple`, `Restart=on-failure`, `RestartSec=5`) qui démarre `webhook_server.py` via le venv `.venv/bin/python` et redirige stdout/stderr vers `state/daemon.log`. Activable avec `systemctl enable --now webhook-bot` — remplace définitivement le `nohup ... &` utilisé depuis le début du projet.
+- **Fichier créé** : `deploy/webhook-bot.service` (20 lignes).
+
+#### `9183af2` — Fix : service systemd sous `botuser` (non-root)
+
+- **Heure** : 18:08 CEST
+- **Obstacle découvert** : `claude --dangerously-skip-permissions` refuse de s'exécuter en tant que root ou via sudo. Le sous-processus Claude (lancé par `run_trade_workflow()`) plante immédiatement si l'utilisateur système est `root`.
+- **Fix** : `User=botuser` dans le `.service` — la VM tourne en root par défaut, l'utilisateur `botuser` dédié est créé manuellement sur la VM. Le `WorkingDirectory` et les paths deviennent `/home/botuser/agent-binance/`.
+
+#### `6e14a46` — Docs : corrections plan (kraken-cli install, auth, noms de variables)
+
+- **Heure** : 18:02 CEST
+- **Contenu** : le plan est mis à jour pour refléter les vrais détails de l'installation de `kraken-cli` (via `cargo install`, pas de binaire pré-compilé x86_64 disponible), la procédure d'authentification distincte (séparée du binaire), et les noms exacts des variables d'environnement.
+
+#### `d40e2ae` — Docs : plan enrichi des vrais résultats d'exécution
+
+- **Heure** : 18:18 CEST
+- **Contenu** : réécriture substantielle du plan (+115 / -77 lignes) pour intégrer les résultats réels de chaque tâche : ce qui a fonctionné, ce qui a nécessité un ajustement, les commandes exactes utilisées. Le plan devient un compte-rendu d'exécution, pas seulement un plan prospectif.
+
+#### `2c4b4b0` — Docs : Task 10 validée — reboot survit, offset persisté
+
+- **Heure** : 18:19 CEST
+- **Validation finale** : la dernière tâche du plan de déploiement est cochée. Le bot survit à un reboot du serveur (`systemctl restart webhook-bot`), l'offset Telegram (position de lecture du flux de messages) est bien persisté entre les redémarrages. Le déploiement Hostinger est **terminé**.
+
+---
+
+### Issues fermées (0)
+
+Aucune issue fermée le 23 juillet. L'exécution du plan de déploiement s'est faite directement via des commits, sans passer par le board GitHub.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé le 23 juillet.
+
+---
+
+### Cycles d'auto-trading observés
+
+6 cycle logs automatiques : `00:05`, `04:05`, `08:05`, `12:05`, `16:05`, `20:05` UTC — tous présents. Le bot tournait encore sur le Mac ce matin lors du déploiement Hostinger ; la bascule vers la VM s'est faite en cours de journée.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "Oracle vs Hostinger : quand le gratuit coûte cher"**. L'utilisateur choisit Oracle Always Free la veille pour héberger son bot gratuitement. Le lendemain matin, Oracle répond "insufficient capacity" sur toutes les tentatives de provisioning dans sa région. La décision est rapide : basculer sur une VPS Hostinger payante à quelques euros par mois plutôt que perdre du temps. L'article peut explorer le faux calcul du "gratuit" dans l'infra cloud — le coût réel est le temps passé à déboguer des erreurs de disponibilité, pas le prix affiché.
+
+> **Angle 2 — "claude --dangerously-skip-permissions refuse root"**. Un détail technique inattendu : le CLI Claude, invoqué avec le flag `--dangerously-skip-permissions` (nécessaire pour que l'agent sous-processus puisse lire des fichiers sans confirmation), refuse de tourner en root. Ce n'est pas documenté de façon évidente — l'utilisateur le découvre en testant le systemd service. La solution est de créer un utilisateur `botuser` dédié. Cet incident illustre le principe de moindre privilège appliqué de façon inattendue : l'outil lui-même force la bonne pratique. Article sur les sécurités implicites que les outils modernes imposent.
+
+> **Angle 3 — "Un bot, un service systemd"**. Le passage de `nohup python3 ...  &` à une unité systemd proprement configurée (`Restart=on-failure`, `User=botuser`, logs redirigés, activation au boot) marque le moment où un side-project devient un service. Le code n'a pas changé — c'est l'infrastructure qui change de statut. Article narratif sur le "graduation" d'un projet personnel : quand on décide que ça mérite d'être géré comme un service, pas comme un script lancé à la main.
+
+> **Angle 4 — "Le `.mcp.json` comme frontière de portabilité"**. Une ligne : le chemin absolu Mac dans `.mcp.json`. Sans ce fix, le serveur MCP `telegram-assistant` est introuvable sur la VM et les notifications Telegram du sous-processus Claude ne partent pas. La migration force à expliciter toutes les dépendances implicites à l'environnement local. Article sur ce que la migration vers une VM révèle des "dettes de portabilité" accumulées silencieusement dans un projet.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **0**
+- Issues fermées : **0**
+- Tickets créés : **0**
+- Commits directs sur `main` : **7** (hors workflow PR habituel)
+- Événement majeur : **déploiement bot en production sur VPS Hostinger** ✓
+- Cycles auto-trading : **6** (logs visibles, couverture complète)
+
+---
+
+## 2026-07-22
+
+### PRs mergées (0)
+
+Aucune PR mergée le 22 juillet. Journée sans ticket GitHub fermé ni billet ouvert — mais pas sans activité : deux commits de documentation ont été poussés directement sur `main` (hors workflow PR habituel), signalant une décision d'architecture majeure.
+
+---
+
+### Commits de documentation notables (2, directs sur `main`)
+
+#### `0227334` — Spec : hébergement autonome sur VM Oracle Cloud
+
+- **Heure** : 20:04 CEST (18:04 UTC)
+- **Fichier créé** : `docs/superpowers/specs/2026-07-22-vm-oracle-hebergement-autonome-design.md` (71 lignes)
+- **Décision documentée** : migrer le bot de son hébergement actuel (`nohup` sur le Mac de l'utilisateur) vers une VM Oracle Cloud "Always Free" (ARM Ampere A1). La décision résulte d'un brainstorming entre l'utilisateur et l'agent. Deux options avaient été évaluées :
+  - **Option écartée** — routines cloud Claude Code (CCR) : les serveurs MCP locaux du projet (`tradingview`, `telegram-assistant`) ne sont pas accessibles dans l'environnement isolé Anthropic. Sans TradingView, les Phases 1-2 (analyse marché) ne peuvent pas fonctionner. Option abandonnée.
+  - **Option retenue** — VM Oracle Always Free (Ampere A1, ARM/Ubuntu) : environnement Linux classique où `claude` CLI, `.mcp.json` et les secrets `.env` fonctionnent comme sur le Mac. Gratuite en permanence (jusqu'à 4 OCPU / 24 Go RAM ARM). systemd remplace `nohup`.
+- **Architecture choisie** : un seul process `webhook_server.py` tourne en continu sur la VM via systemd (`Restart=on-failure`, activé au boot). État (`state/`, `logs/`) sur disque local. Aucune modification de la logique de trading — migration d'hébergement uniquement.
+- **Point d'incertitude documenté** : quota Claude Pro partagé entre la VM (cycles automatiques) et le Mac (usage interactif dev). Décision pragmatique : observer une semaine, isoler une `ANTHROPIC_API_KEY` si besoin.
+
+#### `53db2b3` — Plan d'implémentation : hébergement VM Oracle Cloud
+
+- **Heure** : 20:07 CEST (18:07 UTC)
+- **Fichier créé** : `docs/superpowers/plans/2026-07-22-vm-oracle-hebergement-autonome.md` (528 lignes)
+- **Contenu** : plan d'implémentation pas-à-pas couvrant 6 tâches principales : provisioning de l'instance Oracle (action utilisateur), installation de l'environnement (Python 3.11 venv, uv/uvx, kraken-cli via cargo, Claude Code CLI), clone du repo + recréation du `.env`, correction du chemin `.mcp.json` (serveur `telegram-assistant` référence un chemin absolu Mac à corriger sur la VM), configuration systemd, tests de validation et bascule.
+- **Format** : plan "agentic" avec checkboxes `- [ ]`, tâches classées par responsabilité (`[Action utilisateur]` / `[Via SSH]` / `[Repo local]`).
+- **Contraintes non négociables listées** : polling-only (aucun port entrant), Python via venv 3.11, aucun secret commité, `PROJECT_DIR` dynamique, `kraken-cli` compilé via cargo (pas de binaire x86 copié — ARM natif requis).
+
+---
+
+### Issues fermées (0)
+
+Aucune issue fermée le 22 juillet.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé le 22 juillet. La décision VM Oracle est documentée directement dans `docs/superpowers/` sans passer par le board GitHub — ce qui est inhabituel par rapport au workflow habituel (brainstorming → spec → plan → tickets → `binance-dev`). Les tickets d'implémentation seront probablement créés lors de l'exécution du plan.
+
+---
+
+### Cycles d'auto-trading observés
+
+5 cycle logs automatiques : `00:05`, `04:05`, `08:05`, `16:05`, `20:05` UTC — routines sans anomalie visible. Le cycle `12:05` est absent des commits visibles, probablement un gap de log ou un cycle skip.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "Quand le bot outgrow le Mac"**. Le bot tourne en `nohup` sur un Mac depuis le début du projet. C'est le pattern classique du side-project : on commence localement, ça marche, et on ne change pas. Mais les limites s'accumulent silencieusement : le Mac doit rester allumé pour que les cycles automatiques tournent, si l'utilisateur est en déplacement ou que la machine dort, les signaux de marché de 04:05 UTC passent silencieusement. La décision VM Oracle n'est pas déclenchée par un bug — c'est une décision de confiance : le bot a assez prouvé sa valeur pour mériter un environnement stable. Article sur le moment où un projet personnel franchit le seuil de l'hébergement "sérieux".
+
+> **Angle 2 — "Évaluer des options d'hébergement avec un LLM"**. La spec `0227334` documente deux options — les routines cloud CCR vs VM Oracle — avec les raisons précises d'élimination de la première. Ce n'est pas du hand-waving : l'option écartée a été investiguée concrètement (vérification de l'accès MCP dans l'environnement CCR), et l'impossibilité est documentée. L'agent a fourni une analyse structurée à l'utilisateur qui a ensuite choisi. Cet exemple illustre comment un LLM peut être utile dans la phase d'évaluation d'architecture — pas comme décideur, mais comme assistant d'analyse. La décision finale reste humaine (l'utilisateur a validé).
+
+> **Angle 3 — "Le `.mcp.json` comme point de fragilité de portabilité"**. Le plan d'implémentation identifie un obstacle concret : le serveur MCP `telegram-assistant` référence un chemin absolu Mac (`/Users/yousrimaazaoui/.claude/mcp-servers/...`). Sur une VM Ubuntu ARM, ce chemin n'existe pas. C'est un petit problème de configuration, pas un bug de code — mais il aurait silencieusement cassé les commandes Telegram si non anticipé. La migration vers une VM force à rendre explicites toutes les dépendances implicites de l'environnement local. Article sur la portabilité : ce qui "fonctionne sur ma machine" et ce qui le rend fragile.
+
+> **Angle 4 — "Le quota partagé : décision sans données"**. La spec documente honnêtement un point d'incertitude : les cycles automatiques sur la VM (6/jour × ~2 USD équivalent) et l'usage interactif dev du Mac partagent le même abonnement Claude Pro. Personne ne sait exactement où est la limite. La décision documentée est "observer empiriquement une semaine" plutôt que chercher une garantie a priori. C'est une décision technique mature : plutôt que de modéliser dans le vide, collecter des données réelles. Article sur la gestion de l'incertitude dans les décisions d'infrastructure pour un side-project.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **0**
+- Issues fermées : **0**
+- Tickets créés : **0**
+- Commits de doc directs sur `main` : **2** (hors workflow PR)
+- Lignes de documentation ajoutées : **599** (71 spec + 528 plan)
+- Cycles auto-trading : **5** (logs visibles)
+- Décisions architecturales majeures : **1** (migration Mac → VM Oracle Cloud)
+
+---
+
+---
+
+## 2026-07-21
+
+### PRs mergées (2)
+
+Journée concise : 2 PRs mergées en 13 minutes (08:30–08:43 UTC), toutes deux issues de tickets créés la veille (20 juillet). L'une corrige un comportement erratique dans les logs de cycle, l'autre ajuste un paramètre de risque. Pas de modification de code Python — uniquement un prompt et un fichier de configuration.
+
+#### #362 — [BUG] Clarifier le prompt Phase 1 — TypeError unhashable slice
+
+- **Mergée à** : 08:30 UTC (10:30 Europe/Paris)
+- **Branche** : `feat/issue-359-clarifier-prompt-phase1-typeerror-slice`
+- **Issues fermées** : #359
+- **Quoi** : depuis plusieurs cycles (logs du 4, 6, 10 juillet), une `TypeError: unhashable type: 'slice'` apparaissait intermittente dans `logs/stderr/`. Origine : le prompt Phase 1 décrivait `phase1_output.json` sans préciser que c'est un dict racine `{"tradable": [...], "non_tradable": [...]}` et non une liste. Claude générrait parfois du code qui tentait de slicer le dict entier (`tradable[:30]` sur l'objet au lieu de la clé), causant l'exception. Le bot avait un fallback qui couvrait le cas sans bloquer le cycle — mais chaque occurrence polluait les logs et gaspillait du temps cycle. Fix : ajout de 7 lignes dans `prompts/phases/phase1_scan.txt` avec un exemple de lecture correcte (`data = json.load(f); tradable = data["tradable"]`) et une instruction explicite : "accède-y par sa clé, ne slice jamais le dict racine".
+- **Nature** : correctif préventif — prompt engineering pur, zéro modification Python.
+- **Doc tech** : [docs/technique/pr-362-clarifier-prompt-phase1.md](../technique/pr-362-clarifier-prompt-phase1.md)
+
+---
+
+#### #363 — [M1] Abaisser min_volume_usdc de 1M à 500k
+
+- **Mergée à** : 08:43 UTC (10:43 Europe/Paris)
+- **Branche** : `feat/issue-357-evaluer-un-abaissement-de-min-volume`
+- **Issues fermées** : #357
+- **Quoi** : analyse de 90 cycles récents montrait que la Phase 1 ne retournait quasiment jamais plus de 4–5 coins tradables (XBT, ETH, SOL, XRP, parfois ADA/EURC en oscillation au seuil). Le seuil `min_volume_usdc: 1000000` était trop restrictif pour les paires USDC Kraken, structurellement moins liquides que Binance. Évaluation Kraken live : à 1M USDC, 3 coins passent (XBT 28.6M, ETH 5.8M, SOL 1.8M) ; à 500k, 5 coins passent (+ XRP 0.98M, + ADA 0.59M). Le gain net réel est **ADA** uniquement — XRP est déjà inclus via `portfolio_coins` (bypass du filtre volume). Changement : 1 paramètre dans `config.json`, `min_volume_usdc: 1000000 → 500000`. Aucun code Python modifié — `phase1_scan.py` lit déjà la valeur depuis la config.
+- **Note détectée** : divergence doc/code signalée (non corrigée, hors scope) — `CLAUDE.md` mentionne un seuil TYPE_D de 5M USDC pour la tradabilité, mais le code n'implémente que `min_volume_usdc`. À clarifier séparément.
+- **Doc tech** : [docs/technique/pr-363-abaisser-min-volume-usdc.md](../technique/pr-363-abaisser-min-volume-usdc.md)
+
+---
+
+### Issues fermées (2)
+
+- **#359** — `[BUG] Clarifier le prompt Phase 1 — TypeError unhashable slice` [bug · enhancement] — créée le 20 juillet à 15:21 UTC, fermée le 21 juillet à 08:30 UTC par PR #362. Durée de vie : ~17 heures.
+- **#357** — `[M1] Évaluer un abaissement de min_volume_usdc (1M → 500k)` [enhancement] — créée le 20 juillet à 15:20 UTC, fermée le 21 juillet à 08:43 UTC par PR #363. Durée de vie : ~17 heures. Issue créée suite au ticket #311 (abaissement 5M → 1M, 3 juillet), lui-même déclenché par l'analyse de l'univers Kraken au moment de la migration.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé le 21 juillet.
+
+---
+
+### Cycles d'auto-trading observés
+
+4 cycles exécutés : `08:47` (juste après les merges), `12:05`, `16:05`, `20:05` UTC — cycles de routine sans anomalie visible dans les commits `chore: cycle log`.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "Le prompt comme code, le bug comme ambiguïté"**. La PR #362 corrige un bug sans écrire une seule ligne de Python. L'erreur `TypeError: unhashable type: 'slice'` est causée par une phrase absente dans un fichier `.txt` — le prompt ne précisait pas explicitement la structure JSON produite par Phase 1. Claude, face à une description ambiguë, choisissait parfois une interprétation erronée et générait du code défaillant. Le fix, c'est ajouter 7 lignes de prose et un exemple. Dans ce bot, la frontière entre "bug" et "ambiguïté de prompt" est floue : corriger un bug peut vouloir dire réécrire du code Python, réécrire un prompt, ou les deux. Ce déplacement de la logique vers le langage naturel a des avantages (itération rapide, lisible) et des risques structurels (non typé, non testé statiquement, non reproductible à l'identique entre deux invocations).
+
+> **Angle 2 — "Calibrer l'univers de coins : une décision de risque, pas de code"**. La PR #363 est une décision de gestion de risque matérialisée par 1 entier dans un fichier JSON. Passer de 1M à 500k USDC comme seuil de volume élargit l'univers de coins candidats de 3 à 5 — un gain net de 1 coin réel (ADA) après déduplication avec `portfolio_coins`. Ce qui est frappant : la décision n'est pas prise par l'agent. La PR attend explicitement la review de l'utilisateur avant merge. L'agent documente, mesure, présente le choix — mais la décision finale sur un paramètre de risque reste humaine. Article sur la séparation des responsabilités dans un bot semi-autonome : quelles décisions peut-on déléguer à l'agent, et lesquelles doivent rester à la main de l'opérateur ?
+
+> **Angle 3 — "La divergence silencieuse doc/code"**. La note en bas de la PR #363 signale que `CLAUDE.md` mentionne un seuil TYPE_D de 5M USDC pour la tradabilité, mais que le code n'implémente que `min_volume_usdc` (500k depuis ce matin). Cette divergence est hors scope de la PR — elle est documentée, pas corrigée. Un signal typique d'une codebase qui vieillit : la documentation capture l'intention originale, le code évolue différemment, et les deux dérivent silencieusement. Dans un bot piloté par un LLM qui lit `CLAUDE.md` pour ses instructions, cette divergence peut produire des comportements inattendus si un agent suit la doc plutôt que le code. Le fait que l'agent l'ait détectée et documentée plutôt que de l'ignorer est lui-même notable.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **2**
+- Fenêtre de merge : **13 minutes** (08:30 → 08:43 UTC)
+- Issues fermées : **2** (#359, #357 — toutes deux créées la veille)
+- Tickets créés : **0**
+- Fichiers Python modifiés : **0** (1 prompt `.txt` + 1 `config.json`)
+- Durée de vie des tickets : **~17 heures** (créés 20 juillet après-midi, fermés 21 juillet matin)
+- Cycles auto-trading : **4**
+
+---
+
+## 2026-07-05
+
+### PRs mergées (1)
+
+Journée minimaliste : 1 seule PR, 2 fichiers modifiés, 2 lignes changées. Après la vague intense du 4 juillet (8 PRs en 11 heures sur le système TP intelligent), le 5 juillet ressemble à un debrief de production. Deux bugs ont été détectés la nuit précédente sur des cycles réels — l'un causait une erreur silencieuse de push git à chaque cycle, l'autre classifiait mal les fins de session quota — et corrigés ensemble avant 08:05 UTC.
+
+#### #356 — fix: fiabilité cycles — autostash push + détection quota stdout
+
+- **Mergée à** : 08:04 UTC (10:04 Europe/Paris)
+- **Branche** : `feat/issue-354-355-cycle-reliability`
+- **Issues résolues** : #354, #355
+- **Quoi** : deux micro-bugfixes distincts, livrés ensemble en une seule PR car ils partagent le même fil directeur — deux situations où une information existait mais n'était pas lue.
+  - **#354 (`phase8_cycle_log.py`)** : `git pull --rebase` échouait silencieusement à chaque cycle car `state/trade_history.json` est constamment modifié par le bot en live. Git refusait le rebase avec des changements non stagés. Résultat : le commit cycle log était créé localement mais jamais poussé, et une notification `⚠️ cycle_log push échoué` arrivait à chaque cycle. Correction : ajout du flag `--autostash` à la commande `git pull --rebase --autostash origin main`. Une ligne.
+  - **#355 (`runner.py`)** : lorsque le quota d'abonnement Claude est épuisé, le message `You've hit your session limit` apparaît dans **stdout** du sous-processus, pas dans stderr. La détection d'`error_type` ne lisait que stderr → les fins de cycle quota étaient classifiées `"crash"` dans MongoDB au lieu de `"quota"`. Correction : ajout de `is_resource_error(stdout_path)` dans la condition de détection (fonction déjà importée de `stream_parser`). Une ligne.
+- **Délai issue → merge** : issues créées à 07:41–07:42 UTC, PR ouverte à 08:01 UTC, mergée à 08:04 UTC — 23 minutes bout-en-bout.
+- **Doc tech** : [docs/technique/pr-356-fiabilite-cycles.md](../technique/pr-356-fiabilite-cycles.md)
+
+---
+
+### Issues fermées (0)
+
+Aucune issue formellement fermée. Les issues #354 et #355, bien qu'adressées par PR #356, restent en état `open` — le corps de la PR utilise des en-têtes markdown (`### #354 —`) plutôt que les mots-clés GitHub de fermeture automatique (`Closes #354`).
+
+---
+
+### Nouveaux tickets créés (2)
+
+- **#354** — `fix: git pull --autostash dans phase8_cycle_log pour éviter l'échec de push` [bug, size:XS] — créé à 07:41 UTC, résolu dans la même matinée. Bug constaté sur les cycles live : `state/trade_history.json` (modifié à chaque cycle) empêchait le rebase, silencieusement.
+- **#355** — `fix: error_type=quota mal classifié (crash) quand quota Claude abonnement épuisé` [bug, size:XS] — créé à 07:42 UTC, résolu dans la même matinée. Découvert sur le cycle `20260705_000507` : stderr vide, stdout contenait le message de limite de session, MongoDB avait reçu `error_type=crash`.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "Deux bugs, une information non lue". #354 et #355 ont le même schéma d'origine : une donnée existait, était produite correctement, mais n'était pas lue par le code. Dans #354, `trade_history.json` était modifié en live — git le savait, mais le script l'ignorait. Dans #355, stdout portait le message de quota — Claude le produisait, mais `runner.py` ne lisait que stderr. Ce n'est pas un bug de logique, c'est un bug d'attention : la frontière entre "ce que le système sait" et "ce que le code lit" n'était pas synchrone. Court article sur l'idée que dans un bot piloté par un LLM avec des sous-processus, les conventions stdout/stderr ne sont pas garanties — un agent peut choisir de logguer n'importe où, et le harness doit l'anticiper.
+
+> **Angle opérationnel** : "23 minutes de bug à merge". Les deux issues ont été créées à 07:41–07:42 UTC après un cycle nocturne défaillant, et la PR était mergée à 08:04 UTC. Ce n'est pas un exploit technique — les fixes font chacun une ligne — mais c'est une illustration du pipeline de correction : observation en production → issue documentée avec reproduction → PR → merge. La rapidité vient du fait que les bugs étaient des cas simples et bien diagnostiqués dès la création de l'issue. Contraster avec des bugs plus ambigus (ex. le TP écrasé par le trailing stop, découvert en prod le 4 juillet, également corrigé en moins d'8h mais sur une logique plus profonde).
+
+> **Angle fiabilité** : "Les alertes silencieuses". La notification `⚠️ cycle_log push échoué` arrivait à chaque cycle depuis un temps indéterminé. C'est le type d'alerte qu'on finit par ignorer — elle est là, elle s'explique probablement, elle ne bloque pas le trading. Puis un jour on réalise que des dizaines de commits de cycle log ne sont jamais arrivés sur GitHub. Le `--autostash` est la correction technique, mais l'article pourrait porter sur la question plus large : comment un bot auto-piloté communique-t-il ses pannes partielles à son propriétaire ? Une panne totale est visible. Une panne silencieuse sur une feature secondaire peut durer des cycles entiers sans être détectée.
+
+---
+
+## 2026-07-04
+
+### PRs mergées (8)
+
+Journée thématique : 8 PRs mergées entre 07:47 et 18:58 UTC, toutes reliées à un même fil directeur — la construction d'un système de take-profit intelligent, adaptatif et visible. La vague migration Kraken de hier (14 PRs, 3 juillet) avait posé les fondations ; aujourd'hui, le TP reçoit sa couche de cerveau.
+
+#### #323 — feat(status): enrichir /status avec état TP Watcher et prix courant vs TP
+
+- **Mergée à** : 07:47 UTC (09:47 Europe/Paris)
+- **Branche** : `feat/issue-322-status-tp-watcher-state`
+- **Issues fermées** : #322
+- **Quoi** : la PR #321 (hier soir, 21:37 UTC) avait ajouté un thread TP Watcher qui tourne toutes les 2 minutes — mais son état était invisible depuis Telegram. Cette PR rend le watcher lisible : `/status` affiche désormais le prix courant Kraken de chaque position ouverte avec le PnL% en temps réel et la distance au TP, plus une section "TP Watcher" avec emoji d'état (✅⚠️❌), heure du dernier tick et nombre de positions surveillées. Deux nouvelles fonctions dans `commands/status.py` : `_fetch_current_price()` (appelle `kraken-cli ticker {coin}USDC`) et `_format_watcher_section()` (lit `state/tp_watcher_state.json`). Le watcher lui-même gagne `_write_watcher_state()` pour écriture atomique de son état.
+- **Doc tech** : [docs/technique/pr-323-enrichir-status-tp-watcher.md](../technique/pr-323-enrichir-status-tp-watcher.md)
+
+---
+
+#### #326 — [M1] Migrer Phase 2 de coin_analysis vers combined_analysis (4h)
+
+- **Mergée à** : 08:10 UTC
+- **Branche** : `feat/issue-319-combined-analysis-phase2`
+- **Issues fermées** : #319 (créée le 3 juillet)
+- **Quoi** : `coin_analysis` 4h ne retournait pas de données de support/résistance ni d'ADX — deux informations critiques pour les PRs suivantes. `combined_analysis` les fournit en un seul appel. `phase2_analysis.txt` migre son étape A vers `mcp__tradingview__combined_analysis` 4h et extrait six nouveaux champs : `adx_4h`, `adx_trend_4h`, `resistance_1_4h`, `resistance_2_4h`, `nearest_resistance_4h`, `distance_to_resistance_4h_pct`. L'appel 1D (`coin_analysis`) reste inchangé. Fallback sur `coin_analysis` si `combined_analysis` échoue — les nouveaux champs sont alors `None`, sans bloquer le cycle.
+- **Décision notable** : `resistance_1_1d` est initialisé à `None` explicitement — la 1D n'expose pas encore les résistances, c'est documenté, pas un oubli.
+- **Doc tech** : [docs/technique/pr-326-phase2-combined-analysis.md](../technique/pr-326-phase2-combined-analysis.md)
+
+---
+
+#### #327 — [M1] TP intelligent basé sur les résistances TradingView (Phase 4)
+
+- **Mergée à** : 08:33 UTC
+- **Branche** : `feat/issue-325-smart-tp-resistance`
+- **Issues fermées** : #325
+- **Quoi** : conséquence directe de la PR #326. Phase 4 calculait le TP mécaniquement (`entry × (1 + stop_distance_pct × reward_risk_ratio)`), souvent trop agressif et déconnecté du marché réel. Nouveau calcul : `tp_smart = min(tp_mécanique, nearest_resistance × 0.98)` si la résistance est au-dessus du prix d'entrée. Fallback vers TP mécanique si aucune résistance disponible. La notification Telegram Phase 4 indique désormais la source : `TP: 1.2460 (R 1.271 × 0.98)` ou `TP: 1.2902 (mécanique)`. Seul `prompts/phases/phase4_sizing.txt` est modifié — aucun fichier Python touché.
+- **Pourquoi c'est structurant** : c'est la première fois que le bot calibre son TP sur une réalité de marché (niveau de résistance TradingView) plutôt qu'une formule aveugle. La chaîne Phase 2 → Phase 4 devient une vraie pipeline d'enrichissement de signal.
+- **Doc tech** : [docs/technique/pr-327-tp-intelligent-base-sur-les-resistances.md](../technique/pr-327-tp-intelligent-base-sur-les-resistances.md)
+
+---
+
+#### #331 — feat: /calibrage recalcule les TP des positions ouvertes via combined_analysis
+
+- **Mergée à** : 09:33 UTC
+- **Branche** : `feat/issue-330-calibrage-tp-recalibration`
+- **Issues fermées** : #330 + 7 tickets [REC] (#332–#338)
+- **Quoi** : la commande `/calibrage` gagnait en PR #329 une sous-commande `/calibrage tp COIN PRIX` pour modifier le TP manuellement — mais cette PR a été **fermée sans merge** (voir section issues). Cette PR-ci adopte une approche différente : `/calibrage` recalcule automatiquement les TPs de toutes les positions ouvertes via `combined_analysis`, en appliquant la même logique `min(tp_mécanique, R2 × 0.98)` que Phase 4. Mise à jour conditionnelle : seuil de 0.5% de delta avant de persister le changement. Notification Telegram par coin mis à jour. Le recalibrage est la tâche 3 de `position_prompt.txt`, insérée avant les tâches d'évaluation existantes (renumérotation 3→4→5→6).
+- **Incident PR #329** : la PR `/calibrage tp COIN PRIX` (modification manuelle du TP) a été ouverte à 08:41 UTC et fermée sans merge à 08:42 UTC — 1 minute de vie. Cause probable : approche jugée inférieure à la recalibration automatique par résistances. L'issue #328 a été fermée manuellement dans la foulée.
+- **Doc tech** : [docs/technique/pr-331-calibrage-tp-recalibration.md](../technique/pr-331-calibrage-tp-recalibration.md)
+
+---
+
+#### #340 — fix: trailing stop ne doit pas modifier le TP (Phase 0)
+
+- **Mergée à** : 17:21 UTC
+- **Branche** : `feat/issue-339-trailing-stop-no-tp-override`
+- **Issues fermées** : #339
+- **Contexte** : bug découvert en production le jour même sur la position ETH. Le TP avait été recalibré intelligemment à 1851 USDC (R2×0.98 via Phase 4) mais le trailing stop du cycle suivant l'écrasait à 2159 USDC via le calcul `new_tp = max(cur_tp, round(price + trail_dist * 3, 8))`. Le TP intelligent n'avait ainsi aucun effet durable.
+- **Quoi** : suppression du calcul de TP dans `phase0_trailing_stop.py`. Le trailing stop ne touche plus que `stop_price` (SL). Les variables `cur_tp`, `new_tp`, `new_tp_r` sont supprimées. Le message Telegram et les logs ne mentionnent plus de changement de TP. Séparation nette des responsabilités : trailing stop → SL uniquement / TP intelligent → Phase 4 et `/calibrage`.
+- **Délai bug → fix** : moins de 8 heures (découvert en production dans la matinée, mergé à 17:21 UTC).
+- **Doc tech** : [docs/technique/pr-340-trailing-stop-no-tp-override.md](../technique/pr-340-trailing-stop-no-tp-override.md)
+
+---
+
+#### #342 — config: augmenter min_profit_pct_take de 2% à 5% (Phase 0)
+
+- **Mergée à** : 17:35 UTC
+- **Branche** : `feat/issue-341-min-profit-pct-5`
+- **Issues fermées** : #341
+- **Quoi** : modification d'un seul paramètre dans `config.json` — `min_profit_pct_take` passe de `2.0` à `5.0`. Ce seuil contrôle Phase 0 : si le P&L d'une position ouverte atteint ce pourcentage, elle est clôturée. À 2%, Phase 0 pouvait fermer une position à +3% alors que le TP visé (via résistances) était à +6% ou plus. À 5%, le bot laisse les positions respirer jusqu'à leurs cibles réelles. Aucun changement de code : `phase0_profit.py` lit déjà la valeur via `_load_config()`.
+- **Cohérence** : le seuil de 5% reste en deçà du reward_risk_ratio appliqué en Phase 4 (× 2 ATR stop), donc cohérent avec la stratégie de risk management.
+
+---
+
+#### #344 — feat: recalibrage TP automatique en Phase 0
+
+- **Mergée à** : 18:00 UTC
+- **Branche** : `feat/issue-343-phase0-calibrate-tp`
+- **Issues fermées** : #343
+- **Quoi** : intégration du recalibrage TP dans le cycle automatique 4h. Avant cette PR, le TP intelligent n'était recalculé que lors d'un `/calibrage` manuel ou à l'ouverture d'une position (Phase 4). Après, Phase 0 recalibre les TPs à chaque cycle via une nouvelle section `# --- RECALIBRAGE TP ---` insérée dans `phase0_snapshot.txt` entre le trailing stop et la réalisation de profits. Pour chaque position ouverte : appel `combined_analysis` (4h, BINANCE) → calcul `tp_smart = min(tp_mécanique, R2 × 0.98)` → mise à jour si delta > 0.5% → notification Telegram. Nouveau fichier `prompts/phases/phase0_calibrate_tp.txt` : template Python inline exécuté par Claude pour persister les TPs dans `trade_history.json` via `_save_trade_history_atomic`. Fallback silencieux si `combined_analysis` échoue pour un coin.
+- **Doc tech** : [docs/technique/pr-344-recalibrage-tp-phase0.md](../technique/pr-344-recalibrage-tp-phase0.md)
+
+---
+
+#### #346 — [M345] Enrichir /status avec les infos du TP Watcher (v2)
+
+- **Mergée à** : 18:58 UTC (20:58 Europe/Paris)
+- **Branche** : `feat/issue-345-status-tp-watcher`
+- **Issues fermées** : #345
+- **Quoi** : réécriture de `_format_watcher_section()` dans `commands/status.py` pour une section TP Watcher plus complète. Quatre informations exposées : statut santé calculé depuis l'âge du `last_tick` (< 5 min = ✅ OK, 5–10 min = ⚠️ Lent, > 10 min = 🔴 Inactif), heure du dernier tick en heure locale, nombre de positions surveillées, et nombre de ventes TP exécutées dans les dernières 24h (filtre sur `close_reason` contenant `"tp_watcher"` + `exit_date` dans les 24h). Gestion robuste : `tp_watcher_state.json` absent ou corrompu → "⚠️ État inconnu" sans exception. Note technique : `last_tick` dans le JSON avait un format inhabituel `"+00:00Z"` (Z redondant après offset explicite) — `_parse_last_tick()` le nettoie avant `fromisoformat()`.
+- **Doc tech** : [docs/technique/pr-346-enrichir-status-tp-watcher.md](../technique/pr-346-enrichir-status-tp-watcher.md)
+
+---
+
+### Issues fermées (16)
+
+**Issues fonctionnelles (9)** :
+- **#322** → PR #323 (enrichir /status TP Watcher) — créée et fermée le même jour
+- **#319** → PR #326 (combined_analysis Phase 2) — créée le 3 juillet, fermée ce matin
+- **#325** → PR #327 (TP intelligent résistances) — créée et fermée le même jour
+- **#328** → PR #329 (fermée sans merge) — issue fermée manuellement après abandon de la PR
+- **#330** → PR #331 (/calibrage recalcule TPs) — créée et fermée le même jour
+- **#339** → PR #340 (trailing stop no TP override) — créée 17:11 UTC, mergée 17:21 UTC (10 min)
+- **#341** → PR #342 (min_profit_pct_take 5%) — créée 17:29 UTC, mergée 17:35 UTC (6 min)
+- **#343** → PR #344 (recalibrage TP Phase 0) — créée 17:53 UTC, mergée 18:00 UTC (7 min)
+- **#345** → PR #346 (enrichir /status v2) — créée 18:48 UTC, mergée 18:58 UTC (10 min)
+
+**Tickets [REC] auto-générés par le tech lead reviewer (7)** :
+#332–#338 — créés à 08:51 UTC après merge de PR #327 et PR #329, fermés en batch à 08:52–08:54 UTC (2 minutes de cycle de vie). Sujets : formatage `.4g` prix résistance, robustesse `stop_distance_pct`, dépendance `reward_risk_ratio` dans config, test cycle sans MCP, test update `trade_history` après calibrage, stabilité seuil 0.5%, test `reward_risk_ratio` absent.
+
+---
+
+### Nouveaux tickets créés (significatifs)
+
+- **#324** — `refactor: extraire _execute_tp_sell() depuis _tp_watcher_tick (CC=20)` [enhancement] — créé à 07:47 UTC, **OPEN**. La fonction `_tp_watcher_tick()` de `tp_watcher.py` atteint une complexité cyclomatique CC=20, jugée trop élevée pour la maintenance. La recommandation est d'extraire la logique de vente effective dans une fonction `_execute_tp_sell()` dédiée. Seul ticket encore ouvert en fin de journée.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "Construire un cerveau pour le take-profit en une journée". En 11 heures (07:47–18:58 UTC), 8 PRs ont bâti une chaîne complète : Phase 2 extrait les résistances → Phase 4 plafonne le TP sur la résistance la plus proche → `/calibrage` recalibre les TPs existants → Phase 0 le fait automatiquement à chaque cycle 4h → le trailing stop apprend à ne plus toucher le TP → le seuil de prise de profit est relevé pour laisser le TP s'exprimer → `/status` montre tout ça en temps réel. Ce type de chaîne enchaînée — où chaque PR suppose la précédente et prépare la suivante — est rare dans les projets humains parce qu'il requiert une vision globale maintenue sur la durée. Ici, elle s'est construite en une seule session, dans un ordre quasiment optimal. Article sur la question : est-ce que l'agent "voit" la chaîne entière avant d'écrire la première PR, ou est-ce qu'il découvre les pièces suivantes au fil de l'avancement ?
+
+> **Angle incident** : "Le TP intelligent écrasé par le trailing stop". Le bug découvert sur ETH le matin même est un cas d'école de régression de raisonnement : Phase 4 calcule un TP intelligent à 1851 USDC basé sur les résistances TradingView. Mais le cycle suivant, le trailing stop — qui n'avait pas encore été mis à jour — calculait son propre TP à 2159 USDC et l'écrasait. Le TP intelligent n'avait aucune durée de vie supérieure à un cycle. La séparation des responsabilités (trailing stop → SL uniquement, TP → Phase 4 et `/calibrage`) est la réponse architecturale à ce conflit de compétences entre deux composants qui ne se "parlaient" pas. Court article sur ce que "séparation des responsabilités" veut dire concrètement dans un bot de trading piloté par des prompts imbriqués.
+
+> **Angle technique** : "La PR d'une minute". PR #329 (/calibrage tp COIN PRIX) ouverte à 08:41 UTC, fermée sans merge à 08:42 UTC. 1 minute de vie. Elle proposait de modifier le TP manuellement via une commande Telegram. Elle a été abandonnée au profit de la PR #331 qui recalcule les TPs automatiquement via les résistances TradingView. Ce n'est pas un bug ou une erreur de l'agent — c'est une décision de design prise en cours de route : le TP manuel est inférieur au TP calculé depuis le marché. La trajectoire PR #329 (abandonée) → PR #331 (mergée) illustre comment une approche "manuelle" peut être remplacée par une approche "basée sur les données" dans la même journée.
+
+> **Angle UX** : "Rendre l'invisible visible". La première PR de la journée (#323) et la dernière (#346) partagent le même objectif : rendre l'état interne du bot lisible depuis Telegram. Le TP Watcher tournait depuis la veille en tâche de fond invisible — l'utilisateur ne savait pas s'il était actif, en erreur, ou combien de ventes il avait déclenchées. Les deux PRs de `/status` (07:47 et 18:58) encadrent la journée comme des bornes d'observabilité. Ce pattern — construire une feature puis construire son tableau de bord — est systématique dans ce projet. Article sur l'idée que dans un bot LLM-driven, l'observabilité n'est pas un add-on : c'est la condition pour savoir si le bot fait bien ce qu'on pense qu'il fait.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **8**
+- PR fermée sans merge : **1** (#329 — 1 minute de vie)
+- Issues fermées : **16** (9 fonctionnelles + 7 [REC])
+- Tickets créés : **16** (15 fermés le même jour, 1 ouvert : #324)
+- Fenêtre de la journée : **11h11** (07:47 → 18:58 UTC)
+- Bug production découvert et corrigé le même jour : **1** (ETH TP écrasé par trailing stop, PR #340)
+- Délai le plus court ticket → merge : **6 min** (#341 → #342, 17:29 → 17:35 UTC)
+- Délais en fin de journée (3 dernières PRs) : 7 min, 6 min, 10 min
+- Seul ticket resté ouvert en fin de journée : **#324** (refactor `_execute_tp_sell`, CC=20)
+
+---
+
+## 2026-07-03
+
+### PRs mergées (14)
+
+Journée record : 14 PRs mergées entre 14:32 et 16:50 UTC. Deux fils narratifs distincts — la clôture de l'épic migration Binance → Kraken (12 PRs) et deux améliorations indépendantes en fin de journée.
+
+#### #270 — [REFACTO] Externaliser helpers Python en modules et découper trade_prompt par phase
+
+- **Mergée à** : 14:32 UTC (16:32 Europe/Paris)
+- **Branche** : `feat/issue-269-factoriser-trade-helpers-modules-phase`
+- **Issues fermées** : #269, #272, #275, #279, #280
+- **Contexte** : PR ouverte depuis le 29 juin (mentionnée dans l'entrée du 29/06), testée en production sur les cycles du 30 juin avant d'être mergée.
+- **Quoi** : refactorisation architecturale majeure. `trade_prompt.txt` passe de 1 086 lignes à 56 lignes (header + contexte), le reste découpé en 9 fichiers dans `prompts/phases/` et `prompts/shared/`. Les fonctions Python partagées (`tg()`, `binance()`, gestion d'état atomique) quittent la zone de texte et deviennent de vrais modules importables dans `binance-bot/core/trade_helpers.py` (79 lignes), `core/heartbeat.py` (66 lignes), `core/position_helpers.py` (88 lignes). Les 12 scripts de phase migrent de `prompts/code/` vers `binance-bot/core/phases/` (package Python avec `__init__.py`). La signature de `_run_workflow_cycle()` passe de 13 à 7 paramètres via un dataclass `WorkflowConfig`.
+- **Scope** : 28+ fichiers, ~+2 000 / -1 200 lignes. La génération dynamique du fichier helpers temporaire dans `runner.py` est supprimée.
+- **Pourquoi c'est structurant** : c'est la sortie définitive du paradigme "code Python dans un fichier `.txt` exécuté via `exec()`". Les scripts de phase sont désormais testables unitairement, visibles dans l'IDE avec coloration syntaxique, et importables normalement. La PR #304 (unittests ajoutés le même jour) en est la conséquence directe.
+- **Doc tech** : [docs/technique/pr-270-refacto-externaliser-helpers-python-modules.md](../technique/pr-270-refacto-externaliser-helpers-python-modules.md)
+
+---
+
+#### #293 — [M285] Remplacer binance-cli par kraken-cli dans la couche de détection
+
+- **Mergée à** : 14:44 UTC
+- **Issues fermées** : #285
+- **Quoi** : première PR de la vague migration. Remplace `BINANCE_CLI_PATH` par `KRAKEN_CLI_PATH` dans `core/env.py` (détection via `shutil.which("kraken")` + fallback `~/.cargo/bin/kraken`). Les variables internes `_BINANCE_CLI` deviennent `_EXCHANGE_CLI` dans les deux modules helpers. La substitution `__KRAKEN_CLI_PATH__` remplace `__BINANCE_CLI_PATH__` dans les templates de prompt. La fonction `binance(*args)` conserve son nom pour ne pas casser les 12 scripts de phase qui l'importent — renommage planifié dans un ticket futur.
+- **Doc tech** : [docs/technique/pr-293-remplacer-binance-cli-par-kraken.md](../technique/pr-293-remplacer-binance-cli-par-kraken.md)
+
+---
+
+#### #294 — [M286] Adapter les commandes CLI de lecture vers Kraken
+
+- **Mergée à** : 14:54 UTC
+- **Issues fermées** : #286
+- **Quoi** : migration des commandes de lecture d'état de marché. Les commandes `binance-cli spot account`, `spot order-status`, `spot open-orders` sont remplacées par leurs équivalents Kraken : `kraken balance`, `kraken query-orders`, `kraken open-orders`. Les scripts de phase Phase 0 qui interrogent l'état du compte ou des ordres ouverts sont mis à jour.
+- **Doc tech** : [docs/technique/pr-294-adapter-cli-kraken.md](../technique/pr-294-adapter-cli-kraken.md)
+
+---
+
+#### #295 — [M3] Adapter les filtres de marché Binance LOT_SIZE → Kraken
+
+- **Mergée à** : 14:58 UTC
+- **Issues fermées** : #289
+- **Quoi** : migration du système de filtrage des tailles d'ordres. Le modèle Binance `LOT_SIZE` (quantité minimale, step size, precision) est remplacé par le modèle Kraken `lot_decimals` (nombre de décimales pour la quantité). Les scripts de phase Phase 4 et Phase 5 qui arrondissent les quantités sont mis à jour pour appeler `kraken asset-pairs` au lieu de `binance-cli spot exchange-info`.
+- **Doc tech** : [docs/technique/pr-295-kraken-market-filters.md](../technique/pr-295-kraken-market-filters.md)
+
+---
+
+#### #296 — [M3] Migrer les ordres OCO Binance vers bracket orders Kraken
+
+- **Mergée à** : 15:08 UTC
+- **Issues fermées** : #287
+- **Quoi** : changement architectural de la protection des positions. Sur Binance, chaque trade était protégé par un ordre OCO (One-Cancels-Other) combinant stop-loss et take-profit en un seul objet exchange. Kraken ne supporte pas les OCO. Le modèle adopté : **BUY MARKET + SELL STOP-LOSS uniquement**. Le take-profit n'est plus géré par un ordre exchange — il est détecté cycliquement par `phase0_profit.py` qui scrute le prix à chaque cycle 4h. Les champs `order_list_id`, `stop_order_id`, `tp_order_id` sont retirés du schéma `trade_history.json`. Le nouveau champ `sl_order_txid` persiste l'identifiant Kraken du SELL STOP-LOSS. La logique de rattrapage `phase0_oco_retry.py` est entièrement réécrite : idempotence (vérification via `query-orders` avant de retenter), fallback SELL MARKET si `max_oco_retry` est atteint.
+- **Décision notable** : simplification du contrat protection/exchange. Le TP déporté dans la boucle cyclique est moins réactif (4h de latence max) mais rend le système indépendant de la capacité OCO de l'exchange.
+- **Doc tech** : [docs/technique/pr-296-kraken-bracket-orders.md](../technique/pr-296-kraken-bracket-orders.md)
+
+---
+
+#### #298 — [M4] Adapter le parsing des réponses JSON Binance → Kraken (phase0_profit)
+
+- **Mergée à** : 15:13 UTC
+- **Issues fermées** : #288
+- **Quoi** : migration du parseur de réponses d'ordres. Le format JSON Binance (`orderId`, `status: "FILLED"`, `executedQty`, `cummulativeQuoteQty`) est incompatible avec le format Kraken (`txid`, `status: "closed"`, `vol_exec`, `cost`). `phase0_profit.py` et les scripts de phase qui lisent les réponses d'ordres sont mis à jour pour le schéma Kraken.
+- **Doc tech** : [docs/technique/pr-298-kraken-json-parsing.md](../technique/pr-298-kraken-json-parsing.md)
+
+---
+
+#### #302 — refactor: migrer helpers position vers module symétrique
+
+- **Mergée à** : 15:21 UTC
+- **Issues fermées** : #280 (déjà fermée via PR #270 — doublon de clôture)
+- **Quoi** : migration de `position_prompt.txt` du mécanisme `exec(open("__HELPERS_PATH__").read())` (génération dynamique) vers `from core.position_helpers import ...` (importation directe). Symétrique au changement fait sur `trade_prompt.txt` dans PR #270.
+- **Doc tech** : [docs/technique/pr-302-migrer-helpers-position.md](../technique/pr-302-migrer-helpers-position.md)
+
+---
+
+#### #303 — feat(phase0): Ajouter logs structurés pour traçabilité
+
+- **Mergée à** : 15:21 UTC
+- **Issues fermées** : #301
+- **Quoi** : ajout de logs structurés dans Phase 0 (`phase0_snapshot.py`). Chaque évaluation de position ouverte émet maintenant un log `cycle_log.debug()` avec les métriques clés (coin, prix actuel, P&L, distance au stop). Améliore la traçabilité des décisions Phase 0 sans polluer le journal INFO.
+- **Doc tech** : [docs/technique/pr-303-phase0-structured-logs.md](../technique/pr-303-phase0-structured-logs.md)
+
+---
+
+#### #304 — [M0] Ajouter unittests pour fonctions utilitaires
+
+- **Mergée à** : 15:22 UTC
+- **Issues fermées** : #300
+- **Quoi** : premiers vrais tests unitaires Python du projet. La PR ajoute `tests/test_phase0_trailing_stop.py` avec des tests pour les fonctions de `core/trade_helpers.py` — notamment `_save_json_atomic()` et les fonctions de calcul de trailing stop. Conséquence directe de la PR #270 : le code étant dans de vrais modules Python, il est maintenant testable unitairement sans lancer un cycle complet.
+- **Doc tech** : [docs/technique/pr-304-ajouter-unittests-fonctions.md](../technique/pr-304-ajouter-unittests-fonctions.md)
+
+---
+
+#### #305 — [M5] Mettre à jour les prompts et api_reference pour Kraken
+
+- **Mergée à** : 15:24 UTC
+- **Issues fermées** : #290
+- **Quoi** : mise à jour de `prompts/shared/api_reference.txt` — le guide de référence des commandes exchange injecté dans chaque cycle. Les exemples Binance (`binance-cli spot market-buy --symbol BTCUSDC`) sont remplacés par leurs équivalents Kraken (`kraken order buy XBT/USDC market`). Les commandes de lecture (prix, solde, ordres ouverts) sont également mises à jour.
+- **Doc tech** : [docs/technique/pr-305-mettre-jour-prompts-api-reference-kraken.md](../technique/pr-305-mettre-jour-prompts-api-reference-kraken.md)
+
+---
+
+#### #310 — [M291] Mettre à jour config.json pour Kraken
+
+- **Mergée à** : 15:42 UTC
+- **Issues fermées** : #291
+- **Quoi** : mise à jour de `config.json` pour refléter l'exchange Kraken. Ajout de la clé `exchange: "kraken"`, mise à jour de `pairs_suffix` (de `USDC` à `/USDC` format Kraken), ajout du paramètre `lot_decimals_default: 8` pour les paires sans données live. La commande `/status` est mise à jour pour afficher "Kraken" au lieu de "Binance".
+- **Doc tech** : [docs/technique/pr-310-mettre-a-jour-config-kraken.md](../technique/pr-310-mettre-a-jour-config-kraken.md)
+
+---
+
+#### #312 — [M1] Refactorer Phase 1 — univers depuis Kraken USDC + seuil 1M
+
+- **Mergée à** : 16:32 UTC (18:32 Europe/Paris)
+- **Issues fermées** : #311
+- **Quoi** : refonte de la Phase 1 (scan de marché). Avant : l'univers de candidats venait de listes TradingView / config statique, validées contre Binance. Après : l'univers est construit directement depuis les paires USDC réellement disponibles sur **Kraken** via `kraken pairs -o json`. Les screeners TradingView (`top_gainers`, `volume_breakout_scanner`) deviennent des enrichisseurs de signal, non plus des définisseurs d'univers. Le seuil de volume est abaissé de 5M à **1M USDC** (configurable via `min_volume_usdc` dans `config.json`), augmentant le nombre de candidats tradables. Les `portfolio_coins` (XBT, XRP, SOL) sont inclus comme fallback même si leur volume 24h tombe sous le seuil. Un mapping explicite `TV_MAP` (XBT→BTC, XDG→DOGE) assure la correspondance entre symboles Kraken et TradingView.
+- **Impact concret** : avant la migration, Phase 1 pouvait proposer 15+ candidats Binance non tradables sur Kraken. Après, l'univers reflète strictement ce qui est exécutable.
+- **Doc tech** : [docs/technique/pr-312-refactor-phase1-kraken-usdc.md](../technique/pr-312-refactor-phase1-kraken-usdc.md)
+
+---
+
+#### #316 — [BUG] Fix phase5_execution.py crash TypeError quand trade=None
+
+- **Mergée à** : 16:49 UTC
+- **Issues fermées** : #315
+- **Quoi** : correction d'un bug introduit lors de la migration Phase 5. Quand aucun BUY n'est exécuté en Phase 4, l'orchestrateur passe `{"trade": null}` en input. Le code original tentait `trade["coin"]` sans vérifier la nullité → `TypeError: 'NoneType' object is not subscriptable`. Fix : remplacement de `.get("trade", {})` par `.get("trade")` suivi d'une garde `if not trade: print("PHASE5_DONE|executed=0|skipped=0"); sys.exit(0)`. 0 ordre exécuté est un cycle valide, pas une erreur — Phase 6 et Phase 7 continuent normalement.
+- **Doc tech** : [docs/technique/pr-316-fix-phase5-nonetype-guard.md](../technique/pr-316-fix-phase5-nonetype-guard.md)
+
+---
+
+#### #317 — [FEAT] Afficher le score par coin dans le rapport Phase 3
+
+- **Mergée à** : 16:50 UTC
+- **Issues fermées** : #314
+- **Quoi** : enrichissement de la notification Telegram Phase 3. Avant : le rapport indiquait uniquement le nombre de BUY candidats et le score top. Après : chaque coin évalué apparaît avec son score/10, sa décision (BUY/HOLD/SKIP TYPE_A/SELL) et les raisons agrégées (signal 4h/1D, RSI, MACD, top gainers). Le JSON de sortie gagne un champ `scores_detail` pour chaque coin. Le message Telegram est tronqué à 4 000 chars si nécessaire. Le heartbeat `hb(3)` inclut un résumé des scores (max 300 chars) pour la relecture des logs.
+- **Doc tech** : [docs/technique/pr-317-score-par-coin-phase-3.md](../technique/pr-317-score-par-coin-phase-3.md)
+
+---
+
+### Issues fermées (23)
+
+Les 23 issues fermées aujourd'hui se répartissent en trois groupes.
+
+**Épic et sous-tickets migration (10)** :
+- **#284** — `epic: Migration exchange Binance → Kraken (MiCA)` [epic · P0] — épic racine, créée et fermée le même jour à 15:45 UTC. Elle couvrait l'ensemble de la migration exchange.
+- **#285** → fermée par PR #293 | **#286** → #294 | **#287** → #296 | **#288** → #298 | **#289** → #295 | **#290** → #305 | **#291** → #310 | **#292** → fermeture manuelle (validation end-to-end planifiée) | **#311** → #312
+
+**Features et bugs (4)** :
+- **#315** — `[BUG] phase5_execution.py crash TypeError quand trade=None` → fermée par PR #316 (créée et fermée le même jour en 27 minutes)
+- **#314** — `[FEAT] Afficher le score par coin dans le rapport Phase 3` → fermée par PR #317 (créée et fermée le même jour en 28 minutes)
+- **#300** — `[REC] Ajouter unittests pour fonctions utilitaires` → fermée par PR #304
+- **#301** — `[REC] Ajouter logs structurés en phase0` → fermée par PR #303
+
+**Tickets REC-AUTO techniques (9)** :
+#297, #299, #307, #308, #309 — tickets de qualité auto-générés par le tech lead reviewer, fermés en batch lors du passage des PRs de migration. #276 fermé manuellement (ticket de test bruit, sans intérêt fonctionnel).
+
+---
+
+### Nouveaux tickets créés (significatifs)
+
+- **#318** — `[EPIC] Amélioration bot — qualité des signaux et expérience utilisateur` [epic] — créé à 16:58 UTC, **OPEN**. Épic de la prochaine phase post-migration. Regroupe les améliorations de la qualité des signaux (combined_analysis Phase 2, meilleure précision scoring) et de l'expérience utilisateur (rapport Phase 3 enrichi, notifications Telegram plus lisibles).
+
+- **#319** — `[M1] Remplacer coin_analysis par combined_analysis en Phase 2` [enhancement] — créé à 16:59 UTC, **OPEN**. L'outil TradingView `coin_analysis` utilisé en Phase 2 serait avantageusement remplacé par `combined_analysis` qui fournit à la fois l'analyse 4h et 1D en un seul appel, réduisant le nombre d'appels MCP et améliorant la cohérence des signaux.
+
+- **#313** — `[FIX] Factoriser STABLECOINS dans trade_helpers pour éviter divergence` [enhancement] — créé à 16:41 UTC, **OPEN**. La liste des stablecoins à exclure du scoring est dupliquée dans plusieurs fichiers de phase. Risque de divergence si un nouveau stablecoin (USDT, DAI, TUSD) est ajouté à un endroit et oublié ailleurs.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "MiCA a forcé la main — une migration exchange en une après-midi". Depuis l'entrée en vigueur du règlement MiCA, Binance a progressivement restreint ses services aux résidents européens. La migration Binance → Kraken n'était pas un choix technique mais une contrainte réglementaire. Ce qui est frappant, c'est la vitesse d'exécution : 12 PRs de migration mergées entre 14:44 et 16:32 UTC (1h48), couvrant CLI, filtres de marché, format JSON, ordres, config, prompts et Phase 1. L'architecture modulaire mise en place lors des semaines précédentes (PR #270, modules de phase séparés, helpers isolés) a rendu cette migration chirurgicale. Chaque PR ne touche qu'une couche : detection → lecture → filtres → ordres → parsing → config → prompts → scan. Article sur ce que ça veut dire de "migrer d'exchange" dans un bot LLM-driven — et comment l'architecture du code détermine si c'est une journée de travail ou un mois.
+
+> **Angle secondaire** : "OCO est mort, vive le Stop-Loss seul". Sur Binance, chaque trade était protégé par un OCO (One-Cancels-Other) : un seul objet exchange gérait simultanément le stop-loss et le take-profit. Kraken ne supporte pas les OCO. Le modèle adopté en PR #296 : BUY MARKET + SELL STOP-LOSS uniquement, avec le take-profit détecté par la boucle cyclique Phase 0. C'est une simplification du modèle de protection, mais elle introduit une latence : si le marché monte très vite entre deux cycles 4h, le bot ne prend son profit qu'au prochain passage. Courte réflexion sur les compromis entre réactivité (TP exchange, instantané) et architecturale (TP piloté par le bot, configurable mais cyclique) — et pourquoi pour un bot 4h, la latence 4h est acceptable.
+
+> **Angle technique** : "Le premier vrai unittest du projet". La PR #304 ajoute `tests/test_phase0_trailing_stop.py` — les premiers tests unitaires Python de l'historique du projet. Ils n'auraient pas été possibles avant la PR #270 : quand les fonctions vivaient dans un fichier `.txt` exécuté via `exec()`, elles n'étaient pas importables. La migration vers de vrais modules Python (`core/trade_helpers.py`, `core/phases/`) a rendu le code testable. Un test unitaire comme signal d'architecture — pas de tests possibles = pas de séparation des responsabilités réelle.
+
+> **Angle narratif** : "Deux améliorations en fin de journée". Après la vague de migration (14:32–15:45 UTC), deux issues "nouvelles" ont été créées et résolues dans la même heure de fin d'après-midi : #315 (bug TypeError Phase 5, 27 minutes), #314 (feature score par coin, 28 minutes). La migration avait révélé un cas non géré (0 ordres = `trade=None`), et l'impulsion de la journée a déclenché une amélioration UX qui attendait dans le backlog. Pattern récurrent dans ce projet : les journées de merge massif finissent toujours par quelques tickets de nettoyage rapides.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **14** (record projet depuis le 13 juin à 73 issues fermées)
+- PRs migration Binance → Kraken : **10** (#293–#305 + #312)
+- Issues fermées : **23**
+- Épic fermée : **#284** (Migration exchange Binance → Kraken — créée et fermée le même jour)
+- Nouveaux tickets ouverts (restants) : **3** (#313, #318, #319)
+- Délai création → merge le plus court du jour : **27 minutes** (#315 → #316)
+- Fenêtre de la vague migration : **1h48** (14:44 → 16:32 UTC)
+- Première PR de la migration arrivée en prod : **#293** (14:44 UTC)
+- Clôture épic migration : **15:45 UTC**
+- Commits dans PR #270 (refacto architecturale) : **8 commits, 28+ fichiers**
+
+---
+
+## 2026-06-29
+
+### PRs mergées (1)
+
+#### #268 — [M1] Réduire min_order_usdc de 11 à 9 USDC
+
+- **Mergée à** : 07:50 UTC (09:50 Europe/Paris)
+- **Branche** : `feat/issue-236-config-min-order-usdc`
+- **Issues fermées** : #236
+- **Quoi** : abaissement du seuil minimum d'ordre de 11 USDC à 9 USDC dans `config.json`. La modification est chirurgicale : une ligne, un nombre. Ce seuil contrôle la Phase 4 (Sizing) : tout dimensionnement ATR produisant un montant inférieur à `min_order_usdc` est rejeté en TYPE_B. À 11 USDC, 4 opportunités ont été manquées en 7 jours (15–21 juin) parce que l'ATR sizing générait des montants de 8 à 11 USDC sur des coins avec des signaux valides (top_score ≥ 5, sentiment Bullish). Le passage à 9 USDC couvre ces cas sans violer le minimum Binance de facto (~10 USDC strict, mais 9 USDC passe en pratique sur les paires LIMIT + offset des majeurs BTC/SOL/XRP).
+- **Durée ticket → merge** : 8 jours. L'issue #236 avait été créée le 21 juin à 20:07 UTC par l'agent analyse-config automatique (cron 20h UTC) — après avoir détecté le pattern TYPE_B structurel sur une fenêtre de 7 jours. Elle documentait le tableau des 11 cycles, la mécanique exacte (`portfolio × risk_per_trade_pct / stop_distance = montant`), et présentait 9 USDC comme recommandation conservatrice versus 10 USDC (alternative). La PR a attendu 8 jours avant d'être mergée, vraisemblablement par prudence sur le minimum Binance.
+- **Twist narratif** : mergée à 07:50 UTC, le même jour à 20:07 UTC l'agent d'analyse automatique rouvre un ticket #283 signalant que le fix est incomplet — `config.json` dit bien 9, mais les `skip_detail TYPE_B` continuent de mentionner "seuil 11 USDC" dans les logs. Le TRADE_PROMPT contient probablement encore un 11 hardcodé. Le bot ignore donc la valeur config. Voir section "Nouveaux tickets" ci-dessous.
+- **Doc tech** : [docs/technique/pr-268-config-min-order-usdc.md](../technique/pr-268-config-min-order-usdc.md)
+
+---
+
+### PRs ouvertes (en attente de merge)
+
+#### #270 — [REFACTO] Externaliser helpers Python en modules et découper trade_prompt par phase
+
+- **Ouverte à** : 15:25 UTC (17:25 Europe/Paris) — état : `open`, mergeable (`clean`)
+- **Branche** : `feat/issue-269-factoriser-trade-helpers-modules-phase`
+- **Implémente** : issue #269 (créée le même jour à 14:56 UTC)
+- **Scope** : 28 fichiers modifiés, +1 924 / -1 124 lignes, 8 commits
+- **Quoi** : refactorisation structurelle du cœur du bot. `prompts/trade_prompt.txt` passe de ~900 lignes à 56 lignes (header uniquement) — le reste est découpé en 9 sous-fichiers par phase dans `prompts/phases/`, assemblés dynamiquement par `core/env.py::assemble_prompt()`. Les fonctions utilitaires Python `tg()`, `binance()`, `_load_config()`, `_save_trade_history_atomic()` quittent le fichier texte et deviennent de vrais modules importables dans `binance-bot/core/trade_helpers.py` et `binance-bot/core/heartbeat.py`. Douze scripts Python autonomes créés dans `prompts/code/` (un par bloc de code de phase), chacun lit `CYCLE_ID` depuis `sys.argv[1]`. La génération du fichier temporaire `/tmp/cycle_XXX_helpers.py` dans `webhook_server.py` est supprimée.
+- **Pourquoi important** : c'est la première fois qu'on sort du paradigme "prompt géant monolithique en texte". Le code qui tournait dans un fichier `.txt` est maintenant testable unitairement, visible dans l'IDE avec coloration syntaxique, et modifiable sans risque de casser l'indentation du texte environnant. La dette accumulée depuis le PR #23 (heartbeats JSONL, mai 2026) est soldée.
+- **Note** : `position_prompt.txt` conserve l'ancien mécanisme `exec()` — migration prévue dans un ticket séparé.
+
+---
+
+### Issues fermées (10)
+
+- **#236** — `[CONFIG] min_order_usdc trop élevé pour le portfolio actuel — 4 TYPE_B en 7 jours` — créée le 21 juin à 20:07 UTC, fermée le 29 juin à 07:50 UTC par merge PR #268. Durée de vie : 8 jours. Issue créée automatiquement par le cron analyse-config ; elle fournissait le diagnostic complet, le tableau des cycles affectés et la recommandation chiffrée — l'agent `binance-dev` a pu implémenter directement.
+
+- **#271, #277** — `[REC] Corriger le type de additional_replacements pour mypy` — doublon créé deux fois (vraisemblablement deux passages du tech lead reviewer). Le paramètre `additional_replacements: dict = None` dans `runner.py:72` est incohérent pour mypy (dict ne peut pas être None). Suggestion : `dict | None = None`. Créées et fermées le même jour, entre 15:31 et 15:33 UTC.
+
+- **#272, #278** — `[REC] Refactoriser les fonctions _save_*_atomic()` — doublon. `_save_trade_history_atomic()` et `_save_config_atomic()` dans `core/trade_helpers.py:55-88` sont identiques à 70%, seul le chemin de fichier diffère. Suggestion : extraire `_save_json_atomic(data, path)`. Créées et fermées le même jour.
+
+- **#273, #279** — `[REC] Réduire la complexité de _run_workflow_cycle()` — doublon. `_run_workflow_cycle()` atteint CC=16 (grade C) dans `runner.py`. 8 paramètres, 5 callbacks optionnels. Suggestion : passer un dataclass pour les callbacks. Créées et fermées le même jour.
+
+- **#275, #281** — `[REC] Importer la config depuis env.py au lieu de la redéfinir localement` — doublon. `trade_helpers.py:13-14` redéfinit `_BINANCE_CLI` et `_PROJECT_DIR` au lieu d'importer depuis `core.env`. Risque : si `BINANCE_CLI_PATH` change dans env.py, trade_helpers voit l'ancienne valeur jusqu'au restart. Créées et fermées le même jour.
+
+- **#280** — `[REC] Migrer les helpers position vers un module symétrique` — `_write_helpers_file()` dans `runner.py:228-337` génère ~110 lignes de code Python inline comme f-string (doubles backslashes, confus à maintenir). Suggestion : migrer `position_prompt.txt` vers le même pattern que `trade_prompt.txt`. Créée et fermée le même jour.
+
+---
+
+### Nouveaux tickets créés (significatifs)
+
+- **#269** — `[REFACTO] Factoriser trade_prompt.txt en modules par phase et externaliser le code Python inline` — créée à 14:56 UTC (OPEN). Le ticket le plus détaillé de la journée : décrit l'architecture cible en deux parties (modules Python dans `core/`, découpage du prompt en sous-fichiers par phase), liste les 6 fichiers impactés, les tests d'acceptance et les critères de taille (trade_prompt.txt ≤ 50 lignes, chaque phase ≤ 150 lignes). Implémenté dans la journée par PR #270.
+
+- **#283** — `[CONFIG] Incohérence min_order_usdc (config 9 vs code 11) + TYPE_B structurel ATR élevé` — créée à 20:07 UTC (OPEN), par l'agent analyse-config automatique. Deux problèmes distincts. **Problème 1 (bug)** : `config.json` déclare `min_order_usdc: 9` depuis la PR #268 mergée ce matin, mais tous les `skip_detail TYPE_B` continuent de mentionner "seuil 11 USDC". Le TRADE_PROMPT contient probablement une valeur hardcodée `11` au lieu de lire `config["min_order_usdc"]`. Le fix d'aujourd'hui était donc cosmétique. **Problème 2 (structurel)** : le cycle 04:14 UTC aujourd'hui a bloqué SYN avec top_score 7/10 malgré 145 USDC de portfolio — ATR de 14% × `atr_stop_multiplier` de 3.5 = stop distance de 49%, ce qui ramène la position calculée à ~4 USDC, soit bien sous tout seuil raisonnable. Recommandation : corriger le bug de substitution immédiatement (priorité technique) ; discuter la réduction d'`atr_stop_multiplier` de 3.5 à 2.5 ou l'ajout d'un cap `max_stop_distance_pct = 25%` uniquement quand le sentiment redevient Bullish sur 2 cycles consécutifs.
+
+- **#276** — `[TEST] Vérification extraction numéro` — ticket de test bruit, body "Test", sans intérêt fonctionnel (OPEN).
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "Le fix qui ne fixe rien". La PR #268 a modifié `config.json` pour passer `min_order_usdc` de 11 à 9 USDC. Mergée à 07:50 UTC. Le même soir, le cron d'analyse détecte que le bot continue de rejeter des ordres "sous le seuil 11 USDC" — 12h après le merge. La config est bien à 9, mais le TRADE_PROMPT lit probablement un 11 hardcodé dans le texte du prompt, pas la valeur config. Architecture intéressante à explorer : quand le "code" est du texte et que l'exécutant est un LLM, où vit la vérité d'un paramètre ? Dans `config.json` ? Dans le prompt ? Dans les deux ? Article sur le problème de l'unique source de vérité dans les bots LLM-driven, où la logique est distribuée entre du code Python et du texte de prompt.
+
+> **Angle secondaire** : "De 900 lignes de texte à 56". La PR #270 illustre ce que "refactoriser un prompt" veut dire concrètement. `trade_prompt.txt` contenait des fonctions Python `def tg(...)` dans un fichier `.txt`, chargées à runtime via `exec(open(...).read())`. Aucune coloration syntaxique, aucun test unitaire, aucune autocomplétion possible. 28 fichiers modifiés et +1900 lignes plus tard, le code est dans de vrais modules Python, testables et éditables normalement. Article sur le continuum entre "prompt engineering" et "software engineering" — et le moment où un LLM piloté par un fichier texte commence à ressembler à un vrai programme.
+
+> **Angle analyse-config** : "L'agent qui se surveille lui-même". Deux fois aujourd'hui, le cron analyse-config (20h UTC) a créé des issues. La première fois (#236, le 21 juin) : diagnostic de 4 TYPE_B en 7 jours. La deuxième fois (#283, ce soir) : le diagnostic signale que le fix du #236 était incomplet, que le problème persiste, et qu'un nouveau problème structurel est apparu. Le bot génère lui-même ses propres tickets de bug, observe ses propres logs, et s'auto-corrige en boucle. Article sur l'architecture d'un système d'auto-monitoring : quelles conditions déclencher, comment formuler le diagnostic, et les limites de cette approche (faux positifs, cycles de feedback trop courts).
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 1 (#268)
+- PRs ouvertes (en attente de merge) : 1 (#270, état clean)
+- Issues fermées : 10 (#236 + 9 REC-AUTO sur PR #270)
+- Tickets créés (significatifs) : 2 (#269 — REFACTO, #283 — bug config)
+- Fichiers modifiés au total : 1 fichier config (PR #268) + 28 fichiers code (PR #270, non mergée)
+- Délai anomalie détectée → issue créée : ~12h (#283 — le bug persistait depuis le matin, détecté par le cron 20h UTC)
+- Doublons REC-AUTO : 5 issues dupliquées (#271/#277, #272/#278, #273/#279, #275/#281 — le runner tech lead a tourné deux fois)
+
+---
+
+## 2026-06-28
+
+### PRs mergées (2)
+
+#### #263 — [BUG] position_prompt.txt : mauvaises commandes binance-cli et mauvais noms de champs
+
+- **Mergée à** : 18:12 UTC (20:12 Europe/Paris)
+- **Branche** : `feat/issue-261-fix-position-prompt-binance-cli`
+- **Issues fermées** : #261
+- **Quoi** : correction de 7 incompatibilités dans `prompts/position_prompt.txt`, le prompt de gestion des positions créé lors des PR #241/#256 (22 juin). Deux commandes `binance-cli` étaient erronées : `open-orders` (inexistante → `spot get-open-orders`) et `get-price` (inexistante → `spot ticker-price --symbol`). Cinq noms de champs de `state/trade_history.json` étaient également faux : le statut en majuscule `"OPEN"` au lieu de `"open"`, `pos["symbol"]` au lieu de `pos["coin"]`, `pos["qty"]` au lieu de `pos["quantity"]`, `pos["entry_time"]` au lieu de `pos["date"]`, et l'accès `trade_history.get("entries", [])` au lieu de `trade_history` directement (la valeur est déjà une liste). Ces bugs faisaient échouer le prompt à chaque appel — Claude s'auto-corrigeait à la volée via `--help`, avec un coût estimé de ~1,5 minute et ~0,50 USD supplémentaires par cycle.
+- **Scope du changement** : 1 fichier uniquement (`prompts/position_prompt.txt`), 8 lignes modifiées sur 8 corrigées — changements chirurgicaux, sans restructuration du prompt.
+- **Pourquoi c'est intéressant** : le prompt avait été créé et mergé le 22 juin, l'issue #261 avait été créée le 23 juin. La PR a attendu 5 jours avant d'être mergée — non pas par oubli, mais parce que le code bugué n'était plus appelé en production (le cycle position avait été supprimé par PR #260 le 23 juin). La correction s'est faite en vue d'un éventuel rollback et pour nettoyer la dette visible.
+- **Doc tech** : [docs/technique/pr-263-position-prompt-binance-cli-fix.md](../technique/pr-263-position-prompt-binance-cli-fix.md)
+
+---
+
+#### #267 — [M1] fix(Phase 0) — comptage open_positions, retry OCO + close_reason
+
+- **Mergée à** : 18:22 UTC (20:22 Europe/Paris)
+- **Branche** : `feat/issue-266-phase-0-bugs`
+- **Issues fermées** : #266
+- **Quoi** : correction de trois bugs critiques détectés en production entre le 26 et le 28 juin dans la Phase 0 du cycle de trading. **Bug 1 — surallocation** : le comptage `open_positions` excluait les positions avec `protection_failed=True`. Lors du cycle `20260626_200505`, Phase 0 avait retourné `open_positions=0` alors qu'une position AAVE était ouverte — résultat : 3 positions ouvertes simultanément au lieu de 2 max. Le fix : une liste compréhension explicite `len([t for t in _op_history if t.get("status") == "open"])`, sans condition sur `protection_failed`. **Bug 2 — positions sans protection** : le rattrapage OCO échouait silencieusement en boucle infinie (3 cycles consécutifs les 26 juin 08:05, 12:05, 16:05 UTC) car la quantité était calculée depuis `qty_requested` plutôt que `qty_filled` (après déduction des frais Binance). AAVE est restée sans protection OCO pendant ~4 jours (26/06 04:05 → 28/06 08:05). Le fix : compteur `oco_retry_count` persisté dans `trade_history.json`, incrémenté à chaque tentative échouée, remis à zéro si l'OCO réussit — et fallback SELL MARKET automatique si `max_oco_retry` (défaut 3, paramètre `config.json`) est atteint, avec `close_reason="protection_exhausted"`. **Bug 3 — traçabilité** : les valeurs de `close_reason` inventées ad-hoc cycle par cycle (ex : `"oco_not_found"`) rendaient le debug impossible. Le fix standardise trois valeurs autorisées en Phase 0 : `market_above_tp`, `profit_target_phase0`, `protection_exhausted`.
+- **Scope du changement** : 2 fichiers (`config.json` : ajout de `max_oco_retry: 3` ; `prompts/trade_prompt.txt` : +98/-41 lignes dans la section Phase 0).
+- **Pourquoi c'est intéressant** : les trois bugs forment un effet cascade. L'OCO échoue → le trade est marqué `protection_failed=True` → ce flag exclut la position du comptage → le bot croit le portfolio sous-alloué → un nouveau BUY est autorisé → surallocation réelle. Aucun des trois comportements pris individuellement ne produit d'erreur visible ; c'est leur combinaison qui viole la règle `max_open_positions`. Le bug 1 était une condition quasi-permanente dès que le bug 2 se produisait une seule fois.
+- **Doc tech** : [docs/technique/pr-267-fix-phase0-bugs.md](../technique/pr-267-fix-phase0-bugs.md)
+
+---
+
+### Issues fermées (2)
+
+- **#261** — `[BUG] position_prompt.txt : mauvaises commandes binance-cli et mauvais noms de champs` [AUTO] — créée le 23 juin à 10:38 UTC, fermée le 28 juin à 18:12 UTC par PR #263. Issue prescriptive : listait les 7 bugs avec les lignes exactes et les corrections attendues — format qui a permis à `binance-dev` d'implémenter directement sans investigation préalable. Délai ticket → merge : 5 jours (le code n'était plus appelé en production depuis la PR #260 du 23 juin).
+
+- **#266** — `[BUG] Phase 0 — comptage open_positions, retry OCO infini et close_reason libre` [bug · enhancement · AUTO] — créée le 28 juin à 18:02 UTC, fermée à 18:22 UTC le même jour par PR #267. Issue la plus rapide de l'historique du projet : 20 minutes de cycle de vie ticket → merge. Elle documentait les trois bugs avec les cycles exacts affectés (`20260626_200505`), les comportements observés et les corrections attendues, ainsi que les pièges d'implémentation : `oco_retry_count` doit être incrémenté avant la tentative (pas après), et la quantité OCO doit utiliser `qty_filled` (pas `qty_requested`).
+
+---
+
+### Nouveaux tickets créés (1)
+
+- **#266** — `[BUG] Phase 0 — comptage open_positions, retry OCO infini et close_reason libre` [bug · enhancement · AUTO] — créé à 18:02 UTC, fermé à 18:22 UTC le même jour. Voir ci-dessus.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "L'effet cascade du flag silencieux". Le 28 juin illustre comment un bug de classement (`protection_failed` exclu du comptage) peut déclencher une chaîne d'événements non prévus : OCO échoue → trade marqué `protection_failed=True` → exclu du comptage `open_positions` → bot considère le portfolio sous-alloué → nouveau BUY lancé → surallocation réelle. Aucun de ces enchaînements n'est visible individuellement — chaque composant fait ce qu'il est supposé faire, mais le résultat global est une violation de la règle `max_open_positions`. Article sur la différence entre les bugs "directs" (une valeur fausse qui cause une erreur) et les bugs "de classement" (une valeur correcte interprétée dans le mauvais contexte), dans les systèmes à état persistant comme `trade_history.json`.
+
+> **Angle secondaire** : "4 jours sans filet de sécurité — le coût d'une boucle infinie silencieuse". AAVE a été exposée sans protection OCO du 26 juin 04:05 au 28 juin 08:05 UTC. Chaque cycle tentait le rattrapage, notifiait l'échec sur Telegram, et recommençait au prochain slot. Aucun fallback. La PR #267 répond à la question implicite : combien de cycles d'échec consécutifs sont acceptables avant de vendre à market ? La réponse : 3 (`max_oco_retry`). Court article sur le principe du circuit-breaker dans un bot de trading — pas pour les erreurs techniques, mais pour les états de marché dégradés persistants.
+
+> **Angle timeline** : "Ticket créé à 18:02, PR mergée à 18:22". L'issue #266 a mis 20 minutes de la création au merge. Non pas parce que le bug était simple (trois comportements distincts, deux fichiers), mais parce que l'issue avait documenté le problème de façon exhaustive : cycles affectés, comportements observés, corrections attendues, pièges d'implémentation. Cette journée complète une série : ticket → merge en 1h20 (PR #265, 24 juin), en 26 minutes (PR #260, 23 juin), en 20 minutes (PR #267, 28 juin). À chaque fois, la variable qui raccourcit le délai est la précision du ticket, pas la vitesse de l'agent.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 2
+- Issues fermées : 2 (#261 vieille de 5 jours, #266 fermée le jour même)
+- Tickets créés : 1 (#266, fermé dans les 20 minutes)
+- Fichiers modifiés au total : 3 (`prompts/position_prompt.txt`, `prompts/trade_prompt.txt`, `config.json`)
+- Délai record ticket → merge : 20 minutes (#266 → #267)
+
+---
+
+## 2026-06-24
+
+### PRs mergées (1)
+
+#### #265 — fix: supprimer les vars CLAUDE_CODE_* du sous-processus claude
+
+- **Mergée à** : 18:39 UTC (20:39 Europe/Paris)
+- **Branche** : `fix/issue-264-claude-child-session-env`
+- **Issues fermées** : #264
+- **Quoi** : correction d'un bug de pollution d'environnement entre le daemon et ses sous-processus Claude. Quand `webhook_server.py` était lancé depuis une session Claude Code active (typiquement via `nohup` dans un terminal IDE), il héritait cinq variables de session — `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_EXECPATH` — et les transmettait intactes au sous-processus `claude --print` lancé pour chaque cycle de trading. Le CLI enfant tentait de réutiliser la session parente. Si cette session avait expiré entre le démarrage du daemon et le lancement du cycle, `claude` répondait "Not logged in" en 1-2 secondes et sortait avec exit=1, cassant le cycle avant même d'exécuter la Phase 1 du TRADE_PROMPT. Le fix : 5 lignes dans `_run_claude()` de `binance-bot/orchestration/runner.py`, juste après `env = os.environ.copy()`, une boucle `env.pop()` qui purge les cinq vars fautives avant `subprocess.Popen`. Le sous-processus s'authentifie désormais indépendamment via ses propres credentials locaux.
+- **Scope du changement** : 1 fichier (`binance-bot/orchestration/runner.py`, lignes 343–349). Aucun autre fichier modifié.
+- **Pourquoi c'est intéressant** : le bug n'était pas visible en dehors d'un contexte spécifique (daemon lancé depuis une session Claude Code, puis session expirée avant le prochain cycle). Les cycles "fonctionnaient" quand la session parente était encore active — le problème n'apparaissait qu'après une déconnexion ou un redémarrage IDE. Diagnostic subtil pour un fix de 5 lignes.
+- **Doc tech** : [docs/technique/pr-265-supprimer-vars-claude-code.md](../technique/pr-265-supprimer-vars-claude-code.md)
+
+---
+
+### Issues fermées (1)
+
+- **#264** — `[BUG] Cycles cassés : CLAUDE_CODE_CHILD_SESSION hérité par le sous-processus claude` — créée à 17:19 UTC, fermée à 18:39 UTC par PR #265. Cycle de vie : 1h20. L'issue incluait les 5 variables fautives identifiées, le fichier et la ligne exacte à modifier, et le snippet de fix — format ultra-prescriptif qui a permis à `binance-dev` d'ouvrir la PR 2 minutes après la création du ticket.
+
+---
+
+### Nouveaux tickets créés (1)
+
+- **#264** — `[BUG] Cycles cassés : CLAUDE_CODE_CHILD_SESSION hérité par le sous-processus claude` [bug] — créé à 17:19 UTC, fermé le même soir à 18:39 UTC. Voir ci-dessus.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "L'outil qui se retourne contre lui-même". La chaîne d'imbrication est à la fois élégante et piégeuse : Claude Code (l'IDE) lance le daemon → le daemon lance un sous-processus `claude` pour chaque cycle → le sous-processus hérite de la session Claude Code qui avait lancé le daemon. C'est l'orchestrateur qui empoisonne son propre enfant. Le bug n'était reproductible que dans un contexte précis (session expirée entre le démarrage et le premier cycle), ce qui explique qu'il ait pu passer inaperçu pendant un certain temps — les cycles tournaient bien quand la session était fraîche.
+
+> **Angle secondaire** : "Le diagnostic minimal comme art". L'issue #264 ne dit pas "quelque chose ne fonctionne pas avec Claude". Elle liste les 5 variables exactes, le fichier exact (`runner.py`), la ligne exacte (~336), et le snippet Python de correction. Cette précision a réduit le temps implémentation → merge à 1h20. Courte réflexion sur la différence entre un bug report qui ouvre une investigation et un bug report qui ouvre un ticket d'implémentation — les deux sont légitimes, mais seul le second peut être délégué directement à un agent.
+
+> **Angle système** : "La frontière d'isolation des processus". La purge des vars `CLAUDE_CODE_*` pose une question plus large : quelles variables d'environnement un process parent devrait-il transmettre à ses enfants, et lesquelles devrait-il taire ? Dans un bot de trading qui tourne en daemon longue durée, l'environnement de lancement (session IDE, terminal, cron) ne devrait pas influencer le comportement des cycles. La règle implicite de ce fix : tout ce qui appartient à la session de l'opérateur doit être nettoyé avant la délégation au sous-processus autonome.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 1
+- Issues fermées : 1
+- Tickets créés : 1 (fermé le même jour)
+- Fichiers modifiés : 1 (`runner.py`, +5 lignes)
+- Délai ticket → merge : 1h20
+
+---
+
+## 2026-06-23
+
+### PRs mergées (1)
+
+#### #260 — refactor: supprimer le cycle horaire position, intégrer calibrage en Phase 0
+
+- **Mergée à** : 07:39 UTC
+- **Branche** : `feat/issue-259-supprimer-cycle-position-phase0`
+- **Issues fermées** : #259
+- **Quoi** : le cycle horaire de gestion des positions (PR #241, mergée la veille à 19:46 UTC) est retiré moins de 12h après son introduction en production. Le scheduler 1h (`NEXT_AUTO_POSITION`, `next_1h_slot()`) disparaît de `main_loop()`. La commande Telegram `/calibrage` est supprimée. La logique de prise de profit est intégrée directement dans la Phase 0 du cycle trade 4h : au début de chaque cycle, Claude parcourt `trade_history.json`, récupère le prix live de chaque position ouverte via `binance-cli spot ticker-price`, et vend à MARKET si le P&L atteint `min_profit_pct_take`. L'architecture revient à un seul scheduler actif — 6 cycles par jour à 00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC.
+- **Scope du changement** : 2 fichiers (`prompts/trade_prompt.txt` +64 lignes en Phase 0, `binance-bot/webhook_server.py` suppression du handler `/calibrage` et du scheduler 1h). `run_position_check_workflow()` et `POSITION_PROMPT` restent dans le code comme legacy non invoqué — rollback facile si besoin.
+- **Pourquoi c'est intéressant** : la PR #241 (cycle horaire) a vécu moins de 12h en production avant d'être refactorisée. Non pas parce qu'elle était fausse, mais parce que l'architecture à deux schedulers coûtait plus en complexité qu'elle ne gagnait en réactivité — passer de 23 vérifications par heure à 6 vérifications par jour représente une dégradation au pire cas (1h → 4h), acceptable puisque le bot ne trade pas sur des horizons inférieurs à 4h.
+- **Doc tech** : [docs/technique/pr-260-refactor-phase0-calibrage.md](../technique/pr-260-refactor-phase0-calibrage.md)
+
+---
+
+### Issues fermées (1)
+
+- **#259** — `refactor: supprimer le cycle horaire position, intégrer calibrage bot en Phase 0 du TRADE_PROMPT` — fermée par PR #260 à 07:39 UTC. Issue créée le même matin à 07:13 UTC, implémentée et mergée en 26 minutes.
+
+---
+
+### Nouveaux tickets créés (1)
+
+- **#261** — `[BUG] position_prompt.txt : mauvaises commandes binance-cli et mauvais noms de champs` [AUTO] — créé à 10:38 UTC, toujours ouvert. Documente 7 bugs dans `prompts/position_prompt.txt` : mauvaise commande `open-orders` (→ `get-open-orders`), mauvaise structure `ticker-price`, champ `status` en majuscule au lieu de minuscule, `trade_history` incorrectement accédé comme dict avec clé `"entries"`, `pos["symbol"]` au lieu de `pos["coin"]`, `pos["qty"]` au lieu de `pos["quantity"]`, `pos["entry_time"]` au lieu de `pos["date"]`. Ces bugs signifient que le cycle position (PR #241) et `/calibrage` (PR #256), supprimés ce matin par PR #260, ne fonctionnaient probablement pas correctement depuis leur introduction le 22 juin. L'issue reste ouverte pour corriger `position_prompt.txt` en vue d'un éventuel rollback — mais le code bugué n'est plus appelé en production.
+
+---
+
+### Comportement du bot en production (4 cycles)
+
+| Heure UTC | Score | Skip | Portfolio | Sentiment | Open pos. |
+|---|---|---|---|---|---|
+| 08:05 | 2/10 | TYPE_A | 77.50 USDC | Bearish | 1 |
+| 12:05 | 3/10 | — | 64.31 USDC | Bullish | 1 |
+| 16:05 | 2/10 | TYPE_C | 77.44 USDC | Bearish | 1 |
+| 20:05 | 2/10 | TYPE_A | 77.42 USDC | Bearish | 1 |
+
+Journée entièrement bearish : top_score maximum à 3/10 sur 4 cycles. Aucun BUY exécuté. 1 position ouverte stable. Le cycle 12:05 (skip_type null, top_score 3, sentiment Bullish) correspond à une évaluation HOLD — le bot a analysé les coins mais n'a pas produit de skip catégorisé, score insuffisant pour acheter. Le portfolio oscille entre 64 et 77 USDC selon le mark-to-market de la position ouverte.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "La feature qui a vécu 12 heures". La PR #241 (cycle position 1h) est mergée le 22 juin à 19:46 UTC. La PR #260 (suppression du même cycle) est mergée le 23 juin à 07:39 UTC. Écart : 11h53. Pas un bug, pas un rollback d'urgence — une décision délibérée de simplification après avoir constaté que deux schedulers coûtaient plus en état à gérer qu'ils ne gagnaient en réactivité. Ce type de cycle court (feature → prod → retrait conscient) est rare dans les projets humains parce qu'il est gênant de "défaire" ce qu'on vient de faire. Avec des agents, le code n'a pas d'ego.
+
+> **Angle secondaire** : "Le code mort découvert après la suppression". L'issue #261 (10:38 UTC) documente 7 bugs dans `position_prompt.txt` — exactement le fichier du cycle position supprimé 3h plus tôt. Les bugs signifient que le cycle ne fonctionnait probablement pas comme prévu depuis son introduction. Le fait que personne ne l'ait détecté en 12h de production illustre un problème propre aux agents adaptatifs : Claude corrige à la volée les appels qui échouent (`--help`, retry) sans planter — le cycle "tourne" en surface mais avec des données dégradées, sans signal d'alarme clair.
+
+> **Angle système** : "Deux schedulers ou un seul ?" La tension architecturale sous-jacente : surveiller les positions toutes les heures (23 cycles/jour, coût ~0.10-0.20 USD/h) ou intégrer la vérification dans le cycle trade existant (6 cycles/jour, coût marginal nul) ? Pour un bot à 77 USDC et un seuil `min_profit_pct_take` à 2%, la deuxième option est raisonnable. Ce n'est pas une réponse universelle — c'est une réponse calibrée à un contexte de capital faible.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 1
+- Issues fermées : 1
+- Tickets créés : 1 (ouvert)
+- BUY exécutés en production : 0
+- Cycles bearish : 4/4
+
+---
+
+## 2026-06-22
+
+### PRs mergées (5)
+
+#### #238 — fix: TRADE_PROMPT disallows skill invocation
+
+- **Mergée à** : 10:25 UTC
+- **Branche** : `feat/issue-237-trade-prompt-disallow-skills`
+- **Issues fermées** : #237
+- **Quoi** : correction d'un bug de comportement découvert le matin même. Le cycle auto du 22 juin à 08:05 UTC n'avait duré que 57 secondes au lieu des 400-600 secondes normales. Explication : le sous-processus Claude, voyant le skill `start-agent` disponible dans la session, l'avait invoqué à la place d'exécuter les phases 1 à 7. Résultat : aucune analyse de trading, zéro décision, un CronCreate qui pointait vers un mauvais répertoire. Le fix ajoute un bloc d'instruction explicite en tête de `prompts/trade_prompt.txt` : interdiction de tout skill, interdiction de CronCreate/CronDelete, obligation d'exécuter les phases directement via Bash/Read/Write.
+- **Quoi c'est intéressant** : aucune ligne de code Python touchée. Un problème de comportement LLM résolu par de la clarification de prompt.
+- **Doc tech** : [docs/technique/pr-238-trade-prompt-disallow-skills.md](../technique/pr-238-trade-prompt-disallow-skills.md)
+
+---
+
+#### #241 — [M1] feat: cycle horaire de gestion des positions ouvertes (POSITION_PROMPT)
+
+- **Mergée à** : 19:46 UTC
+- **Branche** : `feat/issue-239-position-prompt`
+- **Issues fermées** : #239
+- **Quoi** : ajout d'un deuxième cycle Claude — un cycle horaire léger dédié à la prise de profit automatique sur les positions ouvertes. Jusqu'ici, le bot ne regardait ses positions que lors des cycles 4h de trading. Désormais, 23 fois par jour (toutes les heures à :05 UTC, sauf les 6 slots 4h pour éviter les collisions), un sous-processus Claude distinct lit `trade_history.json`, récupère les prix en live sur Binance, calcule le P&L de chaque position, et vend immédiatement si le profit atteint `min_profit_pct_take` (2,0% par défaut). La logique de scheduling est intégrée dans `main_loop()` via un helper unifié `_check_and_run_scheduled()`. Le cycle position partage le lock du cycle trade — si un cycle 4h est en cours, le cycle position attend silencieusement.
+- **Scope du changement** : 7 fichiers (`timing.py`, `env.py`, `runner.py`, `webhook_server.py`, `config.json`, `prompts/position_prompt.txt` nouveau, `scripts/test_next_1h_slot_weekly.py` nouveau). Refactor de `runner.py` avec extraction de `_run_workflow_cycle()` pour éliminer la duplication entre les deux types de cycles.
+- **Coût estimé** : ~0,10-0,20 USD/heure (vs ~1,50 USD pour cycle 4h).
+- **Doc tech** : [docs/technique/pr-241-cycle-position-horaire.md](../technique/pr-241-cycle-position-horaire.md)
+
+---
+
+#### #242 — feat: tickets [REC] via REC-AUTO + binance-dev sur branche PR existante
+
+- **Mergée à** : 19:21 UTC
+- **Branche** : `feat/fix-rec-auto-workflow`
+- **Issues fermées** : N/A (amélioration CI/CD)
+- **Quoi** : finalisation du pipeline d'auto-implémentation des recommandations tech lead. Avant cette PR, le workflow `claude-post-review` créait des issues [REC] mais sans associer la branche source — elles étaient orphelines. `binance-dev-auto` ne savait pas non plus travailler sur une branche existante, seulement créer une nouvelle branche depuis `main`. Après cette PR, le flux complet fonctionne : tech lead review → issue [REC] créée avec métadonnées de branche (`<!-- pr_branch -->` / `<!-- pr_number -->`) → `auto-dispatch` détecte le label `REC-AUTO` et extrait ces métadonnées → `binance-dev-auto` checkout la branche existante de la PR, implémente, commit, ferme l'issue. Trois workflows GitHub Actions révisés en coordination.
+- **Doc tech** : [docs/technique/pr-242-rec-auto-workflow.md](../technique/pr-242-rec-auto-workflow.md)
+
+---
+
+#### #256 — feat: commande Telegram /calibrage pour déclencher le cycle position
+
+- **Mergée à** : 20:20 UTC
+- **Branche** : `feat/issue-254-calibrage-command`
+- **Issues fermées** : #254
+- **Quoi** : expose `/calibrage` comme commande Telegram manuelle pour déclencher le cycle de gestion des positions à la demande. Avant cette PR, le cycle position ne se déclenchait qu'automatiquement toutes les heures. Le handler suit le même pattern que `/trade` : confirmation immédiate (`"⚙️ Calibrage des positions en cours..."`), puis lancement en thread daemon. 7 lignes de code, 2 lignes de mise à jour des messages d'aide.
+- **Doc tech** : [docs/technique/pr-256-calibrage-command.md](../technique/pr-256-calibrage-command.md)
+
+---
+
+#### #257 — feat: position_prompt.txt — inclure les OCO manuels Binance (open-orders)
+
+- **Mergée à** : 20:20 UTC
+- **Branche** : `feat/issue-255-position-oco-manuels`
+- **Issues fermées** : #255
+- **Quoi** : enrichissement du prompt de gestion des positions pour qu'il voie aussi les ordres OCO placés manuellement sur Binance (XRP, HBAR, STX, SUI, etc.), pas seulement les positions du bot. Le cycle position appelle désormais `binance-cli spot open-orders`, merge les deux sources (bot + manuels), calcule le P&L de chaque coin exposé quelle que soit son origine, et réalise le profit si le seuil est atteint — y compris sur les OCO manuels (annulation OCO, puis SELL MARKET). Champ `source` ("bot" vs "manual") ajouté pour tracer l'origine dans les rapports.
+- **Impact utilisateur** : les positions ouvertes manuellement sur Binance sont désormais sous surveillance automatique du bot.
+- **Doc tech** : [docs/technique/pr-257-position-oco-manuels.md](../technique/pr-257-position-oco-manuels.md)
+
+---
+
+### Issues fermées (16)
+
+**Issues features :**
+
+- **#237** — bug: TRADE_PROMPT invoque skill start-agent au lieu d'exécuter les phases — fermée par PR #238
+- **#239** — feat: cycle horaire de gestion des positions ouvertes (POSITION_PROMPT) — fermée par PR #241
+- **#254** — feat: commande Telegram /calibrage pour déclencher le cycle position manuellement — fermée par PR #256
+- **#255** — feat: position_prompt.txt — inclure les OCO manuels Binance (open-orders) — fermée par PR #257
+
+**Tickets [REC] auto-implémentés sur PR #241 (pipeline REC-AUTO) :**
+
+- **#249, #250** — Extraire `_run_workflow_cycle()` et `_check_and_run_scheduled()` pour réduire la duplication — implémentés dans PR #241
+- **#251** — Documenter le comportement silencieux du position check (lock occupé) — implémenté dans PR #241
+- **#252** — Clarifier Bandit B101 (assert comme type guard mypy) — implémenté dans PR #241
+- **#253** — Tester `next_1h_slot()` sur une semaine UTC (anti-collision) — script de test ajouté dans PR #241
+- **#243, #244, #245, #246, #247** — Duplicatas des tickets ci-dessus (issues créées en doublon lors du premier run du pipeline REC-AUTO avant correction de PR #242)
+- **#248** — [REC] Test extraction numéro (issue de test fonctionnel du pipeline, fermée manuellement)
+
+**Issue fermée comme non planifiée :**
+- **#158** — [REC] Ajouter un exemple minimal au TRADE_PROMPT — fermée comme `not_planned`
+
+---
+
+### Nouveaux tickets créés
+
+- **#240 — feat: Phase 0 TRADE_PROMPT — résumé positions ouvertes avant nouveaux achats** [enhancement · AUTO] : avant chaque cycle de trading 4h, Claude lirait `trade_history.json` + appellerait `binance-cli open-orders` pour avoir une vue consolidée des expositions en cours (bot + manuelles) avec P&L actuels. Ce contexte permettrait d'éviter d'ouvrir une position sur un coin déjà exposé via OCO manuel, et d'ajuster dynamiquement `max_open_positions` en tenant compte du capital réellement disponible. Ticket ouvert, pas encore assigné.
+
+---
+
+### Matériel pour Medium
+
+> **Angle principal** : "Un bot qui apprend à surveiller ses positions — et celles qu'on place à sa place". La journée du 22 juin raconte une évolution en deux temps : d'abord on donne au bot un cycle autonome de gestion des positions (PR #241, 7 fichiers, refactor majeur) ; puis, en soirée, on lui montre qu'il y a des positions qu'il ne voyait pas — les OCO manuels (PR #257). En quelques heures, le bot passe d'un système qui ne regardait ses positions que 6 fois par jour à un système qui surveille 23 fois par jour toutes les expositions du compte, bot ou manuelles. La commande `/calibrage` (PR #256) complète le tableau en donnant à l'utilisateur un levier d'intervention manuel.
+
+> **Angle secondaire** : "Un cycle auto qui s'emballe — et le prompt qui l'a corrigé". Le bug du 22 juin matin (PR #238) illustre un problème propre aux LLM orchestrateurs : Claude voit un skill `start-agent` et l'invoque à la place d'exécuter les 7 phases de trading. Résultat : cycle de 57s, aucune analyse, aucun trade. Fix : une ligne d'instruction en tête du prompt. Pas de code Python, pas de tests. Un problème de comportement LLM résolu par de la clarification textuelle.
+
+> **Angle système** : "Comment on a câblé le feedback loop des recommandations tech lead" (PR #242) — le pipeline REC-AUTO qui permet aux recommandations du tech lead reviewer de devenir des commits directement sur la branche de la PR d'origine, sans intervention humaine. Les 12 tickets [REC] fermés aujourd'hui sont la première démonstration en conditions réelles de ce pipeline.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : 5
+- Issues fermées : 16 (4 features + 12 [REC]/doublons)
+- Tickets créés : ~16 (dont 1 ouvert : #240)
+- Fichiers modifiés au total (PRs features) : ~12 fichiers
+
+---
+
+## 2026-06-21
+
+### PRs mergées
+
+Aucune PR mergée aujourd'hui.
+
+### Issues fermées
+
+Aucune issue fermée aujourd'hui.
+
+### Nouveaux tickets
+
+- **#236 — [CONFIG] min_order_usdc trop élevé pour le portfolio actuel — 4 TYPE_B en 7 jours** [enhancement · M] : l'agent `analyse-config` (cron 20h UTC) a détecté 4 cycles TYPE_B en 7 jours causés par le même calcul bloquant — avec un portfolio de 30 à 36 USDC et `risk_per_trade_pct = 0.02`, le sizing ATR génère des positions de 8 à 11 USDC, juste sous le seuil actuel de 11 USDC. Il recommande d'abaisser `min_order_usdc` de 11 à 9 USDC (ou 10 USDC en version conservatrice), sous condition que le portfolio soit stable à ≥ 25 USDC et que le minimum notional Binance soit vérifié manuellement sur les paires concernées (BTCUSDC, SOLUSDC).
+
+### Matériel pour Medium
+
+> Angle possible : "Quand le seuil minimum d'ordre devient le plafond de verre du bot" — le ticket #236 illustre une tension précise entre la contrainte Binance (minimum notional ~10 USDC) et la mécanique de risk management par ATR : avec un capital résiduel de 30-36 USDC, le bot génère des signaux valides (score 6, sentiment Bullish) mais ne peut pas les exécuter parce qu'il se censure lui-même via un paramètre de configuration. Un article sur la calibration fine des seuils dans un bot à faible capital — comment un seul entier dans `config.json` change la fréquence d'exécution réelle du bot.
+
+### Chiffres du jour
+- PRs mergées : 0
+- Issues fermées : 0
+- Tickets ouverts : 1
+
+---
+
+## 2026-06-15 — Récap quotidien
+
+### PR mergées (1)
+
+#### #235 — [M218] Augmente max_single_position_pct de 0.40 à 0.65
+
+- **Branche** : `feat/issue-218-config-max-single-position`
+- **Mergée à** : 22:29 (Europe/Paris)
+- **Volume** : 1 ligne modifiée (`config.json`)
+- **Issues fermées** : #218
+- **Quoi** : modification d'un seul paramètre de configuration — `max_single_position_pct` passe de `0.40` à `0.65`. L'issue #218 avait été créée le 12 juin par l'agent `analyse-config` (cron 20h UTC) après avoir détecté deux cycles TYPE_B consécutifs avec le même calcul bloquant : `17.24 USDC × 0.40 = 6.90 USDC < 11 USDC (seuil min_order_usdc)`. Avec la nouvelle valeur, le calcul donne `17.24 × 0.65 = 11.21 USDC`, juste au-dessus du seuil. Aucun changement de code applicatif — uniquement `config.json`.
+- **Pourquoi c'est intéressant pour Medium** : la PR illustre un cycle de décision complet — de la détection automatique (agent cron) au ticket structuré (#218 avec tableau de 4 cycles, calcul chiffré, conditions d'application, risques), jusqu'au correctif minimaliste (1 ligne) 3 jours plus tard. L'écart entre la date du diagnostic (12 juin) et la date du merge (15 juin) reflète le fait que les conditions d'application posées dans le ticket n'étaient pas encore réunies (capital insuffisant, positions ouvertes en perte).
+- **Doc tech** : [docs/technique/pr-235-augmente-max-single-position.md](../technique/pr-235-augmente-max-single-position.md)
+
+---
+
+### Issues fermées (1)
+
+- **#218** — [CONFIG] TYPE_B récurrent + drawdown -70% : `max_single_position_pct` trop restrictif avec capital résiduel faible — fermée par PR #235 — [lien](https://github.com/yousmaaza/agent-binance/issues/218)
+
+Ticket ouvert le 12 juin à 20:07 UTC par l'agent `analyse-config`. Il avait analysé 4 cycles sur 7 jours, identifié le calcul bloquant, et conditionné l'application du correctif à : BTC sentiment Bullish, top_score ≥ 6, portfolio > 50 USDC. Ces conditions n'étaient pas réunies le 12 juin (portfolio à 24.63 USDC, drawdown -70%). La PR a été ouverte et mergée le 15 juin, après rechargement du capital.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé aujourd'hui.
+
+---
+
+### Comportement du bot en production (5 cycles)
+
+| Heure UTC | Score | Décision | Skip detail | Portfolio | Open pos. |
+|---|---|---|---|---|---|
+| 08:05 | 5/10 | TYPE_A | Score < 6, signaux 1D tous Neutral | 0.02 USDC | 3 |
+| 12:05 | 5/10 | TYPE_A | Score 5/10 < seuil 6/10 | 0.00 USDC | 3 |
+| 17:19 | 5/10 | TYPE_B | Budget 0.00 USDC < seuil 11 | 0.00 USDC | 0 |
+| 17:41 | 5/10 | — | (pas de skip) | 100.00 USDC | 0 |
+| 20:05 | 7/10 | **BUY** ✅ | Premier exécuté | 100.00 USDC | 1 |
+| 20:37 | 7/10 | TYPE_A | WLD déjà en position, autres < 6/10 | 71.73 USDC | 1 |
+
+Les deux premiers cycles de la journée (08:05 et 12:05) tournaient avec 3 positions ouvertes en perte, portfolio quasi nul. Entre 12:05 et 17:19, les stop-losses ont été déclenchés (open_positions 3 → 0), mais le capital résiduel était à zéro. À 17:41, le portfolio est rechargé à 100 USDC (rechargement manuel probable). À 20:05 UTC — 24 minutes avant le merge de PR #235 — le bot exécute son premier BUY de la journée (top_score 7/10, sentiment Bullish). La PR #235 n'a donc pas déclenché ce premier BUY : c'est la remise à 100 USDC qui a débloqué la situation. La PR, elle, protège les prochains cycles contre un reblocage TYPE_B si le capital résiduel redescend autour de 17 USDC.
+
+---
+
+### Matériel disponible pour illustrer
+
+- **`state/cycle_log.jsonl`** : lignes `20260615_*` — les 5 cycles du jour avec progression portfolio (0.02 → 0 → 0 → 100 → 100 → 71.73), bon visualiseur de la journée.
+- **Issue #218 complète** : tableau des 4 cycles analysés le 12 juin avec le calcul bloquant `17.24 × 0.40 = 6.90` — tel quel, sans mise en forme, c'est le dossier brut produit par l'agent d'analyse.
+- **Diff PR #235** : 1 ligne changée dans `config.json` (`0.40` → `0.65`). Bon exemple de correctif minimaliste après un diagnostic long et structuré.
+- **Timeline du ticket** : #218 créée le 12 juin à 20:07 UTC → PR #235 ouverte le 15 juin à 20:25 UTC → mergée le 15 juin à 20:29 UTC. Le ticket a mis 3 jours à passer en PR — non pas par oubli, mais parce que les conditions posées dans le ticket lui-même n'étaient pas réunies plus tôt.
+
+---
+
+### Idée d'angle Medium
+
+**"Le ticket qui pose ses propres conditions de résolution"**
+
+L'issue #218, générée automatiquement le 12 juin, ne dit pas juste "change ce paramètre". Elle liste les conditions précises sous lesquelles appliquer le changement : sentiment Bullish, score ≥ 6, portfolio > 50 USDC. Ces conditions n'étaient pas réunies le 12 juin — le portfolio était à 24.63 USDC, drawdown -70%. La PR n'a été mergée que le 15 juin, après rechargement du capital. Article sur une idée contre-intuitive : un ticket bien rédigé peut contenir sa propre condition de blocage. Quand un agent formule des prérequis d'application, il crée une gate qui empêche l'automatisation aveugle. Le correctif attend le bon contexte plutôt que d'être appliqué immédiatement.
+
+**Angle secondaire — "La journée en creux : 5 cycles, 0 achats avant 22h, 1 vrai BUY"**
+
+La journée du 15 juin est d'abord une journée de liquidation (stop-losses à la chaîne) et de rechargement. Les 3 premiers cycles du jour tournent avec un portfolio à quasi zéro et des positions bloquées. Ce n'est qu'après que le compte repasse à 100 USDC que le bot retrouve sa capacité d'action — et exécute un BUY à 22h05 (Europe/Paris), 24 minutes avant que la PR censée débloquer ses TYPE_B futurs soit mergée. Court article sur la différence entre un bug structurel (le paramètre trop restrictif) et un problème conjoncturel (capital insuffisant) : les deux se ressemblent en surface (le bot ne trade pas), mais les correctifs sont orthogonaux.
+
+---
+
+## 2026-06-14 — Récap quotidien
+
+### PR mergées (2)
+
+#### #231 — chore: consolidation [REC] AUTO — 2026-06-14
+
+- **Branche** : `feat/consolidate-rec-20260614_191332`
+- **Mergée à** : 19:18 (Europe/Paris)
+- **Volume** : n/a (consolidation de PRs #226, #227, #230)
+- **Issues fermées** : #156, #172, #228
+- **Quoi** : consolidation de trois PRs [REC] générées automatiquement, regroupant un refactoring architectural majeur : extraction du monolithe `webhook_server.py` en modules spécialisés (`orchestration/`, `core/`, `commands/`, `storage/`, `botlogging/`), externalisation du `TRADE_PROMPT` dans `prompts/trade_prompt.txt`, et injection dynamique des helpers via `tempfile.mkstemp()`. Cette PR semble également avoir clos des tickets pendants anciens — #156 (clarification CYCLE_ID dans le prompt, ouvert le 28 mai) et #172 (blacklist auto USDC, ouvert le 29 mai) — via la PR #230 intégrée.
+- **Pourquoi c'est intéressant pour Medium** : c'est le type de PR qui illustre la différence entre un refactoring "humain" (planifié, discuté) et un refactoring "émergent" (déclenché par des reviews automatiques qui accumulent de la dette puis la liquident en une consolidation). Trois PRs [REC] générées par CI, fusionnées en une seule merge.
+- **Doc tech** : [docs/technique/pr-231-consolidation-rec-auto.md](../technique/pr-231-consolidation-rec-auto.md)
+
+---
+
+#### #234 — [M232] Fix outils MCP TradingView — restaurer atilaahmettaner
+
+- **Branche** : `feat/issue-232-fix-tradingview-mcp-tools-v2`
+- **Mergée à** : 21:28 (Europe/Paris)
+- **Volume** : n/a (modifications dans `.mcp.json` et `prompts/trade_prompt.txt`)
+- **Issues fermées** : #232
+- **Quoi** : le `TRADE_PROMPT` référençait les outils MCP du mauvais serveur TradingView. Le serveur configuré était `tradesdontlie` (nécessite l'application desktop via CDP), alors que le serveur déployé est `atilaahmettaner` (API publique). En Phase 1, `quote_get` est remplacé par trois appels : `top_gainers`, `volume_breakout_scanner`, `market_sentiment`. En Phase 2, la séquence `chart_set_symbol + chart_set_timeframe + data_get_study_values + data_get_ohlcv` est remplacée par deux appels `coin_analysis` par coin (4h + optionnellement 1D). En Phase 3, les critères "variation 24h > 3%" et "ADX > 20" — qui dépendaient de données non disponibles via `atilaahmettaner` — sont remplacés par `+1 si top_gainers` et `+1 si volume_breakout_scanner`. La configuration `.mcp.json` est également corrigée pour pointer vers `uvx --from tradingview-mcp-server tradingview-mcp`.
+- **Pourquoi c'est intéressant pour Medium** : ce bug illustre une classe d'erreur spécifique aux projets LLM + MCP : l'agent s'adapte à la volée à l'absence des outils (génère du bruit dans les logs, ralentit les cycles) sans jamais planter clairement — le cycle "fonctionne" mais pas avec les données attendues. La PR #228 (la PR [REC] qui a diagnostiqué le problème) a été créée aujourd'hui même à 17h08, et la correction (PR #234) était mergée à 21:28 — un aller-retour diagnostic → fix → merge en 4h20 sur un problème de configuration silencieux.
+- **Doc tech** : [docs/technique/pr-234-fix-tradingview-mcp-tools-v2.md](../technique/pr-234-fix-tradingview-mcp-tools-v2.md)
+
+---
+
+### Issues fermées (4)
+
+- **#232** — [BUG] TRADE_PROMPT utilise les outils MCP du mauvais serveur TradingView — fermée par PR #234 — [lien](https://github.com/yousmaaza/agent-binance/issues/232)
+- **#228** — [BUG] TRADE_PROMPT référence 4 outils MCP TradingView inexistants — fermée par PR #231 — [lien](https://github.com/yousmaaza/agent-binance/issues/228)
+- **#172** — [AMÉLIORATION] Blacklist auto-mise à jour des coins sans paire USDC — fermée par PR #231 — [lien](https://github.com/yousmaaza/agent-binance/issues/172)
+- **#156** — [REC] Clarifier la notation CYCLE_ID et les phases dans TRADE_PROMPT — fermée par PR #231 — [lien](https://github.com/yousmaaza/agent-binance/issues/156)
+
+---
+
+### Nouveaux tickets (2)
+
+- **#232** — [BUG] TRADE_PROMPT utilise les outils MCP du mauvais serveur TradingView — `bug`, `AUTO` — auteur yousmaaza *(créé à 19:22, fermé à 21:28 le même jour)*
+- **#228** — [BUG] TRADE_PROMPT référence 4 outils MCP TradingView inexistants — `bug`, `AUTO` — auteur yousmaaza *(créé à 17:08, fermé à 17:18 par PR #231)*
+
+Note : les deux tickets sont de nature utilisateur (pas [REC]). Le #228 avait diagnostiqué la mauvaise couche (les outils inexistants dans le mauvais sens), le #232 a reposé le diagnostic correctement après identification du vrai serveur cible (`atilaahmettaner` vs `tradesdontlie`).
+
+---
+
+### Matériel disponible pour illustrer
+
+- **`.mcp.json` avant/après** : `git show <sha> -- .mcp.json` — la diff est minimale (1 entrée JSON) mais l'impact est structurant pour tous les cycles.
+- **`prompts/trade_prompt.txt` diff PR #234** : lignes 329–482, remplacement des trois séquences d'appels MCP. Bon exemple concret de ce que ça change d'un serveur MCP à l'autre en termes d'interface.
+- **Issue #232 complète** : tableau des 4 outils disponibles avec signatures exactes — bon format d'illustration pour un article sur le "contrat d'interface MCP".
+- **Issue #228 complète** : le diagnostic inverse — liste des outils que le prompt appelait en pensant les trouver, avec les vraies commandes disponibles. Bon matériel pour montrer la confusion entre deux serveurs de même nom de domaine.
+- **Timeline du jour** : #228 créée 17:08 → PR #231 mergée 17:18 (ferme #228) → #232 créée 19:22 → PR #234 mergée 21:28. La résolution complète du problème MCP s'est faite en 4h20, avec deux passes de diagnostic successives.
+
+---
+
+### Idée d'angle Medium
+
+**"Deux serveurs MCP, même nom, interface incompatible — le bug silencieux des agents adaptatifs"**
+
+La journée du 14 juin expose une classe de bug propre à l'IA agentique : le `TRADE_PROMPT` appelait des outils qui n'existaient pas. Mais l'agent ne plantait pas — il s'adaptait en silence, réinventait ses propres heuristiques, et continuait le cycle avec des données dégradées. Ce n'est pas un crash, c'est une dérive silencieuse. Le problème sous-jacent : deux serveurs MCP TradingView (tradesdontlie et atilaahmettaner) ont des interfaces radicalement différentes mais partagent le même namespace dans le prompt. Angle narratif : la robustesse d'un agent (continuer malgré les erreurs) peut masquer des incohérences structurelles qu'un crash aurait immédiatement révélées. Et quand le contrat MCP change, qui détecte la rupture ?
+
+**Angle secondaire — "Deux diagnostics pour un bug : quand la première PR rate la cause"**
+
+Le ticket #228 avait bien identifié que le prompt appelait des outils inexistants, mais dans le mauvais sens — il proposait de réécrire le prompt pour appeler les outils `quote_get` du serveur `tradesdontlie`. La PR #231 avait fermé ce ticket dans le batch du matin. Une heure plus tard, le ticket #232 reposait le diagnostic dans l'autre sens : c'est le serveur configuré qui était faux, pas les appels dans le prompt. Court article sur la valeur du "deuxième diagnostic" dans les projets complexes — et sur la différence entre corriger un symptôme et identifier la cause racine quand les deux lectures sont plausibles.
+
+---
+
+## 2026-06-13 — Récap quotidien
+
+### PR mergées (3)
+
+#### #217 — Consolidation [REC] AUTO — 6 PRs (créée le 12, mergée ce matin à 07:42 UTC)
+
+- **Branche** : `feat/consolidate-rec-20260612_174455`
+- **PRs consolidées** : #204, #205, #207, #212, #213, #214
+- **Issues fermées** : #25, #123, #136, #137, #138, #139
+
+**Récit**
+
+Six PRs [REC] générées par `binance-dev-auto` sur la journée du 12 juin ont été consolidées en une seule merge. Les changements forment un cluster cohérent autour de `CycleLogger` et de la qualité de code :
+
+- `CycleLogger.debug()` ajoutée : la classe avait `info()`, `error()`, `warning()` mais pas `debug()`. La PR #208 (logging debug Mongo) avait essayé d'appeler cette méthode sans qu'elle existe — les reviews avaient créé le ticket #210 le 12 juin, implémenté ici.
+- Context manager `with open():` remplace `open().close()` dans `env.py` — ticket #123, bonne pratique Python garantissant la fermeture même en cas d'exception.
+- Commentaires explicites Bandit B324 / B603 / Mypy dans `runner.py` et `env.py` — les outils de review CI ne reflagueront plus ces lignes comme problèmes non-résolus.
+- Logs debug MongoDB : chaque mise à jour de coût API ou de mode facturation émet maintenant un `cycle_log.debug()` — traçabilité fine sans polluer le journal INFO principal.
+
+| Fichier | Changement |
+|---|---|
+| `binance-bot/botlogging/cycle_logger.py` | Ajout `CycleLogger.debug()` |
+| `binance-bot/core/env.py` | Context manager + commentaires Bandit |
+| `binance-bot/orchestration/runner.py` | Commentaires Bandit B603, assert Mypy, logs debug Mongo |
+
+- **Doc tech** : [docs/technique/pr-217-consolidation-rec-auto.md](../technique/pr-217-consolidation-rec-auto.md)
+
+---
+
+#### #219 — Consolidation [REC] AUTO — refonte architecture multi-module (07:45 UTC)
+
+- **Branche** : `feat/consolidate-rec-20260613_091111`
+- **PRs consolidées** : #206, #208
+- **Issues fermées** : #138, #139 (déjà fermées par #217 — doublon de clôture)
+
+**Récit**
+
+La PR la plus structurante de la journée. Elle consolide deux PRs [REC] qui, ensemble, formalisent la refonte de `webhook_server.py` monolithique (~1500 lignes) en une architecture multi-module. L'agent `binance-doc-tech` documente la structure complète :
+
+| Module | Fichier | Rôle |
+|---|---|---|
+| orchestration | `runner.py` | Cycle complet : lock → helpers → subprocess Claude → Mongo |
+| orchestration | `stream_parser.py` | Parsing stream-json Claude CLI |
+| orchestration | `watchdog.py` | Monitoring phases via heartbeats JSONL |
+| core | `env.py`, `lock.py`, `telegram.py`, `timing.py`, `state_manager.py` | Infrastructure partagée |
+| storage | `mongo.py` | Client MongoDB (lazy init) |
+| commands | `status.py`, `perf.py`, `eval.py`, `cout.py`, `raisonnement.py` | Handlers Telegram |
+| botlogging | `cycle_logger.py`, `stream_parser.py`, `watchdog.py` | Observabilité |
+
+Deux décisions techniques méritent d'être retenues. D'abord, `_write_helpers_file()` utilise `tempfile.mkstemp()` (permissions 0o600) au lieu d'un chemin `/tmp/` prévisible — les secrets ne sont pas substitués à l'avance dans le fichier, mais lus depuis `os.environ` au runtime dans le fichier helpers. C'est la correction de la race condition TOCTOU Bandit B108 identifiée lors de la PR #187 (30 mai), consolidée dans l'architecture. Ensuite, le timeout watchdog utilise `threading.Timer` au lieu de `subprocess.timeout` directement, ce qui permet un cancel propre dans le bloc `finally`.
+
+La configuration LLM est externalisée dans `binance-bot/config/llm.py` — le modèle Claude utilisé devient un paramètre de config, plus une constante hardcodée dans `runner.py`.
+
+- **Doc tech** : [docs/technique/pr-219-consolidation-auto.md](../technique/pr-219-consolidation-auto.md)
+
+---
+
+#### #225 — Consolidation [REC] AUTO — fiabilité trading & state management (10:40 UTC)
+
+- **Branche** : branche de consolidation auto
+- **PRs consolidées** : #223, #224
+- **Issues fermées** : #220 (Refactoring orchestration & runner), #221 (Fiabilité trading & state management)
+
+**Récit**
+
+La troisième consolidation de la journée, qui clôt les deux épics créées à 07:57 UTC — moins de 3h après les PR #217 et #219. Les épics #220 (25 sous-tickets) et #221 (20 sous-tickets) ont été générées automatiquement par les reviews des PR du matin, implémentées par `binance-dev-auto` dans les PRs #223 et #224, puis consolidées et mergées avant midi.
+
+Les fichiers touchés couvrent : `binance-bot/commands/eval.py`, `binance-bot/commands/status.py`, `binance-bot/core/state_manager.py`, `binance-bot/storage/mongo.py`, `CLAUDE.md`.
+
+Le nouveau workflow `.github/workflows/auto-dispatch-on-auto-label.yml` (livré dans ce batch) change le point de déclenchement de l'automation : dorénavant, le label `AUTO` posé sur une issue suffit à lancer `binance-dev-auto` — sans attendre un trigger post-review. Le workflow résout l'item dans le board GitHub Projects (GraphQL), le passe en "In progress", puis dispatche le workflow d'implémentation. L'ajout de ce workflow ferme le dernier maillon manuel de la chaîne.
+
+---
+
+### Issues fermées (73)
+
+La journée a vu 73 issues clôturées, dont la grande majorité sont des sous-tickets `[REC]` de qualité résolus en cascade par les trois consolidations. Les clôtures marquantes :
+
+| # | Titre | Motif |
+|---|---|---|
+| [#220](https://github.com/yousmaaza/agent-binance/issues/220) | [REC] Consolidation — Refactoring orchestration & runner | Completed via PR #225 |
+| [#221](https://github.com/yousmaaza/agent-binance/issues/221) | [REC] Consolidation — Fiabilité trading & state management | Completed via PR #225 |
+| [#222](https://github.com/yousmaaza/agent-binance/issues/222) | [REC] Consolidation — CycleLogger, daily-recap & outillage | Duplicate — couvert par #217 et #225 |
+| [#210](https://github.com/yousmaaza/agent-binance/issues/210) | Ajouter la méthode `debug()` à `CycleLogger` | Completed — ticket du 12 juin fermé le lendemain |
+| [#209](https://github.com/yousmaaza/agent-binance/issues/209) | Mypy: type guard sur `process.stdout` | Completed |
+| [#167](https://github.com/yousmaaza/agent-binance/issues/167) | Refactor `main_loop()` avec dispatch table | Completed |
+| [#188–#192](https://github.com/yousmaaza/agent-binance/issues/188) | Cluster qualité post-PR #187 (helpers, streaming, tests) | Completed batch |
+| [#196–#197](https://github.com/yousmaaza/agent-binance/issues/196) | Heartbeats Phase 2 + adaptive sleep rate limits | Completed |
+| [#25](https://github.com/yousmaaza/agent-binance/issues/25) | Bandit B324 `hashlib.sha1 usedforsecurity=False` | Completed (ticket ouvert depuis longtemps) |
+
+Vingt sous-tickets de la liste complète ont été collectés par l'outil de recherche (sur 73 au total) — la majorité appartient aux clusters orchestration, state management, et CycleLogger.
+
+---
+
+### Nouveaux tickets créés (3, tous fermés le même jour)
+
+| # | Titre | Créé à | Fermé à | Motif fermeture |
+|---|---|---|---|---|
+| [#220](https://github.com/yousmaaza/agent-binance/issues/220) | [REC] Consolidation — Refactoring orchestration & runner (25 sous-issues) | 07:57 UTC | 10:40 UTC | Completed |
+| [#221](https://github.com/yousmaaza/agent-binance/issues/221) | [REC] Consolidation — Fiabilité trading & state management (20 sous-issues) | 07:57 UTC | 10:40 UTC | Completed |
+| [#222](https://github.com/yousmaaza/agent-binance/issues/222) | [REC] Consolidation — CycleLogger, daily-recap & outillage (18 sous-issues) | 07:58 UTC | 10:42 UTC | Duplicate |
+
+Ces trois épics ont été créées par les reviews des PR #217 et #219 (mergées à 07:42 et 07:45). Elles ont regroupé respectivement 25, 20 et 18 sous-tickets de dette technique accumulée depuis fin mai. L'épic #220 a été implémentée (PR #223), #221 aussi (PR #224), les deux consolidées dans PR #225 et mergées à 10:40. L'épic #222 a été close en duplicate car son contenu était déjà couvert par #217 et #225.
+
+La boucle complète — merge → reviews → épics → implémentation → consolidation → merge — s'est refermée en moins de 3h.
+
+---
+
+### Matériel disponible pour illustrer
+
+- `docs/technique/pr-219-consolidation-auto.md` : tableau complet de l'architecture multi-module (10 modules, rôles) — bon visuel pour illustrer la séparation des responsabilités avant/après.
+- `.github/workflows/auto-dispatch-on-auto-label.yml` (nouveau) : 122 lignes de workflow GitHub Actions — le déclencheur final de l'automation label → board → dispatch. Bonne illustration du fonctionnement interne.
+- `binance-bot/config/llm.py` (nouveau) : externalisation de la config modèle Claude — petit fichier, gros impact sur la maintenabilité.
+- Les épics #220, #221, #222 dans GitHub Issues : chacune liste ses sous-tickets avec coches — bonne matière pour un article sur la structuration de la dette technique.
+- Timeline du jour : PR #217 mergée 07:42 → épics créées 07:57 → PR #225 mergée 10:40. Écart total : 2h58.
+
+### Idée d'angle Medium
+
+**"La boucle qui se ferme en 3h : quand l'automatisation s'auto-alimente"**
+
+Le 13 juin illustre ce que devient le pipeline quand toutes les pièces sont en place. Les PRs du matin déclenchent les reviews qui génèrent des épics, les épics déclenchent `binance-dev-auto` qui implémente, l'implémentation est consolidée et mergée — le tout sans intervention humaine, en moins de 3 heures. Article sur la distinction entre automation "assistée" (un humain décide de chaque étape) et automation "réflexive" (le pipeline déclench le pipeline). La nuance importante : l'humain merge encore les PRs de consolidation. C'est le seul frein conscient dans la chaîne. Pourquoi garder cette friction ? Et jusqu'où peut-on aller sans elle ?
+
+**Angle secondaire — "Refactoring architectural via PR [REC] : comment un agent découpe 1500 lignes sans se perdre"**
+
+La PR #219 n'a pas été planifiée par un humain — elle est sortie d'une review automatique qui a identifié que `webhook_server.py` monolithique était trop complexe. L'agent `binance-dev-auto` a produit une architecture à 10 modules, avec séparation claire des responsabilités, dans une PR de consolidation. Court article sur la question : peut-on déléguer les décisions architecturales à un agent de review ? Avec quelles limites ?
+
+---
+
+## 2026-06-12 — Récap quotidien
+
+### PR mergées (0)
+
+Aucune PR mergée sur `main` aujourd'hui.
+
+---
+
+### Issues fermées (3)
+
+| # | Titre | Motif |
+|---|---|---|
+| [#25](https://github.com/yousmaaza/agent-binance/issues/25) | [REC] Corriger B324 HIGH — ajouter `usedforsecurity=False` sur `hashlib.sha1` | Completed — fix implémenté via `feat/issue-25-hashlib-usedforsecurity` |
+| [#200](https://github.com/yousmaaza/agent-binance/issues/200) | [REC] Setup Graphify — knowledge graph MCP du codebase | Not planned — idée reportée sans suite |
+| [#203](https://github.com/yousmaaza/agent-binance/issues/203) | [CONFIG] Évaluer hausse `max_open_positions` 3→4 — opportunité score 9/10 manquée le 2026-05-30 | Not planned — supersédé par l'analyse plus complète de #218 |
+
+Le ticket #25 est celui qui a abouti : un seul paramètre ajouté (`usedforsecurity=False`) dans l'appel `hashlib.sha1()` qui calcule le fingerprint du `TRADE_PROMPT`. Le flag documente l'intention non-cryptographique du hash — il ne change pas le calcul — et fait disparaître le finding Bandit HIGH B324 qui masquait les vrais problèmes de sécurité dans les rapports CI.
+
+Le ticket #203 est fermé non pas parce que le problème n'existe plus, mais parce qu'une analyse plus récente (#218) le couvre dans un contexte plus dégradé. La montée de `max_open_positions` à 4 reste sur la table, mais avec de nouvelles contraintes.
+
+---
+
+### Nouveaux tickets créés (6)
+
+Deux origines : reviews automatiques des PR #208 / #213 / #214, et l'agent `analyse-config` qui tourne en cron à 20h UTC.
+
+**Cluster CycleLogger — issues #209, #210, #211, #216** (depuis reviews PR #208 / #213)
+
+| # | Titre | Origine |
+|---|---|---|
+| [#209](https://github.com/yousmaaza/agent-binance/issues/209) | Mypy: type guard sur `process.stdout` (`runner.py:224`) | Review PR #208 |
+| [#210](https://github.com/yousmaaza/agent-binance/issues/210) | Ajouter la méthode `debug()` à `CycleLogger` | Review PR #208 |
+| [#211](https://github.com/yousmaaza/agent-binance/issues/211) | Typer `CycleLogger` avec type hints complets | Review PR #208 |
+| [#216](https://github.com/yousmaaza/agent-binance/issues/216) | Modèle de logging plus fluide dans `CycleLogger` | Review PR #213 |
+
+Ces quatre tickets forment un seul cluster de dette technique sur `CycleLogger` : la classe expose `info()`, `warning()`, `error()`, `heartbeat()` mais pas `debug()`. La PR #208 (logging debug Mongo) avait essayé de l'appeler sans qu'elle existe. Les reviews ont révélé en cascade : méthode manquante, absence de type hints, et `process.stdout` non gardé contre `None` dans `runner.py`.
+
+**Documentation — issue #215** (depuis review PR #214)
+
+| # | Titre | Origine |
+|---|---|---|
+| [#215](https://github.com/yousmaaza/agent-binance/issues/215) | Ajouter docstring module en tête de `binance-bot/core/env.py` | Review PR #214 |
+
+Le module `env.py` est le bootstrap du bot (chargement `.env`, setup loguru, chargement du prompt) mais n'a aucune docstring. Ticket minimaliste : 5 à 10 lignes à ajouter, aucune modification de code.
+
+**Alerte config automatique — issue #218** (agent cron 20h UTC)
+
+| # | Titre | Origine |
+|---|---|---|
+| [#218](https://github.com/yousmaaza/agent-binance/issues/218) | TYPE_B récurrent + drawdown -70 % : `max_single_position_pct` trop restrictif avec capital résiduel faible | Analyse-config automatique |
+
+Le ticket le plus substantiel de la journée. L'agent `analyse-config` a détecté que les deux derniers cycles du jour s'étaient terminés en TYPE_B avec exactement le même calcul bloquant :
+
+```
+USDC libre    = 17.24
+Budget/pos    = 17.24 × 0.40 = 6.90 USDC
+6.90 < 11     → SKIP TYPE_B
+```
+
+Il propose de monter `max_single_position_pct` de 0.40 à 0.65 (ce qui donnerait 17.24 × 0.65 = 11.21 USDC, juste au-dessus du seuil), mais conditionne l'application à un rebond confirmé : BTC sentiment Bullish, top_score ≥ 6, portfolio > 50 USDC.
+
+---
+
+### Comportement du bot en production
+
+Deux cycles aujourd'hui :
+
+| Heure UTC | Score | Skip | Portfolio | Sentiment |
+|---|---|---|---|---|
+| 10:45 | 6/10 | TYPE_B — 6.90 USDC < seuil 11 (XPL, ATR élevé) | 118.85 USDC | Bullish |
+| 12:14 | 4/10 | TYPE_B — 6.90 USDC < seuil 11 (disponible: 17.24) | 24.63 USDC | Neutral |
+
+Le portfolio a chuté de 118.85 à 24.63 USDC entre les deux cycles, reflétant des positions ouvertes en mark-to-market négatif (3/4 slots occupés). Sur 7 jours, le drawdown atteint −70 % (81.58 → 24.63 USDC).
+
+Le bot a correctement loggé les deux TYPE_B dans `state/cycle_log.jsonl`. L'agent cron a agrégé ces logs à 20:07 UTC et créé le ticket #218 avec un diagnostic structuré : calcul chiffré du blocage, recommandation conditionnelle, risques, et conditions d'application. Aucune intervention humaine entre le log et le ticket.
+
+---
+
+### Matériel disponible pour illustrer
+
+- `state/cycle_log.jsonl` : lignes `20260612_103604` et `20260612_120500` — les deux TYPE_B avec `skip_detail` chiffré.
+- Issue #218 complète : tableau des 4 cycles analysés, calcul `17.24 × 0.40 = 6.90`, recommandation + conditions + risques. Format structuré généré automatiquement à partir de données de production.
+- Branche `feat/issue-25-hashlib-usedforsecurity` : diff minimal — 1 paramètre, 1 fichier, finding Bandit éliminé. Bon exemple d'un ticket `[REC]` de sécurité résolu en chirurgie.
+- Issues #209–#211 comme illustration de la dette technique qui s'accumule quand on ajoute des fonctionnalités (PR #208 debug Mongo) sans compléter l'interface existante (méthode `debug()` manquante).
+
+### Idée d'angle Medium
+
+**"Le bot qui se diagnostique lui-même : de la log au ticket de configuration"**
+
+La journée du 12 juin illustre une boucle fermée sur la configuration : cycles bloqués → logs TYPE_B → agent cron qui agrège les données → ticket structuré avec calcul, recommandation et conditions d'application → humain qui décide. Le bot ne corrige pas sa propre configuration (l'humain garde la main sur `config.json`), mais il produit un dossier d'aide à la décision complet, fondé sur des données réelles de production. Article sur la distinction entre autonomie d'exécution (ce que le bot fait seul) et autonomie de décision (ce que l'humain garde).
+
+**Angle secondaire — "Le cluster de dette : quand une PR révèle trois tickets connexes"**
+La PR #208 (logging debug Mongo) a déclenché reviews qui ont révélé que `CycleLogger` manquait de `debug()`, de type hints, et que `runner.py` avait un `process.stdout` potentiellement `None`. Trois tickets distincts (#209, #210, #211) nés d'une seule feature. Court article sur le pattern "dette visible" — les reviews automatiques ne bloquent pas, elles exposent la surface réelle du code. La question est : traiter immédiatement ou accumuler consciemment.
+
+---
+
+## 2026-06-03 — Récap quotidien
+
+### PR mergées (1)
+
+#### #201 — [M199] Enrichir CLAUDE.md avec principes généraux de développement (Think/Simplicity/Surgical)
+
+- **Branche** : `feat/issue-199-enrichir-claude-md`
+- **Mergée à** : 21:46 (Europe/Paris)
+- **Issues fermées** : #199
+
+**Récit**
+
+Depuis la création du projet, `CLAUDE.md` accumulait des règles très concrètes — comment lancer le venv, comment structurer les commits, quels appels Telegram éviter, quand ne pas utiliser urllib. Des règles opérationnelles, précises, project-specific. Mais aucune règle sur la façon de *penser* avant d'écrire du code. Cette lacune laissait la porte ouverte aux comportements LLM classiques : sur-ingénierie par habitude, refactorisation non demandée du code adjacent, implémentation dans l'ambiguïté plutôt que la demande de clarification.
+
+La PR #201 comble ce vide. Elle insère une section **"Principes généraux de développement"** dans `CLAUDE.md`, positionnée délibérément après `## Stack` (le contexte) et avant `## Règles de modification non négociables` (les contraintes opérationnelles) — pour établir les fondations culturelles avant les règles de procédure. La section regroupe trois principes :
+
+1. **Réfléchir avant de coder** : énoncer les hypothèses explicitement, présenter les alternatives, ne pas implémenter dans l'ambiguïté, signaler la solution la plus simple quand elle existe.
+2. **Minimalisme** : code minimum qui résout le problème, rien de spéculatif, pas d'abstraction pour un usage unique, pas de gestion d'erreur pour des scénarios impossibles dans ce contexte.
+3. **Modifications chirurgicales** : toucher uniquement ce qui est demandé, conserver le style existant, mentionner (ne pas supprimer) le dead code repéré, chaque ligne modifiée doit être traçable directement à la demande de l'utilisateur.
+
+Ce qui est notable : la PR ne touche aucun fichier de code. Pas de `webhook_server.py`, pas de `config.json`, pas de workflow YAML. Un seul fichier Markdown, 73 lignes ajoutées. C'est une modification qui agit entièrement sur le comportement futur de l'IA — en configurant ses principes de raisonnement plutôt que la logique de l'application.
+
+**Changements techniques**
+
+| Fichier | Changement |
+|---|---|
+| `CLAUDE.md` | Insertion de la section `## Principes généraux de développement` (73 lignes) entre `## Stack` et `## Règles de modification non négociables` |
+
+- **Doc tech** : [docs/technique/pr-201-enrichir-claude-md.md](../technique/pr-201-enrichir-claude-md.md)
+
+---
+
+### Issues fermées (1)
+
+| # | Titre |
+|---|---|
+| [#199](https://github.com/yousmaaza/agent-binance/issues/199) | [AMÉLIORATION] Enrichir CLAUDE.md avec principes généraux de développement (Think/Simplicity/Surgical) |
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé aujourd'hui.
+
+---
+
+### Matériel disponible pour illustrer
+
+- Diff PR #201 dans `CLAUDE.md` : avant/après de la section — illustre l'ajout d'un contrat comportemental LLM dans un fichier de configuration projet.
+- Issue #199 complète : inclut le texte exact des règles à insérer, les critères d'acceptation, et la justification d'inspiration (dépôt `multica-ai/andrej-karpathy-skills`). Bonne illustration de la rigueur d'un ticket de documentation pure.
+- `docs/technique/pr-201-enrichir-claude-md.md` : résumé structuré de l'impact de gouvernance — base pour un passage explicatif dans un article Medium.
+
+### Idée d'angle Medium
+
+**"CLAUDE.md comme contrat comportemental : configurer le raisonnement, pas seulement la stack"**
+
+La plupart des projets LLM documentent *ce que l'IA doit faire* (appeler telle API, utiliser tel format). Le ticket #199 documente *comment l'IA doit penser* — énoncer les hypothèses, refuser l'ambiguïté, ne pas toucher le code adjacent. C'est une catégorie de configuration entièrement différente : non plus des règles métier, mais des règles épistémiques. Article sur la distinction entre les deux niveaux de `CLAUDE.md` dans ce projet — règles opérationnelles (procédures, chemins, conventions) vs règles culturelles (comportement, style, rigueur). La question sous-jacente : peut-on vraiment changer le comportement d'un LLM par des instructions persistantes dans un fichier de config, ou doit-on le faire à chaque session ?
+
+**Angle secondaire — "L'exception qui confirme la règle"**
+Ce ticket illustre une règle de CLAUDE.md elle-même : `CLAUDE.md` peut être modifié directement sur `main`, sans PR, sans branche. Pourtant, une PR a bien été ouverte (#201) et une branche créée. Pourquoi ? Parce que l'agent `binance-dev` suit toujours le workflow standard, et l'utilisateur a choisi de merger proprement plutôt que de contourner. Court billet sur la différence entre "autorisé à" et "systématiquement faire" — et sur la valeur des exceptions bien documentées dans un projet qui vit de ses conventions.
+
+---
+
+## 2026-05-31 — Récap quotidien
+
+### PR mergées (1)
+
+#### #194 — [M193] Phase 2 : sleep 15s post-batch 4h + gestion erreur 1D silencieuse
+
+- **Branche** : `feat/issue-193-fix-1d-rate-limit`
+- **Mergée à** : 16:11 (Europe/Paris)
+- **Issues fermées** : #193
+
+**Récit**
+
+Le matin du 31 mai, le cycle `cycle_20260530_101921` révélait une erreur familière dans `logs/stdout/` : `{"error": "Analysis failed: Expecting value: line 1 column 1 (char 0)"}` sur les appels TradingView 1D de XRPUSDT. Ce n'était pas un bug de code — c'était une régression architecturale.
+
+La PR #104 (24 mai) avait optimisé la Phase 2 en limitant les appels 1D aux seuls coins candidats BUY 4H. Mais cette PR avait créé un nouveau problème : le burst de 4 appels `coin_analysis 4H` en parallèle épuise le quota TradingView MCP juste avant que les appels 1D séquentiels ne démarrent. TradingView retourne alors un body vide, ce qui provoque un `JSONDecodeError` côté agent. La PR #106 (25 mai) avait déjà corrigé un problème similaire, mais à force d'optimisations successives, le burst 4H était devenu assez dense pour recréer le throttle.
+
+Le fix de PR #194 est en trois couches. Première : un `time.sleep(15)` ajouté dans le prompt entre la fin du batch 4H et le début des appels 1D, laissant le quota TradingView se réinitialiser. Deuxième : les appels 1D passent en mode rigoureusement séquentiel (1 coin à la fois, `sleep 5s` entre chaque) au lieu de chercher à les grouper. Troisième : une gestion d'erreur silencieuse — si un appel 1D retourne `{"error": ...}`, l'agent assigne `signal_1d = "NEUTRAL"` et continue sans notification Telegram. Un flag `signal_1d_rate_limited` permet à la Phase 3 de détecter si tous les coins BUY 4H ont subi un rate limit, auquel cas le seuil de score passe automatiquement de 7 à 6 (`min_signal_score_degraded`).
+
+Ce mode dégradé est la décision technique la plus intéressante : un coin STRONG_BUY 4H avec RSI/MACD/ADX favorables peut toujours atteindre 6/10 sans la confirmation 1D. Bloquer le cycle entier parce que TradingView est lent serait une sur-réaction — rater une opportunité réelle pour des données de confirmation manquantes.
+
+**Changements techniques**
+
+| Fichier | Changement |
+|---|---|
+| `prompts/trade_prompt.txt` | `sleep 15` post-batch 4H + appels 1D séquentiels avec `sleep 5` + try/except sur erreur 1D + `signal_1d_rate_limited` flag |
+| `config.json` | Ajout de `min_signal_score_degraded: 6` pour le mode dégradé Phase 3 |
+
+- **Doc tech** : [docs/technique/pr-194-phase-2-1d-rate-limit-handling.md](../technique/pr-194-phase-2-1d-rate-limit-handling.md)
+
+---
+
+### Issues fermées (1)
+
+| # | Titre |
+|---|---|
+| [#193](https://github.com/yousmaaza/agent-binance/issues/193) | [FIX] Phase 2 — appels coin_analysis 1D séquentiels + sleep 15s pour éviter rate limit TradingView |
+
+---
+
+### Nouveaux tickets créés (3)
+
+| # | Titre | Type |
+|---|---|---|
+| [#199](https://github.com/yousmaaza/agent-binance/issues/199) | [AMÉLIORATION] Enrichir CLAUDE.md avec principes généraux de développement (Think/Simplicity/Surgical) | documentation + enhancement |
+| [#200](https://github.com/yousmaaza/agent-binance/issues/200) | [REC] Setup Graphify — knowledge graph MCP du codebase | enhancement + AUTO |
+| [#203](https://github.com/yousmaaza/agent-binance/issues/203) | [CONFIG] Évaluer hausse max_open_positions 3→4 — opportunité score 9/10 manquée le 2026-05-30 | enhancement (analyse-config auto) |
+
+Le ticket #199 est une initiative d'amélioration de `CLAUDE.md` : ajouter trois règles comportementales génériques (réflexion préalable, minimalisme, modifications chirurgicales) avant les règles projet-spécifiques. Cela normalise le comportement de l'IA dans les sessions futures, quel que soit le contexte.
+
+Le ticket #203 est notable : il a été créé automatiquement à 22:09 par l'agent `analyse-config` (cron `0 20 UTC`) après avoir analysé 22 cycles sur 7 jours. L'agent a détecté qu'un cycle du 2026-05-30 à 21:23 avait un `top_score` de 9/10 et un sentiment Bullish, mais avait été bloqué par `max_open_positions=3` déjà atteint. Il propose de monter la limite à 4, avec des conditions précises pour l'appliquer (sentiment ≥ Bullish, score ≥ 8, portfolio ≥ 100 USDC) et une alternative conservatrice (position bonus conditionnelle à 0.5× sizing). C'est le premier ticket où le bot analyse ses propres cycles et génère une recommandation de configuration fondée sur des données.
+
+---
+
+### Matériel disponible pour illustrer
+
+- Extrait de `logs/stdout/cycle_20260530_101921.log` : l'erreur `Expecting value: line 1 column 1` qui a déclenché le ticket #193 — illustration concrète du cycle comme oracle de régression.
+- Diff `prompts/trade_prompt.txt` entre PR #104, #106 et #194 : la même erreur TradingView réapparaît deux fois sous deux formes légèrement différentes — bon exemple de la difficulté à anticiper les interactions entre optimisations.
+- Issue #203 complète avec son tableau de 22 cycles et ses critères conditionnels — matériel brut d'un agent d'analyse qui raisonne sur ses propres données d'exécution.
+
+### Idée d'angle Medium
+
+**"La 3e occurrence d'un bug : quand le rate-limit devient un pattern architectural"**
+
+La même erreur TradingView est apparue trois fois en 7 jours (PR #104, #106, #194), chaque fois déclenchée par une optimisation qui réintroduisait un burst d'appels. Article sur la différence entre corriger un bug et comprendre la contrainte sous-jacente — ici, TradingView MCP a un quota strict et toute stratégie d'appels parallèles le déclenche. La résolution finale (mode dégradé + seuil adaptatif) montre comment absorber une contrainte externe plutôt que de chercher à l'éviter.
+
+**Angle secondaire — "Un agent qui analyse ses propres décisions"**
+Le ticket #203 est généré par le bot à partir de 22 cycles de données. Il ne dit pas juste "augmente max_open_positions" — il qualifie les conditions d'application (sentiment, score, liquidité), propose une alternative conservatrice, et liste les risques. C'est la première fois dans ce projet qu'un agent produit une recommandation stratégique argumentée. Court article sur la différence entre logging (ce qui s'est passé) et auto-analyse (ce qu'on devrait changer).
+
+---
+
+## 2026-05-30 — Récap quotidien
+
+### PR mergées (1)
+
+#### #187 — [CONSOLIDÉ] Helpers partagés par cycle + sécurité + recommandations tech lead
+
+- **Branche** : `feat/consolidate-helpers-sec-recs`
+- **Mergée à** : 12:43 (Europe/Paris)
+- **Issues fermées** : #175, #178, #179, #180, #181, #182, #183, #184, #185, #186 (10 au total)
+
+**Récit**
+
+La journée a commencé par un diagnostic de cycle à 04:05 UTC : le bot avait exclu Bitcoin à tort, à cause d'un rate limit Binance non géré. L'enquête a révélé la cause racine — l'agent réécrivait sa propre version allégée des helpers (`tg()`, `binance()`, `hb()`) dans chaque script de phase, en ignorant celle du prompt principal. Sans retry dans son `binance()` local, la moindre erreur API excluait le coin directement. Autre symptôme du même problème : `MONGODB_URI` était relu depuis `.env` via `source` shell (ce qui casse avec le `&` dans la chaîne de connexion), et des heredocs Python continuaient à s'infiltrer malgré l'interdiction dans CLAUDE.md.
+
+La solution : externaliser les fonctions partagées dans un fichier temporaire généré par `runner.py` juste avant chaque cycle. L'agent importe ce fichier via `exec(open("__HELPERS_PATH__").read())` en tête de chaque script de phase — il ne peut plus "oublier" les retries ou inventer ses propres variantes.
+
+Deux PR intermédiaires (#176 pour les helpers, #177 pour les permissions du fichier `/tmp`) ont été ouvertes en matinée. La review automatique du tech lead (CI) a produit 9 tickets `[REC]` en 3 minutes, dont un finding sécurité sérieux : le chemin `/tmp/cycle_XXXX_helpers.py` hardcodé exposait une race condition TOCTOU (Bandit B108). La PR de consolidation #187 a absorbé les deux PR initiales plus les 9 recommandations en un seul merge propre à 12:43.
+
+**Changements techniques**
+
+| Fichier | Changement |
+|---|---|
+| `binance-bot/orchestration/runner.py` | `_write_helpers_file()` via `tempfile.mkstemp()` (0o600, pas de TOCTOU) ; `_send_start_notification()` extraite ; constante `CLAUDE_PROCESS_TIMEOUT_S = 3600` ; `OSError` capturée si disque plein |
+| `prompts/trade_prompt.txt` | Suppression de ~60 lignes de helpers redéfinis en dur ; remplacés par `exec(open("__HELPERS_PATH__").read())` en tête de chaque script |
+| `binance-bot/botlogging/cycle_logger.py` | Ajout de `CycleLogger.warning()` — corrige 2 appels fantômes existants depuis PR #176 |
+| `scripts/check_cycle_logger_methods.sh` | Script lint 25 lignes : vérifie que les appels `cycle_log.xxx()` utilisent des méthodes définies |
+
+**Décision sécurité notable** : les secrets (`MONGO_URI`, `TELEGRAM_TOKEN`, etc.) ne sont plus injectés dans le fichier helpers par Python avant l'exécution — ils sont lus depuis `os.environ` au runtime dans le fichier lui-même. La PR #176 originale les bakeait via `repr()` dans un fichier `/tmp` world-readable (0o644). Corrigé par #177, consolidé dans #187.
+
+- **Doc tech** : [docs/technique/pr-187-consolidate-helpers-security-recs.md](../technique/pr-187-consolidate-helpers-security-recs.md)
+
+---
+
+### Issues fermées (10)
+
+Toutes fermées via PR #187 :
+
+| # | Titre | Origine |
+|---|---|---|
+| [#175](https://github.com/yousmaaza/agent-binance/issues/175) | [FIX] Factoriser les helpers du prompt dans un fichier partagé par cycle | Bug signalé par l'utilisateur |
+| [#178](https://github.com/yousmaaza/agent-binance/issues/178) | [REC] [SECURITY] Remplacer /tmp hardcoded par tempfile.mkstemp() | CI tech lead |
+| [#179](https://github.com/yousmaaza/agent-binance/issues/179) | [REC] [REFACTOR] Réduire la complexité cyclomatique de run_trade_workflow | CI tech lead |
+| [#180](https://github.com/yousmaaza/agent-binance/issues/180) | [REC] [LISIBILITÉ] Extraire le timeout du watchdog en constante | CI tech lead |
+| [#181](https://github.com/yousmaaza/agent-binance/issues/181) | [REC] [ROBUSTESSE] Ajouter logging d'erreur dans _update_cost_in_mongo | CI tech lead |
+| [#182](https://github.com/yousmaaza/agent-binance/issues/182) | [REC] [CLEANUP] Éliminer les lignes redondantes du prompt (PYTHON_BIN/BINANCE_CLI) | CI tech lead |
+| [#183](https://github.com/yousmaaza/agent-binance/issues/183) | [REC] [FEATURE] Ajouter une méthode warning() à CycleLogger | CI tech lead |
+| [#184](https://github.com/yousmaaza/agent-binance/issues/184) | [REC] [MAINTENANCE] Linter pour détecter les warning() fantômes | CI tech lead |
+| [#185](https://github.com/yousmaaza/agent-binance/issues/185) | [REC] Supprimer imports TOKEN et CHAT_ID obsolètes dans runner.py | CI tech lead |
+| [#186](https://github.com/yousmaaza/agent-binance/issues/186) | [REC] Tester scénario /tmp full pour robustesse des helpers | CI tech lead |
+
+---
+
+### Nouveaux tickets créés (19)
+
+**10 créés et fermés dans la journée** — #175 et #178–#186 (voir ci-dessus).
+
+**9 ouverts en fin de journée** :
+
+| # | Titre | Type |
+|---|---|---|
+| [#193](https://github.com/yousmaaza/agent-binance/issues/193) | [FIX] Phase 2 — appels coin_analysis 1D séquentiels + sleep 15s pour éviter rate limits | Bug (utilisateur) |
+| [#188](https://github.com/yousmaaza/agent-binance/issues/188) | [REC] Refactor template helpers vers fichier externe | CI post-PR #187 |
+| [#189](https://github.com/yousmaaza/agent-binance/issues/189) | [REC] Add error handling pour streaming stdout | CI post-PR #187 |
+| [#190](https://github.com/yousmaaza/agent-binance/issues/190) | [REC] Document helpers namespace isolation strategy | CI post-PR #187 |
+| [#191](https://github.com/yousmaaza/agent-binance/issues/191) | [REC] Add synthetic test pour cycle_logger workflow | CI post-PR #187 |
+| [#192](https://github.com/yousmaaza/agent-binance/issues/192) | [REC] Implement dry-run mode pour offline cycle testing | CI post-PR #187 |
+| [#195](https://github.com/yousmaaza/agent-binance/issues/195) | [REC] Clarifier l'impact NEUTRAL Phase 3 quand 1D rate limit | CI post-PR #187 |
+| [#196](https://github.com/yousmaaza/agent-binance/issues/196) | [REC] Ajouter heartbeat Phase 2 pour tracking rate limits | CI post-PR #187 |
+| [#197](https://github.com/yousmaaza/agent-binance/issues/197) | [REC] Implémenter adaptive sleep intelligente pour rate limits | CI post-PR #187 |
+
+Le ticket #193 (bug utilisateur) pointe un problème récurrent : les appels TradingView `coin_analysis 1D` en parallèle en Phase 2 déclenchent des rate limits API. Solution envisagée : passer en séquentiel avec `sleep 15s` entre chaque appel, et utiliser `signal_1d = "NEUTRAL"` si le timeout est atteint.
+
+---
+
+### Matériel disponible pour illustrer
+
+- Diff de `runner.py` : passage de `open("/tmp/cycle_...")` vers `tempfile.mkstemp()` — bonne illustration d'un fix sécurité minimaliste (3 lignes changées, un finding Bandit résolu, une race condition éliminée).
+- Screenshot du board GitHub : 9 tickets `[REC]` créés par `github-actions[bot]` en moins de 3 minutes après l'ouverture de PR #176 — illustration concrète de l'automatisation CI → backlog.
+- Script `scripts/check_cycle_logger_methods.sh` (25 lignes) : lint artisanal sur mesure, sans framework de test.
+- Log du cycle 04:05 UTC avec l'exclusion incorrecte de BTC due au rate limit sans retry — point d'entrée narratif naturel.
+
+### Idée d'angle Medium
+
+**"La boucle fermée : un bug à 4h du matin, 10 tickets fermés à midi"**
+
+Le 30 mai condense tout le pipeline en une journée : cycle qui détecte un bug en prod → issue créée manuellement → 2 PR ouvertes → CI génère 9 tickets [REC] automatiquement (dont un finding sécurité sérieux) → PR de consolidation qui ferme les 10 issues d'un coup → bot prêt à redémarrer en 3h. Angle narratif : la trace complète de cause (rate limit BTC à 4h) → effet (10 commits, 3 PRs, 9 tickets auto) est entièrement visible dans le repo. C'est une démonstration de ce que "traçabilité complète" veut dire dans un projet géré par des agents.
+
+**Angle secondaire — "La sécurité comme sous-produit de l'automatisation"**
+La race condition TOCTOU n'aurait probablement pas été détectée en review humaine rapide. C'est Bandit lancé en CI qui l'a flaggée, traduite en ticket `[REC]` par l'agent tech lead, implémentée dans la PR de consolidation. Le pipeline de qualité a fait le travail sans friction humaine consciente.
+
+---
+
+## 2026-05-29 — Récap quotidien
+
+### PR mergées (0)
+
+Aucune PR mergée sur `main` aujourd'hui.
+
+### Événements PR notables
+
+#### PR #166 ouverte — [CONSOLIDATION] #145 #146 #147 #148 #149 + 4 bugfixes post-cycle
+- **Ouverte à** : 11:55 (Europe/Paris) — toujours en review en fin de journée
+- **Branche** : `feat/consolidation-145-146-147-148-149`
+- **Quoi** : les 5 PR individuelles (#150 à #154), ouvertes hier, ont été fermées ce matin à 11:56 et remplacées par une PR unique qui consolide leurs changements. La raison : un conflit de merge était détecté entre #145 (écriture atomique dans `state_manager.py`) et #147 (unification du module `json` dans le même fichier) — résoudre le conflit une fois dans une branche dédiée est plus propre que de le faire lors de deux merges successifs.
+
+  La PR couvre les 5 issues consolidées :
+
+  | Issue | Contenu |
+  |-------|---------|
+  | #145 | Écriture atomique de `trade_history.json` via `os.replace()` + validation JSON au boot + backup automatique |
+  | #146 | Garantir un `hb(N)` par phase dans le TRADE_PROMPT — Phase 7 complète les heartbeats manquants avec statut `"recovered"` |
+  | #147 | Unification de tous les imports `json as _json / _hb_json / _pf_json` en un seul `import json` |
+  | #148 | Instruction explicite en tête du prompt : utiliser `.venv/bin/python3` (évite la résolution vers anaconda sur Mac) |
+  | #149 | Table de référence `binance-cli` dans le prompt — 10 commandes essentielles avec exemples JSON |
+
+  Dans l'après-midi, suite aux bugs révélés par le cycle `cycle_20260529_162033`, la PR a été mise à jour pour inclure 4 bugfixes supplémentaires (#168, #169, #170, #171 — détaillés ci-dessous).
+
+- **Pourquoi c'est intéressant pour Medium** : la PR #166 incarne deux patterns distincts réunis dans un seul artefact. (1) La consolidation de branches en conflit — décision technique de rassembler 5 features dans une seule PR pour absorber les conflits de merge en un seul endroit. (2) Le cycle de feedback en temps réel — une exécution du bot à 18h20 révèle des bugs qui intègrent directement la PR ouverte le matin. Le cycle `cycle_20260529_162033` a joué le rôle d'un test d'intégration grandeur nature.
+
+### Issues fermées (0)
+
+Aucune issue fermée aujourd'hui.
+
+### Nouveaux tickets (6)
+
+Deux vagues de création :
+
+**Vague 1 — ~11:58 Paris (#167)** : review tech-lead automatique déclenchée à l'ouverture de PR #166.
+- **#167** — [REC] Refactor `main_loop()` avec dispatch table pour handlers — `enhancement + tech-lead-review + AUTO`. La cascade `if/elif` qui gère 8+ commandes Telegram (complexité cyclomatique C = 17) doit être remplacée par un dictionnaire de handlers. Recommandation issue du reviewer automatique.
+
+**Vague 2 — ~18:43-18:44 Paris (#168–#172)** : post-mortem automatique du cycle `cycle_20260529_162033` (exécuté à 18:20 Paris).
+- **#168** — [BUG] `BINANCE_CLI` path non injecté dans `TRADE_PROMPT` — l'agent perd ~5 min par cycle à chercher le chemin absolu de `binance-cli` (`/Users/.../.nvm/.../bin/binance-cli`) car subprocess Python n'hérite pas du PATH nvm. Fix attendu : `shutil.which("binance-cli")` au démarrage de `webhook_server.py`, injectée via `__BINANCE_CLI_PATH__` dans le template.
+- **#169** — [BUG] Table `binance-cli` : commande `24hr-stats` inexistante — la table de référence ajoutée par PR #149 documente une commande qui n'existe pas. La bonne commande est `ticker24hr`. L'agent l'a découvert en live lors du cycle.
+- **#170** — [BUG] `binance-cli` retourne `'Request failed after 3 retries'` (non-JSON) — le helper `binance()` ne gère pas ce cas, provoque un crash sur `json.loads()`. Fix attendu : détection de la réponse non-JSON + retry x3 avec backoff.
+- **#171** — [BUG] JSONL phases : doublons si un script de phase est re-exécuté — `hb(N)` peut être appelé plusieurs fois pour la même phase (observé 3 fois pour la phase 1 dans le cycle de référence). La vérification Phase 7 détecte les phases manquantes mais pas les doublons. Fix : `hb()` réécrit le fichier avec déduplication plutôt qu'appender.
+- **#172** — [AMÉLIORATION] Maintenir une `usdc_whitelist` dans `config.json` — sur 20 coins candidats, 16 sont systématiquement éliminés TYPE_D (paire USDC introuvable sur Binance). ~30s et des appels binance-cli inutiles à chaque cycle. Whitelist proposée : `["BTC", "ETH", "SOL", "XRP", "SUI", "BNB", "AVAX", "DOT", "LINK", "ADA", "MATIC", "NEAR"]`.
+
+Les tickets #168–#172 ont été créés directement depuis les logs `logs/stdout/cycle_20260529_162033.log`, ce qui en fait des retours d'expérience factuels, pas des spéculations.
+
+### Matériel disponible pour l'article
+
+- **PR #166 ouverte** : diff complet des 5 issues consolidées + 4 bugfixes post-cycle — branche `feat/consolidation-145-146-147-148-149`
+- **Log cycle de référence** : `logs/stdout/cycle_20260529_162033.log` — contient les erreurs brutes qui ont généré les 5 tickets
+- **Log JSONL** : `logs/cycle_20260529_162033_phases.jsonl` — phase 1 dupliquée 3 fois (illustration du bug #171)
+- **Issues fraiches** : #168-172 — créées 23 min après le cycle, tracent la chaîne observation → ticket en temps réel
+
+### Idée d'angle Medium
+
+**Angle 1 — "Le cycle comme test d'intégration"**
+Le cycle `cycle_20260529_162033` a tourné à 18:20 et révélé 4 bugs en 23 minutes : PATH manquant, commande inexistante, non-JSON non géré, doublons JSONL. Tous ont été transformés en tickets structurés et intégrés à la PR en cours d'ici 20h13. Article sur la valeur des logs de cycle comme oracle de qualité — pas des tests unitaires, mais l'environnement réel avec Binance, bcp de rate limits et un prompt qui s'exécute comme un programme.
+
+**Angle 2 — "Consolider 5 branches en conflit sans perdre l'historique"**
+Plutôt que de merger #145-149 dans l'ordre en résolvant les conflits un par un (risque d'erreur, perte de contexte), une PR de consolidation repart de `main` et intègre toutes les features dans un diff unique. Pattern utile pour les projets où plusieurs agents ouvrent des PRs en parallèle sur les mêmes fichiers — le conflit de merge est inévitable, la consolidation manuelle reste la solution la plus lisible.
+
+---
+
+## 2026-05-28 — Récap quotidien
+
+### PR mergées (12)
+
+#### #122 — [FEAT] Générer `state/cycle_log.jsonl` après chaque cycle
+- **Branche** : `feat/issue-121-generer-state-cycle-log-jsonl`
+- **Mergée à** : 17:43 (Europe/Paris)
+- **Quoi** : ajout d'une Phase 8 dans le `TRADE_PROMPT`. À la fin de chaque cycle, l'agent écrit une ligne JSON dans `state/cycle_log.jsonl` (append-only, rotation à 90 lignes max), puis commit + push sur le repo via `git-perso`. Champs : `cycle_id`, `top_score`, `executed`, `skipped`, `skip_type`, `skip_detail`, `portfolio`, `sentiment`, `open_positions`. `binance-bot/core/env.py` crée le fichier vide au démarrage si absent.
+- **Pourquoi c'est intéressant pour Medium** : donne au bot une trace légère et versionnée dans git, sans dépendre de MongoDB pour la santé quotidienne. On peut `grep` un cycle dans le repo sans ouvrir Atlas. Autre angle : le push git depuis un sous-processus Claude — le `bash -i -c "git-perso && ..."` pour charger l'alias zsh est le genre de détail qu'on ne trouve que dans les projets réels.
+- **Doc tech** : [docs/technique/pr-122-cycle-log-jsonl.md](../technique/pr-122-cycle-log-jsonl.md)
+
+#### #140 — feat(ci): post-review déclenche `binance-dev-auto` sur tickets [REC]
+- **Branche** : `feat/post-review-trigger-binance-dev-auto`
+- **Mergée à** : 17:22 (Europe/Paris)
+- **Quoi** : ferme la boucle d'automatisation de la CI. Avant : les tickets `[REC]` créés par le tech-lead-reviewer après une review restaient en attente d'implémentation manuelle. Après : le prompt `ticket-manager` exécute `gh workflow run binance-dev-auto.yml -f issue_number=N` pour chaque ticket `[REC] + AUTO` créé, avec un `sleep 10` entre dispatches. Deux scripts bash utilitaires ajoutés : `dispatch_rec_tickets.sh` (rejouer le dispatch sur l'existant) et `label_rec_auto.sh` (migrer les tickets historiques sans label `AUTO`).
+- **Pourquoi c'est intéressant pour Medium** : illustration directe du pattern "agent qui déclenche un agent". La review produit des tickets → les tickets déclenchent une implémentation → l'implémentation ouvre une PR. Zero clic humain entre la review et la branche de code. C'est la feature de la journée.
+- **Doc tech** : [docs/technique/pr-140-post-review-trigger-binance-dev-auto.md](../technique/pr-140-post-review-trigger-binance-dev-auto.md)
+
+#### #130 + #131 + #133 — Réparation + validation du pipeline CI automation
+- **Mergées à** : 13:11 (#130), 13:11 (#131), 13:18 (#133) (Europe/Paris)
+- **Quoi** :
+  - **#130** : corrige le trigger du workflow `binance-dev-auto`. Le webhook `projects_v2_item` ne fonctionne que sur les organisations GitHub — sur un compte personnel il retournait `Unexpected value`. Migré vers `workflow_dispatch` avec inputs explicites (`issue_number`, `item_node_id`). Ajout d'une vérification du label `AUTO` avant de lancer l'agent.
+  - **#131** : améliore `claude-post-review.yml` — création du label `tech-lead-review` (idempotent) avant l'agent, application automatique du label + passage du statut Backlog → In progress sur chaque ticket créé.
+  - **#133** : ticket de validation bout-en-bout du pipeline : déclenchement via `gh workflow run`, vérification label AUTO, création branche, PR ouverte, ticket basculé "In review". ✅ Recette passée.
+- **Pourquoi c'est intéressant pour Medium** : le détail `projects_v2_item` vs compte personnel est une vraie embûche GitHub Actions non documentée clairement. Bon exemple de débogage par contraintes de plateforme, pas par bug de code.
+- **Doc tech** : [pr-130](../technique/pr-130-workflow-dispatch.md) — [pr-131](../technique/pr-131-post-review-auto-tag.md) — [pr-133](../technique/pr-133-test-workflow-binance-dev.md)
+
+#### #134 + #135 — Qualité code : except typés et champ `trigger` dans les heartbeats
+- **Mergées à** : 15:28 (#134), 15:30 (#135) (Europe/Paris)
+- **Quoi** :
+  - **#134** : remplace les `except Exception:` nus dans `binance-bot/core/lock.py`, `telegram.py` et `runner.py` par des types précis (`OSError`, `json.JSONDecodeError`). Ajout de logging sur les exceptions capturées.
+  - **#135** : injecte un placeholder `__TRIGGER__` dans `runner.py` → disponible en variable `_trigger` dans le prompt → inclus dans chaque ligne JSONL `hb()` et dans le document MongoDB. Valeurs : `manual` (commande `/trade`) ou `auto` (scheduler 4h). Prépare le watchdog (issue #7) à distinguer les deux types de cycle.
+- **Doc tech** : [pr-134](../technique/pr-134-qualifier-les-except-generiques.md) — [pr-135](../technique/pr-135-add-trigger-heartbeat.md)
+
+#### #141 + #142 + #144 — Robustesse du prompt : skip_types, format date, variables Phase 7
+- **Mergées à** : 17:32 (#141), 17:33 (#142), 17:47 (#144) (Europe/Paris)
+- **Quoi** :
+  - **#141** : ajoute une section "Cycles de trading : skip_type et skip_detail" dans `CLAUDE.md`. Tableau des 4 types (TYPE_A à TYPE_D), exemples de `skip_detail`, utilité pour le debug. Documentation pure, zéro code modifié.
+  - **#142** : documente et justifie le format `%Y-%m-%dT%H:%M:%SZ` **avec secondes** dans Phase 8. Le format sans secondes (`%H:%M`) serait insuffisant car les 7 phases d'un cycle s'exécutent en < 60s — les timestamps seraient identiques.
+  - **#144** : initialise explicitement `top_score`, `executed`, `skipped`, `skip_type`, `skip_detail`, `sentiment`, `portfolio_total`, `open_positions` en tête du prompt, avec fallbacks redondants en Phase 7. Évite les `UnboundLocalError` si une phase échoue partiellement avant la persistance Mongo. *(Note : PR #143 a précédé #144 dans la même journée — même issue #125, #144 est la version finale retenue.)*
+- **Doc tech** : [pr-141](../technique/pr-141-documenter-skip-types.md) — [pr-142](../technique/pr-142-clarify-date-format.md) — [pr-144](../technique/pr-144-verify-variable-definitions.md)
+
+#### #120 — docs: article 01 publié sur Medium
+- **Mergée à** : 12:40 (Europe/Paris)
+- **Quoi** : clôture du ticket de tracking #119. Le fichier `docs/medium-articles/01-setup-projet-prompt-mcp.md` passe en statut `published`. Article disponible sur Medium (URL dans l'issue).
+
+### Issues fermées (22)
+
+**Fermées par leurs PR respectives :**
+- **#121** — [FEAT] Générer state/cycle_log.jsonl — fermée par #122
+- **#125** — [REC] Vérifier définition des variables Phase 3/5/6 — fermée par #143 puis #144
+- **#124** — [REC] Clarifier format date Phase 8 — fermée par #142
+- **#128** — [REC] Documenter TYPE_A/B/C/D skip_type — fermée par #141
+- **#132** — [REC] Test workflow binance-dev-auto — fermée par #133
+- **#31** — [REC] Ajouter champ trigger dans heartbeat JSONL — fermée par #135
+- **#27** — [REC] Remplacer bare except par except typés — fermée par #134
+
+**Batch de triage ~15h (Paris) — tickets REC obsolètes :**
+Les issues #44, #62, #67, #69–#78, #109, #110 ont été fermées manuellement. Ce sont des tickets `[REC]` anciens liés à une refactorisation en modules qui avait déjà été implémentée progressivement (#69 → `binance-bot/core/`, #70 → `core/env.py`, etc.). Nettoyage du board après validation que le code cible était déjà en place.
+
+### Nouveaux tickets (28 créés)
+
+Trois vagues de création aujourd'hui, toutes issues de reviews tech-lead :
+
+**Vague 1 — ~12:47 Paris (#121, #123–#127, #128)** : suite directe de la PR #122 (cycle_log.jsonl). Tickets de robustesse et de suivi : rotation du fichier (#126), centraliser le chemin en constante (#127), context manager pour `open()` (#123).
+
+**Vague 2 — ~15:17 Paris (#136–#139)** : issues Mypy/Bandit/logging sur `runner.py` et les fonctions Mongo :
+- **#136** — Mypy : type guard sur `process.stdout` (runner.py:113)
+- **#137** — Clarifier exceptions silencieuses dans `_update_cost_in_mongo`
+- **#138** — Bandit B603 : documenter absence d'untrusted input dans subprocess
+- **#139** — Ajouter logging DEBUG pour succès Mongo
+
+**Vague 3 — ~18:08 et ~18:37 Paris (#145–#165)** : nouvelle review tech-lead automatique déclenchée par les merges de l'après-midi. Tickets de la seconde vague :
+- **#145** — Protéger `state/trade_history.json` contre écritures corrompues (write atomique + validation au boot)
+- **#146** — Garantir un `hb(N)` par phase dans le TRADE_PROMPT
+- **#147** — Supprimer le conflit `json/_json` dans `prompts/trade_prompt.txt`
+- **#148** — Imposer `.venv/bin/python3` dans le TRADE_PROMPT
+- **#149** — Documenter les commandes `binance-cli` utiles dans le TRADE_PROMPT
+- **#155–#165** — Suite de la revue : variable `e` inutilisée, `__import__`, cleanup backups, helper `_safe_read_json`, monitoring taille state…
+
+Total en fin de journée : 23 tickets ouverts (28 créés − 5 fermés dans la journée).
+
+### Matériel disponible pour l'article
+
+- **Diff PR #140** : `git show bb84b9c --stat` — workflow + 2 scripts bash
+- **Diff PR #122** : `git show b94e0ac --stat` — Phase 8 JSONL dans `prompts/trade_prompt.txt`
+- **Doc tech #122** : `docs/technique/pr-122-cycle-log-jsonl.md` — schéma de la chaîne Phase 3→5→8 avec variables
+- **Doc tech #140** : `docs/technique/pr-140-post-review-trigger-binance-dev-auto.md` — diagramme avant/après du flux review → implémentation
+- **Fichier vivant** : `state/cycle_log.jsonl` — 2 lignes réelles de cycles du 28 mai (commits `363cac6`, `c7b5ee4`)
+- **Scripts** : `dispatch_rec_tickets.sh`, `label_rec_auto.sh` — bon matériel pour illustrer la migration manuelle → auto
+
+### Idée d'angle Medium
+
+**Angle 1 — "De la review au code sans intervention humaine"**
+La journée du 28 mai illustre un pipeline complet : une review tech-lead génère des tickets, les tickets déclenchent automatiquement `binance-dev`, qui ouvre une PR. PR #130 (fix trigger), PR #131 (auto-tag), PR #133 (test recette), PR #140 (bouclage de la boucle). Quatre PR dans la même journée pour construire une chaîne où le travail répétitif est entièrement éliminé. Article sur le design de pipelines "agent-to-agent" — avec les pièges réels (webhook `projects_v2_item` non supporté sur compte perso, race conditions entre dispatches, label `AUTO` comme garde-fou).
+
+**Angle 2 — "Le cycle_log.jsonl : quand git devient la base de monitoring"**
+Stocker les métriques de chaque cycle dans un fichier JSONL commité donne une chose qu'on n'a pas en MongoDB : l'historique est versionné, diff-able, grep-able localement. Article sur les patterns de traçabilité légère pour les projets LLM — MongoDB pour le détail, JSONL pour la vue d'ensemble, logs pour le debug. Trois niveaux de granularité, trois cas d'usage distincts.
+
+---
+
+## 2026-05-25 — Récap quotidien
+
+### PR mergées (3)
+
+#### #106 — [OPT] Phase 1 filtre USDC non tradables + Phase 2 appels 1D couplés par coin
+- **Branche** : `feat/issue-105-filtre-usdc-1d-sequentiel`
+- **Mergée à** : 11:48 (Europe/Paris)
+- **Volume** : +31 / -14 lignes (`prompts/trade_prompt.txt`)
+- **Quoi** : double optimisation du scan marché. Phase 1 ajoute un filtre tradabilité explicite via `binance-cli spot ticker-price` : les coins sans paire USDC valide (STEEM, PEOPLE…) sont éliminés avant tout appel TradingView. Phase 2 regroupe les candidats par groupes de 4 et couple immédiatement l'appel 1D après chaque résultat 4H BUY, plutôt que d'envoyer un second batch massif une fois tous les 4H traités.
+- **Pourquoi c'est intéressant pour Medium** : corrige un bug de rate-limit TradingView (`Expecting value: line 1 column 1`) qui n'était pas évident — la cause réelle était un batch de 9 appels 1D en rafale après 14 appels 4H parallèles. Le fix est architecturalement plus fin que le symptôme.
+- **Doc tech** : [docs/technique/pr-106-filtre-usdc-couplage-1d.md](../technique/pr-106-filtre-usdc-couplage-1d.md)
+
+#### #117 — ci: skip tech-lead-review et doc-tech sur doc/medium-report
+- **Branche** : `ci/skip-doc-medium-report`
+- **Mergée à** : 18:33 (Europe/Paris)
+- **Volume** : +7 / -1 lignes (2 fichiers YAML CI)
+- **Quoi** : ajout de filtres `if:` dans les deux workflows CI (`claude-code-review.yml`, `claude-doc-tech.yml`) pour éviter qu'ils se déclenchent sur la branche `doc/medium-report`. Cette branche accumule uniquement des commits de journal markdown — pas de code Python à reviewer, pas de PR à documenter.
+- **Pourquoi c'est intéressant pour Medium** : bonne illustration du coût invisible des workflows CI sur les branches longues. 7 lignes de YAML qui économisent N appels API à chaque commit de routine nocturne.
+- **Doc tech** : [docs/technique/pr-117-ci-skip-doc-medium-report.md](../technique/pr-117-ci-skip-doc-medium-report.md)
+
+#### #118 — feat(medium): dossier medium-articles + agent medium-articles-manager + CI skip article/*
+- **Branche** : `docs/articles-brainstorm`
+- **Mergée à** : 19:01 (Europe/Paris)
+- **Volume** : +585 / -5 lignes (6 fichiers)
+- **Quoi** : mise en place de l'infrastructure complète pour gérer les articles Medium. Nouvel agent `medium-articles-manager` (277 lignes) qui pilote 3 actions : `/medium new "Titre"` (crée une branche `article/NN-slug`, initialise le brouillon avec frontmatter YAML, ouvre une issue de tracking), `/medium publish NN https://...` (passe le statut à `published`, met à jour l'index README, ferme l'issue), `/medium update-index` (resynchronise le tableau README). Extension du skip CI aux branches `article/*` et `docs/medium-*`. Premier brouillon d'article (`01-setup-projet-prompt-mcp.md`) ajouté en mode plan détaillé.
+- **Pourquoi c'est intéressant pour Medium** : méta-sujet — utiliser un agent Claude pour gérer le cycle de vie des articles qui parlent de Claude. La plomberie (branches, frontmatter, index) est automatisée ; la rédaction reste à l'utilisateur. Pattern "agent = tâches répétitives, humain = fond".
+- **Doc tech** : [docs/technique/pr-118-medium-articles-workflow.md](../technique/pr-118-medium-articles-workflow.md)
+
+### Issues fermées (2)
+- **#105** — [OPT] Phase 1 filtre paires USDC non tradables + Phase 2 appels 1D séquentiels — fermée par PR #106 — [lien](https://github.com/yousmaaza/agent-binance/issues/105)
+- **#119** — [ARTICLE] 01 — Setup d'un bot de trading piloté par Claude + MCP TradingView — fermée à 20:56 (issue de tracking article 01, premier article publié) — [lien](https://github.com/yousmaaza/agent-binance/issues/119)
+- Aucune autre issue fermée aujourd'hui.
+
+### Nouveaux tickets (10)
+
+Tickets créés aujourd'hui — dont 9 `[REC]` auto-créés par `tech-lead-reviewer` (auteur : `github-actions[bot]`) suite à la review PR #107, et 1 ticket utilisateur :
+
+- **#108** — [REC] Clarifier la mécanique de fusion du journal (insertion vs remplacement) — `enhancement` — auteur github-actions[bot]
+- **#109** — [REC] Test extraction URL — `enhancement` — auteur github-actions[bot] *(ticket de test, à fermer)*
+- **#110** — [REC] Clarifier la mécanique de fusion du journal (insertion vs remplacement) — `enhancement` — auteur github-actions[bot] *(doublon de #108)*
+- **#111** — [REC] Clarifier détection et usage de PR_NUMBER en mode CI — `enhancement` — auteur github-actions[bot]
+- **#112** — [REC] Ajouter rappel git-perso dans le mode interactif du daily-recap — `enhancement` — auteur github-actions[bot]
+- **#113** — [REC] Ajouter structure d'articles et bullet-lists dans docs/medium-journal.md — `enhancement` — auteur github-actions[bot]
+- **#114** — [REC] Ajouter gestion d'erreur pour 'gh pr list' dans daily-recap — `enhancement` — auteur github-actions[bot]
+- **#115** — [REC] Ajouter vérification post-checkout de la branche doc/medium-report — `enhancement` — auteur github-actions[bot]
+- **#116** — [REC] Implémenter la déduplification des PR dans les récaps quotidiens — `enhancement` — auteur github-actions[bot]
+- **#119** — [ARTICLE] 01 — Setup d'un bot de trading piloté par Claude + MCP TradingView — `documentation` — auteur yousmaaza *(ticket de tracking article, fermé le soir même)*
+
+### Matériel disponible pour l'article
+- **Diff PR #106** : `git show 92a68a2 --stat -- '*.txt'` — +31/-14 sur `prompts/trade_prompt.txt`
+- **Diff PR #118** : `git show 10b37b5 --stat` — +585/-5 sur 6 fichiers (agent, commands, workflows, articles)
+- **Doc tech #106** : `docs/technique/pr-106-filtre-usdc-couplage-1d.md` — diagramme avant/après du pattern de regroupement
+- **Doc tech #118** : `docs/technique/pr-118-medium-articles-workflow.md` — architecture en tableau (4 composants)
+- **Brouillon article 01** : `docs/medium-articles/01-setup-projet-prompt-mcp.md` — plan complet du 1er article, status `published` en fin de journée
+- **Diagramme** : `docs/visuals/` (à générer si besoin avec `/generate-diagrams`)
+- **Screenshot Telegram** : "à faire" — notification Phase 2 avec le nouveau compteur `coins_1d_count`
+
+### Idée d'angle Medium
+
+**Angle 1 — "Corriger un rate-limit qu'on ne comprend pas tout de suite"**
+L'erreur `Expecting value: line 1 column 1` retournée par TradingView MCP ressemble à un bug de parsing JSON. C'est en réalité un throttle silencieux : TradingView renvoie une réponse vide quand le débit dépasse son seuil. Le fix (groupes de 4, couplage 4H+1D) est d'ordre architectural, pas d'ordre de code. Bon exemple de debugging à rebours — symptôme trompeur → cause profonde dans la stratégie d'appels parallèles.
+
+**Angle 2 — "Automatiser la plomberie pour se concentrer sur l'écriture"**
+La PR #118 pose une infrastructure complète pour publier des articles Medium : branches git, frontmatter YAML, index README, issues GitHub — le tout piloté par un agent Claude. Le paradoxe plaisant : un agent LLM gère les métadonnées des articles qui décrivent comment on utilise des agents LLM. Article court sur la limite saine entre ce qu'on délègue à l'agent (tâches répétitives sans créativité) et ce qu'on garde (fond, angle, prose).
+
+---
+
+## 2026-05-24 — Récap quotidien
+
+### PR mergées (2)
+
+#### #100 — [M99] Supprimer le fallback API — ne pas charger ANTHROPIC_API_KEY dans le bot
+- **Quoi** : retrait du chemin de bascule abonnement→API. Le bot tourne désormais en abonnement Claude Code exclusivement. La variable `ANTHROPIC_API_KEY` n'est plus lue par le runtime.
+- **Pourquoi c'est intéressant pour Medium** : un revirement assumé. 48h plus tôt (22 mai), le fallback API avait été ajouté comme filet de sécurité. Avec le recul, il introduisait une asymétrie de coût et de complexité. Le retirer simplifie la facturation et le debug. Pattern "supprimer ce qu'on a ajouté hier" = signe de maturité, pas de gaspillage.
+
+#### #104 — [M103] Optimiser Phase 2 — appel 1D filtré sur candidats 4h BUY
+- **Quoi** : Phase 2 ne lance plus l'analyse 1d sur tous les coins de l'univers, mais uniquement sur ceux qui ont déjà un signal 4h BUY ou STRONG_BUY. Pour les autres, on saute directement à la décision HOLD/SKIP.
+- **Pourquoi c'est intéressant pour Medium** : exemple de filtre en cascade qui réduit les appels MCP de ~50%. Bonus narratif : ce changement vient d'une review tech-lead-reviewer qui avait flaggé la duplication d'analyse.
+
+### Issues fermées (2)
+- **#99** — fermée par #100
+- **#103** — fermée par #104
+
+### Idée d'angle Medium
+"Supprimer ce qu'on a ajouté hier" — la PR #100 retire le fallback API ajouté 48h plus tôt par #50. Article court sur l'importance d'oser défaire ses propres décisions quand le contexte change.
+
+---
+
+## 2026-05-23 — Récap quotidien
+
+### PR mergées (5)
+
+#### #80 — [M79] Forcer claude-sonnet-4-6 sur abonnement et API fallback
+- **Quoi** : pin explicite du modèle Sonnet 4.6 dans tous les appels Claude (subprocess principal + agents). Évite que la CLI choisisse automatiquement Haiku ou Opus selon le contexte.
+
+#### #82 — [M81] Afficher modèle et mode (abonnement/API) dans les notifications de cycle
+- **Quoi** : chaque notification Telegram de démarrage de cycle indique désormais quel modèle Claude tourne et en quel mode (abonnement vs API).
+- **Pourquoi c'est intéressant** : transparence sur ce qui consomme quoi. Petit changement, gros impact ergonomique.
+
+#### #87 — [M86] Migrer agents et workflows CI/CD vers claude-haiku
+- **Quoi** : bascule des workflows CI (tech-lead-reviewer, doc-tech, post-review) sur claude-haiku-4-5. Sonnet reste sur le bot de trading où la qualité de décision prime.
+- **Pourquoi c'est intéressant pour Medium** : différenciation explicite entre tâches "à enjeu" (Sonnet) et tâches "outillage" (Haiku, ~10x moins cher). Pattern de cost-engineering pertinent pour tout projet LLM.
+
+#### #91 — [M90] Commande /eval : rapport performance + coût abonnement vs API
+- **Quoi** : nouvelle commande Telegram `/eval` qui produit un rapport comparatif consommation/coût entre les deux modes (abonnement Claude Code vs API pay-per-use).
+
+#### #98 — [M97] Fallback API : reprendre la session Claude via --resume
+- **Quoi** : quand le fallback API se déclenche, la session Claude est reprise via `--resume <session-id>` plutôt que repartir de zéro. Préserve le contexte et le travail déjà fait.
+
+### Issues fermées (5)
+- **#79**, **#81**, **#86**, **#90**, **#97** (chacune par sa PR)
+
+### Idée d'angle Medium
+"Le jour où j'ai mappé les coûts LLM pièce par pièce" — récit de la journée du 23 mai qui a vu l'ajout de la transparence modèle/mode (#82), la migration des workflows sur Haiku (#87), et la commande /eval (#91). Angle cost-engineering pour projets LLM.
+
+---
+
+## 2026-05-22 — Récap quotidien
+
+### PR mergées (6)
+
+#### #43 — [M1] Supprimer écriture orpheline de state/pending_callback.json
+- **Quoi** : nettoyage. Le fichier `pending_callback.json` n'était plus utilisé depuis la v2 mais était encore écrit à chaque cycle.
+
+#### #46 — [REC] Ajouter prompt_version dans le fallback Mongo erreur
+- **Quoi** : quand un cycle plante et que le fallback Mongo écrit une trace minimale, le champ `prompt_version` (sha1 du prompt) est désormais inclus. Permet de corréler les erreurs à la version exacte du TRADE_PROMPT.
+
+#### #48 — [M1] Suivre le coût API par cycle et exposer via /cout
+- **Quoi** : nouvelle commande Telegram `/cout` qui agrège le coût USD par cycle (champ `total_cost_usd` du stream-json Claude) et présente une stats hebdo/mensuelle.
+
+#### #50 — [M1] Fallback abonnement→API Sonnet si ressource insuffisante
+- **Quoi** : si le subprocess Claude plante avec un message de type "session limit", le bot retente automatiquement avec `ANTHROPIC_API_KEY` (API pay-per-use). Filet de sécurité contre les blocages d'abonnement.
+- **Pourquoi c'est intéressant** : design défensif typique. Ce fallback sera retiré 48h plus tard par #100 — voir cycle de décision côté 24 mai.
+
+#### #56 — [M1] Phase 0 — Trailing stop : remonter le stop-loss si le prix a progressé
+- **Quoi** : nouvelle logique en Phase 0. Pour chaque position ouverte, si le prix actuel est > entry_price × 1.02, le stop-loss est remonté à break-even ou au-dessus. Verrouille du gain plutôt que de risquer un retour au stop initial.
+- **Pourquoi c'est intéressant pour Medium** : c'est une vraie amélioration de stratégie de trading, pas juste de l'ingénierie. Bonne section technique pour un article orienté finance/trading.
+
+#### #65 — [hotfix] Ajouter session limit dans _RESOURCE_ERROR_PATTERNS
+- **Quoi** : extension du pattern matcher d'erreurs de ressource pour inclure "session limit" dans les triggers de fallback API. Hotfix après détection d'un cas non couvert par #50.
+
+### Issues fermées (6)
+- **#4**, **#26**, **#47**, **#49**, **#55** (par leurs PR respectives) + 1 hotfix
+
+### Idée d'angle Medium
+"Trailing stop, cost tracking, résilience : la journée la plus dense" — 6 PR sur des sujets variés (stratégie, observabilité, résilience). Format possible : "1 journée, 6 leçons" en mode listicle.
+
+---
