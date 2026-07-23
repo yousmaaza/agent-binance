@@ -10,6 +10,99 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-23
+
+### PRs mergées (0)
+
+Aucune PR mergée le 23 juillet. Journée entièrement consacrée à l'exécution du plan de déploiement VM — 7 commits directs sur `main` (hors workflow PR), qui décrivent pas à pas le démarrage du bot sur une VPS Hostinger en production.
+
+---
+
+### Commits notables (7, directs sur `main`)
+
+#### `54a6aba` — Pivot : Oracle Cloud → Hostinger
+
+- **Heure** : 14:20 CEST
+- **Contexte** : la veille (22 juillet), l'utilisateur avait choisi Oracle Always Free (ARM Ampere A1) pour héberger le bot. Ce matin, Oracle bloque toutes les tentatives de provisioning avec une erreur de capacité indisponible sur `EU-PARIS-1-AD-1`. Après quelques tentatives, décision de pivoter vers une VPS Hostinger payante en x86_64.
+- **Impact** : supprime la contrainte ARM (kraken-cli compilé natif ARM, Claude CLI ARM) et simplifie le déploiement. Le reste de l'architecture — spec polling-only, venv Python 3.11, systemd — reste strictement identique.
+- **Fichiers** : `docs/superpowers/plans/2026-07-22-vm-oracle-hebergement-autonome.md` (+44 / -21 lignes), spec mise à jour en conséquence.
+
+#### `f7061eb` — Fix : chemin MCP `telegram-assistant` portable
+
+- **Heure** : 15:08 CEST
+- **Problème** : `.mcp.json` contenait un chemin absolu Mac hardcodé (`/Users/yousrimaazaoui/.claude/mcp-servers/...`). Sur la VM Linux, ce chemin n'existe pas — le serveur MCP `telegram-assistant` (qui permet à l'agent sous-processus d'envoyer des notifications Telegram) serait introuvable.
+- **Fix** : remplacement par `$HOME/.claude/mcp-servers/...`. Une ligne modifiée, 0 régression côté Mac.
+
+#### `5dc6f8f` — Ajout : fichier systemd `deploy/webhook-bot.service`
+
+- **Heure** : 17:58 CEST
+- **Contenu** : unité systemd (`Type=simple`, `Restart=on-failure`, `RestartSec=5`) qui démarre `webhook_server.py` via le venv `.venv/bin/python` et redirige stdout/stderr vers `state/daemon.log`. Activable avec `systemctl enable --now webhook-bot` — remplace définitivement le `nohup ... &` utilisé depuis le début du projet.
+- **Fichier créé** : `deploy/webhook-bot.service` (20 lignes).
+
+#### `9183af2` — Fix : service systemd sous `botuser` (non-root)
+
+- **Heure** : 18:08 CEST
+- **Obstacle découvert** : `claude --dangerously-skip-permissions` refuse de s'exécuter en tant que root ou via sudo. Le sous-processus Claude (lancé par `run_trade_workflow()`) plante immédiatement si l'utilisateur système est `root`.
+- **Fix** : `User=botuser` dans le `.service` — la VM tourne en root par défaut, l'utilisateur `botuser` dédié est créé manuellement sur la VM. Le `WorkingDirectory` et les paths deviennent `/home/botuser/agent-binance/`.
+
+#### `6e14a46` — Docs : corrections plan (kraken-cli install, auth, noms de variables)
+
+- **Heure** : 18:02 CEST
+- **Contenu** : le plan est mis à jour pour refléter les vrais détails de l'installation de `kraken-cli` (via `cargo install`, pas de binaire pré-compilé x86_64 disponible), la procédure d'authentification distincte (séparée du binaire), et les noms exacts des variables d'environnement.
+
+#### `d40e2ae` — Docs : plan enrichi des vrais résultats d'exécution
+
+- **Heure** : 18:18 CEST
+- **Contenu** : réécriture substantielle du plan (+115 / -77 lignes) pour intégrer les résultats réels de chaque tâche : ce qui a fonctionné, ce qui a nécessité un ajustement, les commandes exactes utilisées. Le plan devient un compte-rendu d'exécution, pas seulement un plan prospectif.
+
+#### `2c4b4b0` — Docs : Task 10 validée — reboot survit, offset persisté
+
+- **Heure** : 18:19 CEST
+- **Validation finale** : la dernière tâche du plan de déploiement est cochée. Le bot survit à un reboot du serveur (`systemctl restart webhook-bot`), l'offset Telegram (position de lecture du flux de messages) est bien persisté entre les redémarrages. Le déploiement Hostinger est **terminé**.
+
+---
+
+### Issues fermées (0)
+
+Aucune issue fermée le 23 juillet. L'exécution du plan de déploiement s'est faite directement via des commits, sans passer par le board GitHub.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé le 23 juillet.
+
+---
+
+### Cycles d'auto-trading observés
+
+6 cycle logs automatiques : `00:05`, `04:05`, `08:05`, `12:05`, `16:05`, `20:05` UTC — tous présents. Le bot tournait encore sur le Mac ce matin lors du déploiement Hostinger ; la bascule vers la VM s'est faite en cours de journée.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "Oracle vs Hostinger : quand le gratuit coûte cher"**. L'utilisateur choisit Oracle Always Free la veille pour héberger son bot gratuitement. Le lendemain matin, Oracle répond "insufficient capacity" sur toutes les tentatives de provisioning dans sa région. La décision est rapide : basculer sur une VPS Hostinger payante à quelques euros par mois plutôt que perdre du temps. L'article peut explorer le faux calcul du "gratuit" dans l'infra cloud — le coût réel est le temps passé à déboguer des erreurs de disponibilité, pas le prix affiché.
+
+> **Angle 2 — "claude --dangerously-skip-permissions refuse root"**. Un détail technique inattendu : le CLI Claude, invoqué avec le flag `--dangerously-skip-permissions` (nécessaire pour que l'agent sous-processus puisse lire des fichiers sans confirmation), refuse de tourner en root. Ce n'est pas documenté de façon évidente — l'utilisateur le découvre en testant le systemd service. La solution est de créer un utilisateur `botuser` dédié. Cet incident illustre le principe de moindre privilège appliqué de façon inattendue : l'outil lui-même force la bonne pratique. Article sur les sécurités implicites que les outils modernes imposent.
+
+> **Angle 3 — "Un bot, un service systemd"**. Le passage de `nohup python3 ...  &` à une unité systemd proprement configurée (`Restart=on-failure`, `User=botuser`, logs redirigés, activation au boot) marque le moment où un side-project devient un service. Le code n'a pas changé — c'est l'infrastructure qui change de statut. Article narratif sur le "graduation" d'un projet personnel : quand on décide que ça mérite d'être géré comme un service, pas comme un script lancé à la main.
+
+> **Angle 4 — "Le `.mcp.json` comme frontière de portabilité"**. Une ligne : le chemin absolu Mac dans `.mcp.json`. Sans ce fix, le serveur MCP `telegram-assistant` est introuvable sur la VM et les notifications Telegram du sous-processus Claude ne partent pas. La migration force à expliciter toutes les dépendances implicites à l'environnement local. Article sur ce que la migration vers une VM révèle des "dettes de portabilité" accumulées silencieusement dans un projet.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **0**
+- Issues fermées : **0**
+- Tickets créés : **0**
+- Commits directs sur `main` : **7** (hors workflow PR habituel)
+- Événement majeur : **déploiement bot en production sur VPS Hostinger** ✓
+- Cycles auto-trading : **6** (logs visibles, couverture complète)
+
+---
+
 ## 2026-07-22
 
 ### PRs mergées (0)
