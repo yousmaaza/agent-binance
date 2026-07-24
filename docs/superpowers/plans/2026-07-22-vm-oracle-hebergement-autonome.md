@@ -552,39 +552,46 @@ Expected : aucun résultat.
 
 ### Task 12: Bascule finale — arrêter le Mac, mettre à jour `CLAUDE.md`
 
+**Fait le 2026-07-24**, avant la fin complète de la semaine d'observation (Task 11) — décision de l'utilisateur d'avancer la bascule documentaire pendant que l'observation se poursuit en parallèle (4 cycles auto déjà validés sans erreur au moment de la bascule).
+
 **Files:**
-- Modify: `CLAUDE.md` (sections Stack, Workflow, Notes contextuelles)
+- Modify: `CLAUDE.md` (sections Stack, Déploiement, Workflow, Notes contextuelles, Debug)
 
 **Interfaces:**
-- Consumes: validation de la Task 11
+- Consumes: validation de la Task 10 (Task 11 en cours, pas encore terminée sur les 7 jours complets)
 
-- [ ] **Step 1 [Action utilisateur] : Arrêter définitivement le process sur le Mac**
+- [x] **Step 1 [Action utilisateur] : Arrêter définitivement le process sur le Mac**
 
 ```bash
 pkill -f webhook_server.py
 ```
 
-Ne pas relancer — la VM est désormais l'unique instance en production.
+Déjà fait avant la Task 10 (pour éviter le double-polling pendant les tests) — pas relancé depuis.
 
-- [ ] **Step 2 [Repo local] : Mettre à jour `CLAUDE.md`**
+- [x] **Step 2 [Repo local] : Mettre à jour `CLAUDE.md`**
 
-Modifier la section "Stack" pour indiquer que le process live tourne sur la VM Oracle (via systemd), pas sur le Mac (`nohup`). Modifier "Notes contextuelles" pour remplacer la mention "le bot est destiné à tourner sur le Mac... plan VPS Hetzner non implémenté" par la description de l'architecture VM Oracle effectivement déployée. Ajouter dans le "Workflow type d'une modification" une étape de déploiement post-merge :
+Nouvelle section "Déploiement — Prod sur VPS, dev sur le Mac" ajoutée après "Stack". "Notes contextuelles" mise à jour. "Workflow type d'une modification" scindé en dev local (Mac) / déploiement prod (VPS). Section Debug mise à jour avec les chemins VPS. Commit `6d89cc0`.
+
+Étape de déploiement documentée (remplace le brouillon initial ci-dessous, adapté VPS Hostinger/`botuser` au lieu de VM Oracle/`ubuntu`) :
 
 ```markdown
-6. **Déployer sur la VM** (après merge d'une PR sur main) :
+4. **Déployer sur la VPS** (après merge d'une PR sur main) :
    ```bash
-   ssh -i <clé> ubuntu@<IP_VM> "cd ~/agent-binance && git pull origin main && sudo systemctl restart webhook-bot"
+   ssh -i <clé> botuser@<IP_VPS> "cd ~/agent-binance && git pull origin main"
+   ssh -i <clé> root@<IP_VPS> "systemctl restart webhook-bot"
    ```
 ```
 
-- [ ] **Step 3 [Repo local] : Committer**
+- [x] **Step 3 [Repo local] : Committer**
 
 ```bash
 cd /Users/yousrimaazaoui/Documents/projets/perso/agent-binance
 git add CLAUDE.md
-git commit -m "docs: CLAUDE.md — bot en production sur VM Oracle, Mac = dev uniquement"
+git commit -m "docs: CLAUDE.md — bascule finale, prod sur VPS Hostinger, Mac = dev uniquement"
 git push origin main
 ```
+
+Un guide de setup complet et autonome a aussi été ajouté (hors périmètre initial de cette tâche, demandé séparément par l'utilisateur) : `deploy/README.md`, référencé depuis `CLAUDE.md` et `README.md`.
 
 ---
 
