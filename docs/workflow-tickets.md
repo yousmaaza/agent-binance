@@ -4,47 +4,28 @@ Ce document explique comment un ticket GitHub devient du code mergé sur `main` 
 
 ## Vue d'ensemble
 
-```
-Ticket créé (manuel ou ticket-manager)
-        │
-        ├─ Sans label AUTO ────────► invoquer binance-dev manuellement (Claude Code local)
-        │
-        └─ Label "AUTO" ───────────► auto-dispatch-on-auto-label.yml
-                                            │
-                                            ▼
-                                     binance-dev-auto.yml (CI, mode AUTO)
-                                            │  crée branche feat/issue-N-slug, implémente, ouvre la PR
-                                            ▼
-                              claude-code-review.yml (auto sur "PR opened")
-                                            │  poste un commentaire de review (tech-lead-reviewer)
-                                            ▼
-                              claude-post-review.yml (auto après la review)
-                                     ├─ Job 1 : corrige les 🛑 bloquants directement sur la branche PR
-                                     └─ Job 2 : crée un ticket [REC] (label REC-AUTO) par recommandation ⚠️/💡
-                                            │
-                                            ▼
-                              auto-dispatch-on-auto-label.yml (label REC-AUTO)
-                                            │
-                                            ▼
-                                     binance-dev-auto.yml (CI, mode REC-AUTO)
-                                            │  implémente SUR LA BRANCHE PR EXISTANTE, ferme le ticket [REC]
-                                            ▼
-                              rec-complete-review.yml (sur fermeture d'un ticket REC-AUTO)
-                                            │  si tous les [REC] de la PR sont fermés → relance la review
-                                            └─ sinon attend les autres [REC]
-                                            ▼
-                                     (boucle jusqu'à review propre)
-                                            │
-                                            ▼
-                              L'UTILISATEUR MERGE LA PR (jamais automatique)
-                                            │
-                                            ▼
-                              claude-doc-tech.yml (auto sur "PR merged")
-                                     génère docs/technique/pr-N-slug.md, met à jour SPEC.md + README.md,
-                                     miroir GitHub Wiki (best-effort)
-                                            │
-                                            ▼
-                              Déployer sur la VPS : gh workflow run deploy-vps.yml (manuel, voir deploy/README.md)
+```mermaid
+flowchart TD
+    A[Ticket créé<br/>manuel ou ticket-manager] --> B{Label AUTO ?}
+    B -->|Non| C[binance-dev invoqué manuellement<br/>Claude Code local]
+    B -->|Oui| D[auto-dispatch-on-auto-label.yml]
+    D --> E["binance-dev-auto.yml — mode AUTO<br/>crée branche feat/issue-N-slug + ouvre la PR"]
+    C --> F[PR ouverte]
+    E --> F
+    F --> G["claude-code-review.yml<br/>tech-lead-reviewer poste un commentaire"]
+    G --> H[claude-post-review.yml]
+    H --> I["Job 1 — fix-bloquants<br/>corrige les 🛑 directement sur la branche PR"]
+    H --> J["Job 2 — create-rec-tickets<br/>1 ticket [REC] (label REC-AUTO) par ⚠️/💡"]
+    J --> K[auto-dispatch-on-auto-label.yml<br/>label REC-AUTO]
+    K --> L["binance-dev-auto.yml — mode REC-AUTO<br/>implémente sur la branche PR existante,<br/>ferme le ticket [REC]"]
+    L --> M{"rec-complete-review.yml<br/>tous les [REC] de la PR fermés ?"}
+    M -->|Non| N[Attend les autres tickets REC ouverts]
+    M -->|Oui| G
+    I --> O{Review propre ?}
+    O -->|Non, nouveaux bloquants/REC| G
+    O -->|Oui| P["Merge de la PR<br/>toujours manuel"]
+    P --> Q["claude-doc-tech.yml<br/>génère docs/technique/, met à jour SPEC.md, miroir Wiki"]
+    Q --> R["Déploiement VPS<br/>gh workflow run deploy-vps.yml (manuel)"]
 ```
 
 En parallèle, deux routines cloud planifiées (pas des GitHub Actions — voir `/schedule`) tournent chaque jour : une analyse `state/cycle_log.jsonl` pour proposer des tickets `[CONFIG]` si la stratégie mérite un ajustement, une autre alimente `docs/medium-journal.md` (branche `doc/medium-report`) à partir des PR mergées et tickets fermés du jour.
