@@ -90,6 +90,8 @@ Les seules exceptions autorisées à une modification directe sur `main` :
 - Mise à jour de `CLAUDE.md` lui-même (méta-règles, pas de code)
 - Fichiers de configuration non-code (`config.json`) sur instruction explicite de l'utilisateur
 
+Une partie de ce workflow peut tourner en automatique (label `AUTO`/`REC-AUTO` sur une issue → CI dispatche `binance-dev` sans intervention manuelle, review automatique, boucle de correction) — détail complet dans [`docs/workflow-tickets.md`](docs/workflow-tickets.md). Le merge de la PR reste dans tous les cas une action manuelle de l'utilisateur.
+
 ❌ Commits directs sur `main`, `git add .`, `git push` sans branche et sans PR : **interdits**.
 
 
