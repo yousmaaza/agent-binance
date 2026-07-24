@@ -2,7 +2,7 @@
 
 Bot de trading Binance piloté par Telegram. Architecture polling-only : aucun port entrant, aucun tunnel.
 
-> Ce fichier contient les règles. Pour l'historique des décisions, incidents et pièges découverts en pratique (non-obvious, pas de simples règles), voir [`MEMORY.md`](MEMORY.md).
+> Ce fichier contient les règles. Pour l'historique des décisions, incidents et pièges découverts en pratique (non-obvious, pas de simples règles), voir [`.claude/MEMORY.md`](.claude/MEMORY.md).
 
 ## Stack
 
