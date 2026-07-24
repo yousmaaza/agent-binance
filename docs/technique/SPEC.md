@@ -310,6 +310,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#371](pr-371-nettoyer-phase4-sizing.md) | 2026-07-24 | [M1-bis] Nettoyer Phase 4 prompt : suppression de 56 lignes de pseudo-code dupliquant le script Python `phase4_sizing.py` ; prompt ramené à orchestration pure (input JSON → appel script → lecture output), cohérent avec PR #369 (Phase 5) |
 | [#363](pr-363-abaisser-min-volume-usdc.md) | 2026-07-21 | [M1] Configuration : abaissement de `min_volume_usdc` de 1M à 500k USDC dans `config.json` — élargit l'univers de coins tradables en Phase 1 de 3 (XBT, ETH, SOL) à 5 (+ XRP, ADA), gain net observable : ADA devient candidat stable (XRP déjà inclus via `portfolio_coins`) |
 | [#361](pr-361-phase8-trade-history-git-add.md) | 2026-07-20 | [BUG] Phase 8 : staging explicite de `state/trade_history.json` — ajout `git add state/trade_history.json` dans le script bash généré par `phase8_cycle_log.py`, garantissant que les deux fichiers d'état (`cycle_log.jsonl` + `trade_history.json`) sont committés ensemble à chaque cycle, éliminant le drift silencieux |
 | [#356](pr-356-fiabilite-cycles.md) | 2026-07-05 | [FIX] Fiabilité cycles — autostash push + détection quota stdout : ajout du flag `--autostash` à `git pull --rebase` dans Phase 8 pour éviter les conflits silencieux avec `state/trade_history.json` ; extension détection erreur quota en vérifiée aussi stdout via `is_resource_error(stdout_path)` pour capturer "You've hit your session limit" qui apparaît en stdout, pas stderr |
