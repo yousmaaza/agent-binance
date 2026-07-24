@@ -5,8 +5,23 @@ Bot de trading Binance piloté par Telegram. Architecture polling-only : aucun p
 ## Stack
 
 - `binance-bot/webhook_server.py` : process Python unique qui poll Telegram en long-polling (timeout 30s) ET déclenche un sous-processus Claude (`claude --print --dangerously-skip-permissions <prompt>`) à chaque commande `/trade` ou tous les 4h via l'auto-scheduler. L'invocation du CLI exchange utilise `kraken-cli` (`~/.cargo/bin/kraken`).
-- Le sous-processus Claude reçoit `TRADE_PROMPT` (variable à la racine de `webhook_server.py`) qui décrit 7 phases d'exécution.
+- Le sous-processus Claude reçoit `TRADE_PROMPT` (variable à la racine de `webhook_server.py`) qui décrit 8 phases d'exécution (Phase 0 à Phase 8, cf. `binance-bot/core/phases/`).
 - État persistant dans `state/` (JSON files). Logs dans `logs/`. MongoDB Atlas pour la collection `cycles`.
+
+## Déploiement — Prod sur VPS, dev sur le Mac
+
+**Depuis le 2026-07-24, le bot en production tourne exclusivement sur une VPS Hostinger (Ubuntu 24.04, x86_64), via systemd (`deploy/webhook-bot.service`) — pas sur le Mac.** Le Mac reste l'environnement de développement (branches, PR, `binance-dev`, tests ponctuels en local) mais ne fait plus tourner d'instance `webhook_server.py` en continu.
+
+Points clés du déploiement (détail complet dans `deploy/README.md`) :
+- Le service tourne sous un **utilisateur non-root dédié** (`botuser`) — `claude --dangerously-skip-permissions` refuse explicitement de s'exécuter en root/sudo.
+- Auth Claude Code CLI : abonnement Pro (`claude auth login`), pas de clé API — surveiller `logs/stderr/cycle_*.log` pour tout signe de rate-limit/quota partagé avec l'usage interactif éventuel sur le Mac.
+- Auth `kraken-cli` : store séparé du `.env` du projet (`~/.config/kraken/config.toml` sur Linux), à copier/maintenir indépendamment.
+- Déployer une mise à jour après merge sur `main` :
+  ```bash
+  ssh -i <clé> botuser@<IP_VPS> "cd ~/agent-binance && git pull origin main"
+  ssh -i <clé> root@<IP_VPS> "systemctl restart webhook-bot"
+  ```
+- Ne jamais relancer `webhook_server.py` sur le Mac en parallèle de la VPS (double polling Telegram = risque de double exécution de commandes).
 
 ## Principes généraux de développement
 
@@ -115,28 +130,42 @@ L'auto-scheduler vit dans `main_loop()` de `webhook_server.py` — il déclenche
 
 ## Workflow type d'une modification
 
+**Développement (Mac, local)** :
+
 0. **Activer le venv + profil perso** (une fois par session shell) :
    ```bash
    source .venv/bin/activate && git-perso
    ```
 1. **Modifier `binance-bot/webhook_server.py`** ou `config.json`
 2. **Test syntaxe Python** : `python -c "import ast; ast.parse(open('binance-bot/webhook_server.py').read())"` (le `python` du venv = 3.11)
-3. **Redémarrer le bot** :
+3. **Test local ponctuel (optionnel)** — le Mac ne fait plus tourner d'instance en continu, mais on peut lancer le bot en foreground pour un test rapide :
    ```bash
-   pkill -f webhook_server.py
-   nohup .venv/bin/python -u binance-bot/webhook_server.py >> state/daemon.log 2>&1 &
+   pkill -f webhook_server.py    # au cas où une instance de test tournerait déjà
+   .venv/bin/python -u binance-bot/webhook_server.py
    ```
-4. **Vérifier le startup** : `tail -10 state/daemon.log` doit montrer "🚀 Bot v2 démarré" et la ligne "Prochain cycle auto"
-5. **Test fonctionnel** : envoyer `/status` depuis Telegram → réponse en < 5s
+   Arrêter avec Ctrl+C une fois le test terminé — ne pas laisser tourner en `nohup` sur le Mac.
+
+**Déploiement en production (après merge d'une PR sur `main`)** :
+
+4. **Déployer sur la VPS** (voir `deploy/README.md` pour le détail) :
+   ```bash
+   ssh -i <clé> botuser@<IP_VPS> "cd ~/agent-binance && git pull origin main"
+   ssh -i <clé> root@<IP_VPS> "systemctl restart webhook-bot"
+   ```
+5. **Vérifier le redémarrage** : `ssh -i <clé> botuser@<IP_VPS> "tail -10 ~/agent-binance/state/daemon.log"` doit montrer "🚀 Bot v2 démarré" et la ligne "Prochain cycle auto"
+6. **Test fonctionnel** : envoyer `/status` depuis Telegram → réponse en < 5s
 
 
 ## Debug d'un cycle qui plante
 
-1. `tail -20 state/daemon.log` → erreur côté webhook_server
-2. `ls -lt logs/stderr/ | head -5` → identifier le dernier cycle qui a échoué
-3. `cat logs/stderr/cycle_YYYYMMDD_HHMMSS.log` → erreur Claude/MCP/Binance
+Les logs sont sur la VPS en production (`ssh botuser@<IP_VPS>`), pas sur le Mac — préfixer les commandes ci-dessous par SSH si le bot tourne en prod.
+
+1. `tail -20 ~/agent-binance/state/daemon.log` → erreur côté webhook_server
+2. `ls -lt ~/agent-binance/logs/stderr/ | head -5` → identifier le dernier cycle qui a échoué
+3. `cat ~/agent-binance/logs/stderr/cycle_YYYYMMDD_HHMMSS.log` → erreur Claude/MCP/Kraken
 4. Si Mongo configuré : interroger la collection `cycles` filtrée par `status: "error"`
 5. Si le lock est resté coincé (`agent_lock.json` avec `running: true`) : envoyer `/reset` depuis Telegram
+6. Voir aussi `deploy/README.md` pour les pièges spécifiques VPS (utilisateur non-root, auth Kraken séparée, identité git)
 
 ## Quand modifier le `TRADE_PROMPT`
 
@@ -190,5 +219,5 @@ Ces classifications permettent de :
 ## Notes contextuelles
 
 - L'utilisateur est francophone. Toutes les notifications Telegram et les `explanation_fr` doivent être en français vulgarisé (sans jargon crypto).
-- Le bot est destiné à tourner sur le Mac de l'utilisateur. Un plan de déploiement VPS Hetzner existait précédemment mais n'est pas implémenté — ne pas y revenir sans demande explicite.
-- L'environnement Python du projet est un venv `.venv/` (Python 3.11) à la racine. Les dépendances viennent de `requirements.txt` (runtime) et `requirements-dev.txt` (review). Ne plus utiliser le Python global `anaconda3` — il peut diverger en version.
+- Le bot en production tourne sur une VPS Hostinger (cf. section "Déploiement" plus haut et `deploy/README.md`) — le Mac est l'environnement de développement uniquement, ne fait plus tourner d'instance continue.
+- L'environnement Python du projet est un venv `.venv/` (Python 3.11) à la racine, aussi bien sur le Mac (dev) que sur la VPS (prod, utilisateur `botuser`). Les dépendances viennent de `requirements.txt` (runtime) et `requirements-dev.txt` (review). Ne plus utiliser le Python global `anaconda3` — il peut diverger en version.
