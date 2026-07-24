@@ -10,6 +10,88 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-24
+
+### PRs mergées (2)
+
+#### PR #369 — [M1] Refactorer Phase 5 en script Python déterministe
+
+- **Heure de merge** : 18:09 UTC
+- **Branche** : `feat/issue-364-refactor-phase5-script-deterministe`
+- **Issue fermée** : #364
+- **Fichiers modifiés** : `binance-bot/core/phases/phase5_execution.py` (+163 / -45), `prompts/phases/phase5_execution.txt` (-40)
+
+La Phase 5 (exécution des ordres) était jusqu'à présent décrite intégralement en bash dans le prompt `phase5_execution.txt` — Claude interprétait le texte et exécutait les appels Kraken en direct à chaque cycle (re-fetch prix, check drift, BUY MARKET, query fill, pose du SL), sans aucune ligne de code déterministe ni possibilité de test.
+
+Cette PR déplace toute la logique vers `phase5_execution.py` (Python pur). Le prompt devient un orchestrateur léger : écrire l'input JSON, appeler le script, lire l'output JSON — même pattern que les Phases 3/4 déjà refactorisées. Les seuils (`price_deviation_max_pct`, calcul TP/SL) sont strictement inchangés. La Phase 5 devient désormais testable indépendamment de Claude, via un harness `fake_kraken.py` défini dans la spec du jour (voir ci-dessous).
+
+#### PR #371 — [M1-bis] Nettoyer phase4_sizing.txt (pseudo-code dupliqué)
+
+- **Heure de merge** : 18:09 UTC
+- **Branche** : `feat/issue-370-nettoyer-phase4-sizing`
+- **Issue fermée** : #370 (label `AUTO`)
+- **Fichiers modifiés** : `prompts/phases/phase4_sizing.txt` (-56 lignes de pseudo-code)
+
+Constat identifié pendant l'implémentation du ticket #364 : le prompt `phase4_sizing.txt` décrivait encore 56 lignes de pseudo-code (stop ATR, TP reward:risk, arrondis Kraken) alors que `phase4_sizing.py` les implémentait déjà en Python depuis plusieurs semaines. Documentation désynchronisée du code réel.
+
+Aucune logique Python touchée. Le prompt a été ramené à son rôle réel : construire l'input JSON, appeler le script, relire l'output. Même pattern que Phase 5, même journée.
+
+---
+
+### Issues fermées (2)
+
+- **#364** — [M1] Refactorer Phase 5 en script Python déterministe — fermée à 18:09 UTC (créée le matin même à 12:43 UTC). Vie complète en moins de 6 heures.
+- **#370** — [M1-bis] Nettoyer phase4_sizing.txt (pseudo-code dupliqué) — fermée à 18:09 UTC (créée à 13:02 UTC, label `AUTO`). Traitée automatiquement par l'agent `binance-dev` via le pipeline AUTO.
+
+---
+
+### Nouveaux tickets créés (2)
+
+- **#364** — [M1] Refactorer Phase 5 — créé à 12:43 UTC, label `enhancement`. Déclenché par la spec de testabilité rédigée le matin même.
+- **#370** — [M1-bis] Nettoyer phase4_sizing.txt — créé à 13:02 UTC, labels `enhancement, AUTO`. Constat adjacent signalé dans la PR #369 et converti automatiquement en issue — premier exemple observable du pipeline `constat → issue AUTO → branche → PR → merge` bouclé dans la même journée.
+
+---
+
+### Commits directs notables sur `main`
+
+En parallèle du workflow PR, 11 commits directs (docs/ci) poussés sur `main` :
+
+- **`4a33923`** — `ci: ajouter le déploiement manuel sur la VPS (workflow_dispatch)` : premier pipeline GitHub Actions du projet. `gh workflow run deploy-vps.yml` déclenche `git pull` + `systemctl restart webhook-bot` sur la VPS via SSH — élimine les SSH manuels de routine.
+- **`4855973`** — `docs: spec — tests d'intégration pour les phases de trading` : spec complète du plan de testabilité (`docs/superpowers/specs/2026-07-24-tests-integration-design.md`). Décrit le harness `fake_kraken.py`, la couverture cible par phase (phase1 à phase8 + webhook_server.py), les conventions de nommage `tests/test_<module>.py`.
+- **`7289c6c`** — `docs: ajouter MEMORY.md` : journal versionné des décisions et incidents non-obvious (distinct de `CLAUDE.md` qui contient les règles de code).
+- **`77199e3`** — `docs: guide de setup du bot sur VPS` : `deploy/README.md` créé, référence complète pour installer le bot sur une nouvelle VPS (création `botuser`, venv Python 3.11, systemd, auth Kraken, auth Claude CLI Pro).
+- **`6d89cc0`** — `docs: CLAUDE.md — bascule finale, prod sur VPS Hostinger, Mac = dev uniquement` : officialise dans les règles du projet que le Mac n'est plus l'hôte de production depuis ce jour.
+- `35504f1 / a5450b8 / 0e31e6d` — docs pipeline tickets (diagramme Mermaid, workflow automatisé) et pipeline de déploiement GitHub Actions.
+
+---
+
+### Cycles d'auto-trading observés
+
+7 cycle logs dans `main` : `00:05`, `04:05`, `08:05`, `12:05`, `16:05`, **`18:11`** (hors slot 4h — probablement un `/trade` manuel déclenché pour valider le bot en production après le merge des PRs), `20:05` UTC.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "La phase la plus dangereuse n'est pas celle qu'on pense"**. On imagine que la partie risquée d'un bot de trading, c'est la détection (scan, scoring). En réalité, c'est la Phase 5 — celle qui appuie sur BUY — qui était la moins déterministe du projet. Elle tournait entièrement dans le prompt Claude : pas de code versionnable, pas de test possible, pas de replay. Une hallucination ou une mauvaise compréhension du prompt à ce stade = un ordre placé dans de mauvaises conditions. Ce refactor transforme la partie la plus sensible du cycle en Python ordinaire, testable et auditable. La question de fond : dans quels cas fait-on confiance à un LLM pour exécuter, plutôt que pour orchestrer ?
+
+> **Angle 2 — "Documentation drift : quand le prompt LLM diverge du code"**. `phase4_sizing.txt` décrivait 56 lignes de pseudo-code — calcul ATR, arrondi Kraken, reward:risk — que `phase4_sizing.py` implémentait déjà depuis des semaines, plus précisément. Personne ne l'avait remarqué : le bot fonctionnait, le prompt semblait cohérent. C'est un cas de dérive silencieuse entre documentation et code réel, mais dans une architecture LLM, la dérive a une conséquence directe : Claude peut se fier au prompt obsolète plutôt qu'au script. Article sur la différence entre un README qui traîne et un prompt LLM désynchronisé — les conséquences ne sont pas du tout les mêmes.
+
+> **Angle 3 — "De 0 à ticket fermé en 5h37"**. Issue #370 créée à 13:02, PR #371 ouverte à 13:04, mergée à 18:09 — ticket fermé dans la même journée par le pipeline `AUTO`. La même matinée avait produit la spec des tests d'intégration, débloqué le refactor Phase 5, et déployé le premier CI GitHub Actions du projet. Article sur la densité d'un workflow agent-first — non pas pour en faire un article de productivité, mais pour interroger ce que ça change dans la façon de travailler : déléguer sans perdre le contrôle, conserver la lisibilité de ce qui a été décidé.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **2** (#369, #371)
+- Issues fermées : **2** (#364, #370)
+- Tickets créés : **2** (#364, #370 — cycle complet ouvert+fermé le même jour)
+- Commits directs sur `main` : **11** (docs/ci, hors merges PR)
+- Cycles auto-trading : **7** (6 slots 4h + 1 cycle manuel 18:11 UTC)
+- Premier pipeline GitHub Actions déployé : **✓** (`deploy-vps.yml`, `workflow_dispatch`)
+
+---
+
 ## 2026-07-23
 
 ### PRs mergées (0)
