@@ -2,58 +2,31 @@
 PHASE 4 — SIZING ET PRÉPARATION DES ORDRES
 ⏱️ HEARTBEAT START PHASE 4
 _hb_start(4)
-Pour chaque BUY candidate :
 
-# Sizing basé sur le risque fixe
-portfolio_total = (calculé en Phase 0)
-risk_usdc = portfolio_total × risk_per_trade_pct        # ex: 152 × 0.01 = 1.52 USDC
+Construis /tmp/cycle___CYCLE_ID___phase4_input.json avec les buy_candidates depuis Phase 3 :
 
-# Estimation ATR comme proxy de volatilité (utilise la range des bougies 4h)
-# ATR ≈ (high - low) moyen sur 14 bougies. Utilise les données TradingView.
-# Si ATR non disponible, utilise 2% du prix comme approximation conservative.
-atr_pct = atr_estimé / prix_actuel                      # ex: 0.02 = 2%
-stop_distance_pct = atr_pct × atr_stop_multiplier       # ex: 0.02 × 2 = 4%
+{
+  "buy_candidates": [{coin, score, signal_4h, prix_actuel, atr_pct}],
+  "portfolio_total": <float — montant total du portefeuille depuis Phase 0>,
+  "budget_disponible": <float — solde USDC disponible>,
+  "config": null
+}
 
-# Calcul des prix
-prix_entry = prix_actuel × (1 - limit_offset_pct)
-prix_stop = prix_entry × (1 - stop_distance_pct)
-# TP mécanique (base)
-tp_mecanique = prix_entry × (1 + stop_distance_pct × reward_risk_ratio)
+Puis exécute le script de sizing :
 
-# TP intelligent : plafonner à la prochaine résistance réelle (depuis Phase 2 combined_analysis)
-# Résistances disponibles dans analysis_results[coin] (None si combined_analysis avait échoué)
-r2_4h = analysis_results[coin].get("resistance_2_4h")   # résistance 2 sur 4h
-r1_1d = analysis_results[coin].get("resistance_1_1d")   # résistance 1 sur 1D (None pour l'instant, 1D pas encore migré)
+```bash
+__PROJECT_DIR__/.venv/bin/python3 __PROJECT_DIR__/binance-bot/core/phases/phase4_sizing.py __CYCLE_ID__
+```
 
-# Prendre la résistance la plus proche strictement au-dessus du prix entry
-candidates = [r for r in [r2_4h, r1_1d] if r and float(r) > prix_entry]
-nearest_resistance = min(candidates) if candidates else None
+Le script lit /tmp/cycle___CYCLE_ID___phase4_input.json et écrit /tmp/cycle___CYCLE_ID___phase4_output.json.
+Stdout attendu : PHASE4_DONE|orders=X|skipped=Y
 
-if nearest_resistance:
-    tp_resistance = float(nearest_resistance) × 0.98    # marge de 2% sous la résistance
-    prix_tp = min(tp_mecanique, tp_resistance)
-    tp_source = f"R {nearest_resistance:.4g} × 0.98"
-else:
-    prix_tp = tp_mecanique
-    tp_source = "mécanique"
+Lis /tmp/cycle___CYCLE_ID___phase4_output.json pour récupérer :
+- ordres_prepares : liste des ordres dimensionnés [{coin, quantite, prix_entry, prix_stop, prix_tp, montant_ordre, risk_usdc, score}]
+- skipped : liste des coins ignorés [{coin, reason}]
 
-# Quantité
-quantite = risk_usdc / (prix_entry × stop_distance_pct)
-montant_ordre = quantite × prix_entry
+Mets à jour les variables de synthèse :
+- ordres_prepares, skipped (pour Phase 5)
 
-# Arrondir la quantité selon les filtres Kraken du coin
-kraken pairs --pair {COIN}USDC -o json
-→ extraire lot_decimals, ordermin, costmin
-step_size = 10 ** (-lot_decimals)
-quantite_arrondie = floor(quantite / step_size) * step_size
-Vérifier : quantite_arrondie >= ordermin ET quantite_arrondie * prix_entry >= costmin
-
-Vérifications :
-- montant_ordre < min_order_usdc → SKIP (trop petit)
-- montant_ordre > budget_disponible × max_single_position_pct → réduire à la limite
-- prix_stop < 0 → SKIP (erreur)
-- Re-vérifier budget total de tous les ordres ≤ budget_disponible
-
-→ tg("💰 Phase 4 — Ordres préparés\n{pour chaque ordre : COIN qty @ entry | Stop: stop | TP: tp (tp_source) | Risque: risk_usdc USDC}")
 ⏱️ HEARTBEAT END PHASE 4 — appel hb(4) immédiatement ci-dessous
-hb(4, summary=f"{len(ordres_prepares)} ordres dimensionnés")
+hb(4, summary=f"{len(ordres_prepares)} ordres dimensionnés, {len(skipped)} skippés")
