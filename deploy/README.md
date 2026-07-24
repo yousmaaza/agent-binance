@@ -183,11 +183,45 @@ Le service inclut déjà `Restart=on-failure` et `Environment="PATH=..."` couvra
 3. Envoyer `/trade` depuis Telegram → cycle complet (Phases 0-8) sans erreur, y compris les appels MCP `tradingview` et le commit/push git final
 4. Redémarrer la VM (`reboot`) et vérifier que le service repart seul (`systemctl status webhook-bot`)
 
+## Étape 13 — Pipeline de déploiement GitHub Actions (optionnel mais recommandé)
+
+Permet de redéployer en un clic depuis GitHub (onglet Actions) au lieu de SSH manuel, sans donner un accès root complet à la CI.
+
+### Règle sudo restreinte (en root, sur la VPS)
+
+`botuser` n'a pas de sudo par défaut (volontaire, cf. Piège n°1) — on lui donne uniquement le droit de redémarrer *ce* service, rien d'autre :
+
+```bash
+echo 'botuser ALL=(root) NOPASSWD: /usr/bin/systemctl restart webhook-bot, /usr/bin/systemctl status webhook-bot --no-pager' > /etc/sudoers.d/botuser-webhook-bot
+chmod 440 /etc/sudoers.d/botuser-webhook-bot
+visudo -c   # vérifie la syntaxe avant de quitter le shell root
+```
+
+Vérifier (en `botuser`) : `sudo -n /usr/bin/systemctl restart webhook-bot` doit fonctionner **sans demander de mot de passe**.
+
+### Secrets GitHub Actions
+
+```bash
+gh secret set VPS_HOST --repo yousmaaza/agent-binance --body "<IP_VPS>"
+gh secret set VPS_USER --repo yousmaaza/agent-binance --body "botuser"
+gh secret set VPS_SSH_KEY --repo yousmaaza/agent-binance < ~/.ssh/<clé_privée>
+```
+
+### Workflow
+
+Fichier `.github/workflows/deploy-vps.yml` (déjà dans le repo) : `git pull` + `sudo systemctl restart webhook-bot` via SSH, dans un job GitHub Actions.
+
+**Déclenchement volontairement manuel** (`workflow_dispatch`), pas automatique sur chaque merge — un bot qui manipule de l'argent réel ne doit pas partir en prod sans une action délibérée.
+
 ## ⚠️ Point de vigilance permanent : quota Claude Pro partagé
 
 Le CLI `claude` est authentifié via l'abonnement Pro de l'utilisateur (pas de clé API — volontairement, le bot l'ignore). Si le bot tourne en continu sur une VPS **et** que l'utilisateur utilise Claude Code en parallèle sur une autre machine, les deux usages partagent le même quota. Surveiller les logs (`logs/stderr/cycle_*.log`) pour des erreurs `rate limit`/`usage limit`/`quota` — si ça arrive, il faudrait isoler une clé API dédiée à la VPS (changement de code non trivial, le bot l'ignore actuellement par design).
 
 ## Déployer une mise à jour (après merge d'une PR sur `main`)
+
+**Option A — Pipeline GitHub Actions (recommandé, un clic)** : onglet **Actions** du repo → "Deploy to VPS" → **Run workflow**. Ou en CLI : `gh workflow run deploy-vps.yml --repo yousmaaza/agent-binance`.
+
+**Option B — Manuel via SSH** :
 
 ```bash
 ssh -i <clé> botuser@<IP> "cd ~/agent-binance && git pull origin main"

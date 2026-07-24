@@ -18,7 +18,8 @@ Points clés du déploiement (détail complet dans `deploy/README.md`) :
 - Le service tourne sous un **utilisateur non-root dédié** (`botuser`) — `claude --dangerously-skip-permissions` refuse explicitement de s'exécuter en root/sudo.
 - Auth Claude Code CLI : abonnement Pro (`claude auth login`), pas de clé API — surveiller `logs/stderr/cycle_*.log` pour tout signe de rate-limit/quota partagé avec l'usage interactif éventuel sur le Mac.
 - Auth `kraken-cli` : store séparé du `.env` du projet (`~/.config/kraken/config.toml` sur Linux), à copier/maintenir indépendamment.
-- Déployer une mise à jour après merge sur `main` :
+- Déployer une mise à jour après merge sur `main` — **pipeline GitHub Actions** (`workflow_dispatch`, déclenchement manuel volontaire, pas automatique) : onglet Actions → "Deploy to VPS" → Run workflow, ou `gh workflow run deploy-vps.yml --repo yousmaaza/agent-binance`. Fait `git pull` + `systemctl restart webhook-bot` sur la VPS via SSH (`.github/workflows/deploy-vps.yml`). `botuser` a une règle sudo restreinte (`/etc/sudoers.d/botuser-webhook-bot`) limitée à cette seule commande.
+  Alternative manuelle (sans passer par Actions) :
   ```bash
   ssh -i <clé> botuser@<IP_VPS> "cd ~/agent-binance && git pull origin main"
   ssh -i <clé> root@<IP_VPS> "systemctl restart webhook-bot"
@@ -149,7 +150,7 @@ L'auto-scheduler vit dans `main_loop()` de `webhook_server.py` — il déclenche
 
 **Déploiement en production (après merge d'une PR sur `main`)** :
 
-4. **Déployer sur la VPS** (voir `deploy/README.md` pour le détail) :
+4. **Déployer sur la VPS** (voir `deploy/README.md` pour le détail) — via le pipeline GitHub Actions (`gh workflow run deploy-vps.yml --repo yousmaaza/agent-binance`, déclenchement manuel) ou en SSH manuel :
    ```bash
    ssh -i <clé> botuser@<IP_VPS> "cd ~/agent-binance && git pull origin main"
    ssh -i <clé> root@<IP_VPS> "systemctl restart webhook-bot"
