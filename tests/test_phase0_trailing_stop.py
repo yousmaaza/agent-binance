@@ -1,12 +1,53 @@
-#!/usr/bin/env python3
-"""Unit tests pour les fonctions utilitaires de phase0_trailing_stop.py"""
-import unittest
+"""Unit tests pour les fonctions utilitaires de phase0_trailing_stop.py + tests d'intégration
+sur le recalcul du trailing stop lui-même (voir classes TestTrailingStopRecalc* en bas du
+fichier). Ces derniers suivent la même approche que test_phase0_profit.py : trade_history.json
+intercepté via patch de builtins.open ciblé, tg()/_save_trade_history_atomic/log_phase0_event
+mockés, binance() redirigée vers le stub fake_kraken.py.
+
+Helpers partagés : voir tests/fixtures/test_harness.py.
+"""
+import contextlib
+import json
 import math
-import sys
 import os
+import sys
+import unittest
+from unittest.mock import patch
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot", "core", "phases"))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "tests"))
+
+from fixtures import test_harness as harness  # noqa: E402 -- import après sys.path.insert, ordre volontaire
+
+PHASE0_TS_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase0_trailing_stop.py")
+
+
+def _run_phase0_trailing_stop(history_data, kraken_scenario=None):
+    """Exécute phase0_trailing_stop.py. Retourne (output_json, mock_tg, mock_save, saved_history)."""
+    cycle_id = harness.new_cycle_id()
+    scenario_path = harness.write_kraken_scenario(kraken_scenario)
+    out_path = f"/tmp/cycle_{cycle_id}_phase0_trailing_stop_output.json"
+    text = json.dumps(history_data)
+
+    old_env = harness.set_fake_kraken_env(scenario_path)
+    try:
+        with contextlib.ExitStack() as stack:
+            mock_tg = stack.enter_context(patch("core.trade_helpers.tg"))
+            mock_save = stack.enter_context(patch("core.trade_helpers._save_trade_history_atomic"))
+            stack.enter_context(patch("core.trade_helpers.log_phase0_event"))
+            stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", harness.FAKE_KRAKEN_PATH))
+            stack.enter_context(patch("builtins.open", side_effect=harness.fake_open_factory(text)))
+
+            harness.exec_phase_script(PHASE0_TS_PATH, cycle_id)
+
+        output = harness.load_and_remove_json(out_path)
+        saved_history = mock_save.call_args[0][0] if mock_save.call_args else None
+        return output, mock_tg, mock_save, saved_history
+    finally:
+        harness.restore_fake_kraken_env(old_env)
+        harness.remove_if_exists(scenario_path, out_path)
 
 
 def _round_price(p, tick):
@@ -135,6 +176,81 @@ class TestRoundingAccuracy(unittest.TestCase):
         result_q = _round_qty(0.00000001, 0.00000001)
         self.assertEqual(result_p, 0.00000001)
         self.assertEqual(result_q, 0.00000001)
+
+
+class TestTrailingStopRecalcMovesUp(unittest.TestCase):
+    """Prix monté suffisamment : SL annulé, nouveau SL posé plus haut, stop_price mis à jour."""
+
+    def test_stop_moves_up_when_price_rises_enough(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "sl_order_txid": "SLTX1",
+             "entry_price": 1000, "stop_price": 900, "quantity": 1},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1150.0", "0.01"]}},  # trail_dist=100 -> new_stop=1050
+            "pairs": {"ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"}},
+            "order_sell_ETHUSDC": {"txid": ["NEWSLTX"]},
+        }
+        output, mock_tg, _, saved_history = _run_phase0_trailing_stop(history_data, kraken_scenario)
+
+        self.assertEqual(output["updated"], 1)
+        pos = saved_history[0]
+        self.assertEqual(pos["sl_order_txid"], "NEWSLTX")
+        self.assertAlmostEqual(pos["stop_price"], 1050.0)
+        mock_tg.assert_any_call(
+            "📈 ETH trailing stop remonté\nStop : 900 → 1050\nPrix actuel : 1150"
+        )
+
+
+class TestTrailingStopSkipTooClose(unittest.TestCase):
+    """Nouveau stop pas assez éloigné du stop courant (< 20% de la distance trail) -> pas de mise à jour."""
+
+    def test_skip_when_new_stop_too_close_to_current_stop(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "sl_order_txid": "SLTX1",
+             "entry_price": 1000, "stop_price": 900, "quantity": 1},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1010.0", "0.01"]}},  # trail_dist=100 -> new_stop=910 <= 900+20
+        }
+        output, mock_tg, mock_save, _ = _run_phase0_trailing_stop(history_data, kraken_scenario)
+
+        self.assertEqual(output["updated"], 0)
+        mock_save.assert_not_called()
+        mock_tg.assert_not_called()
+
+
+class TestTrailingStopSkipTooHigh(unittest.TestCase):
+    """Nouveau stop trop proche du prix courant (>= 98% du prix) -> pas de mise à jour."""
+
+    def test_skip_when_new_stop_too_close_to_current_price(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "sl_order_txid": "SLTX1",
+             "entry_price": 1000, "stop_price": 900, "quantity": 1},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["6000.0", "0.01"]}},  # trail_dist=100 -> new_stop=5900 >= 6000*0.98
+        }
+        output, mock_tg, mock_save, _ = _run_phase0_trailing_stop(history_data, kraken_scenario)
+
+        self.assertEqual(output["updated"], 0)
+        mock_save.assert_not_called()
+        mock_tg.assert_not_called()
+
+
+class TestTrailingStopIgnoresPositionsWithoutSl(unittest.TestCase):
+    """Une position open sans sl_order_txid n'est pas concernée par le trailing stop."""
+
+    def test_position_without_sl_order_txid_is_skipped(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": 1000,
+             "stop_price": 900, "quantity": 1},
+        ]
+        output, mock_tg, mock_save, _ = _run_phase0_trailing_stop(history_data, kraken_scenario={})
+
+        self.assertEqual(output["updated"], 0)
+        mock_save.assert_not_called()
+        mock_tg.assert_not_called()
 
 
 if __name__ == "__main__":
