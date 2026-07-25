@@ -1,16 +1,17 @@
-#!/usr/bin/env python3
 """Tests de démonstration du harness (fake_kraken.py + import direct de phase3_scoring.py).
 
 phase3_scoring.py est un script top-level (pas de fonctions extraites) : chaque test
 ré-exécute le module via importlib avec un cycle_id distinct, écrit son propre input JSON
-dans /tmp et lit l'output JSON généré. tg() (notification Telegram) est systématiquement
-mockée via unittest.mock.patch sur core.trade_helpers.subprocess.run — jamais de vrai curl.
+dans le dossier temp système et lit l'output JSON généré. tg() (notification Telegram) est
+systématiquement mockée via unittest.mock.patch sur core.trade_helpers.subprocess.run —
+jamais de vrai curl.
 """
 import importlib.util
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 import uuid
 from unittest.mock import patch
@@ -32,6 +33,10 @@ DEFAULT_CONFIG = {
 def _run_phase3(analysis_results, top_gainers_symbols=None, breakout_symbols=None,
                  sentiment="Neutral", open_positions=0, config=None):
     """Exécute phase3_scoring.py sur un scénario donné, tg() mockée. Retourne l'output JSON."""
+    # /tmp/cycle_{cycle_id}_phase3_*.json est un chemin en dur dans phase3_scoring.py
+    # lui-même (pas tempfile.gettempdir() — sur macOS ça pointerait vers /var/folders/...
+    # et ne correspondrait plus au chemin que le script ouvre réellement). Le test doit
+    # rester synchronisé avec cette convention, il ne la choisit pas.
     cycle_id = f"test_{uuid.uuid4().hex[:12]}"
     in_path = f"/tmp/cycle_{cycle_id}_phase3_input.json"
     out_path = f"/tmp/cycle_{cycle_id}_phase3_output.json"
@@ -54,16 +59,18 @@ def _run_phase3(analysis_results, top_gainers_symbols=None, breakout_symbols=Non
             spec = importlib.util.spec_from_file_location(f"phase3_scoring_{cycle_id}", PHASE3_PATH)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
+
+        assert mock_run.called, "tg() n'a pas appelé subprocess.run (curl) — mock non atteint"
+
+        with open(out_path) as f:
+            output = json.load(f)
     finally:
         sys.argv = old_argv
+        if os.path.exists(in_path):
+            os.remove(in_path)
+        if os.path.exists(out_path):
+            os.remove(out_path)
 
-    assert mock_run.called, "tg() n'a pas appelé subprocess.run (curl) — mock non atteint"
-
-    with open(out_path) as f:
-        output = json.load(f)
-
-    os.remove(in_path)
-    os.remove(out_path)
     return output
 
 
@@ -196,18 +203,17 @@ class TestFakeKrakenStub(unittest.TestCase):
     """Prouve que le stub fake_kraken.py fonctionne indépendamment de son usage phase."""
 
     def test_ticker_subcommand_via_subprocess(self):
-        cycle_id = uuid.uuid4().hex[:8]
-        scenario_path = f"/tmp/fake_kraken_scenario_{cycle_id}.json"
         scenario = {"ticker": {"ETHUSDC": {"c": ["1900.0", "0.01"]}}}
-        with open(scenario_path, "w") as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(scenario, f)
+            scenario_path = f.name
         try:
             env = {**os.environ, "FAKE_KRAKEN_SCENARIO": scenario_path}
             result = subprocess.run(
                 [sys.executable, FAKE_KRAKEN_PATH, "ticker", "ETHUSDC", "-o", "json"],
                 capture_output=True, text=True, env=env, timeout=10,
             )
-            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.returncode, 0, msg=f"fake_kraken.py a échoué — stderr: {result.stderr}")
             self.assertEqual(json.loads(result.stdout), scenario["ticker"])
         finally:
             os.remove(scenario_path)
