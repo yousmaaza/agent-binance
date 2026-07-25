@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-21 (PR #363)
+> **Dernière mise à jour** : 2026-07-25 (PR #372)
 > **Commit** : <current>
 
 ---
@@ -118,6 +118,16 @@ webhook_server.py (process principal)
 | MongoDB Atlas | Persistance des cycles de trading (collection `cycles`) | `MONGODB_URI`, `MONGODB_DB` dans `.env` |
 | TradingView MCP | Données marché : gainers, breakouts, sentiment, analyse coin | `.mcp.json` (MCP server `mcp__tradingview__*`) |
 | Claude CLI | Orchestration du cycle de trading (sous-processus) — mode abonnement uniquement via Claude Code CLI avec `--model claude-sonnet-4-6` forcé via `CLAUDE_CLI_FLAGS` (évite qu'Opus soit sélectionné par défaut sur Max) ; aucun fallback API ; en cas de dépassement de quota abonnement, le cycle s'arrête proprement avec notification Telegram | `ANTHROPIC_API_KEY` explicitement ignorée au chargement `.env` (jamais injectée dans le processus) ; `CLAUDE_CLI_FLAGS` et `RESOURCE_ERROR_PATTERNS` dans `binance-bot/config/llm.py` |
+
+### 2.5 Testing harness
+
+| Composant | Rôle | Détail |
+|---|---|---|
+| `tests/fixtures/fake_kraken.py` | Stub kraken-cli | Exécutable imitant `kraken-cli` en réponse à `FAKE_KRAKEN_SCENARIO` (chemin JSON) — supporte commandes `ticker`, `balance`, `pairs`, `order buy/sell`, `query-orders` ; piloté par scénarios JSON pour isolation des tests vs le vrai Kraken |
+| `tests/test_phase3_scoring.py` | Tests Phase 3 | 29 tests unitaires en `unittest` stdlib : validation formule score (critères +N points), seuils `min_signal_score` et mode dégradé, exigence `signal_4h` BUY/STRONG_BUY, contraintes `max_open_positions` et `max_correlated_positions`, décision SELL, validation du stub fake_kraken lui-même |
+| `.github/workflows/tests.yml` | CI workflow | Déclenché sur chaque PR : installe Python 3.11 + dépendances, exécute `python -m unittest discover tests/ -v` — base pour les extensions futures (tests phases 0/1, 4/5, 6/7/8, routing) |
+
+> Convention : `tests/test_<module>.py` en `unittest` stdlib (pas `pytest`) ; scénarios JSON en fichiers ; `tg()` mockée sur `core.trade_helpers.subprocess.run` (aucun appel réseau réel).
 
 ---
 
@@ -310,6 +320,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#372](pr-372-harness-test-kraken-cli-ci.md) | 2026-07-25 | [M2] Harness de test kraken-cli + conventions tests/ + CI : introduction du stub `fake_kraken.py` piloté par scénarios JSON, convention `tests/test_<module>.py` en `unittest` stdlib, première batterie de tests pour Phase 3 (formule score, seuils, corrélation, SELL), workflow GitHub Actions sur les PR — base pour les tickets M2a/b/c (tests phases 0/1, 4/5, 6/7/8 + routing) |
 | [#371](pr-371-nettoyer-phase4-sizing.md) | 2026-07-24 | [M1-bis] Nettoyer Phase 4 prompt : suppression de 56 lignes de pseudo-code dupliquant le script Python `phase4_sizing.py` ; prompt ramené à orchestration pure (input JSON → appel script → lecture output), cohérent avec PR #369 (Phase 5) |
 | [#369](pr-369-refactor-phase5-script-deterministe.md) | 2026-07-24 | [M1] Refactorer Phase 5 en script Python déterministe : déplace la logique d'exécution (drift check, BUY MARKET, fill retry, TP/SL, protection_failed) depuis `phase5_execution.txt` vers `binance-bot/core/phases/phase5_execution.py` ; le prompt devient orchestrateur (JSON input/output) comme les phases 3/4 ; déterminisme et testabilité accrues, zéro changement de seuil/formule |
 | [#363](pr-363-abaisser-min-volume-usdc.md) | 2026-07-21 | [M1] Configuration : abaissement de `min_volume_usdc` de 1M à 500k USDC dans `config.json` — élargit l'univers de coins tradables en Phase 1 de 3 (XBT, ETH, SOL) à 5 (+ XRP, ADA), gain net observable : ADA devient candidat stable (XRP déjà inclus via `portfolio_coins`) |

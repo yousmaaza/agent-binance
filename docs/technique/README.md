@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#372](pr-372-harness-test-kraken-cli-ci.md) | [M2] Harness de test kraken-cli + conventions tests/ + CI | 2026-07-25 |
 | [#371](pr-371-nettoyer-phase4-sizing.md) | [M1-bis] Nettoyer phase4_sizing.txt (pseudo-code dupliqué avec le script) | 2026-07-24 |
 | [#369](pr-369-refactor-phase5-script-deterministe.md) | [M1] Refactorer Phase 5 (exécution) en script Python déterministe | 2026-07-24 |
 | [#363](pr-363-abaisser-min-volume-usdc.md) | [M1] Abaisser min_volume_usdc de 1M à 500k | 2026-07-21 |
