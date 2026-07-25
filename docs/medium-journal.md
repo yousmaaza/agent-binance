@@ -10,6 +10,110 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-25
+
+### PRs mergées (2)
+
+Journée centrée sur les tests : deux PRs successives ont posé les fondations de la suite de tests d'intégration du bot, passant de 17 tests unitaires simples à 47 tests couvrant les phases critiques du cycle de trading. La première PR (matin) a posé le harness et la CI ; la seconde (après-midi) a rempli ce harness avec les cas d'intégration réels des phases 0 et 1.
+
+#### PR #372 — [M2] Harness de test kraken-cli + conventions tests/ + CI
+
+- **Heure de merge** : 08:47 UTC
+- **Branche** : `feat/issue-365-harness-test-kraken-cli-ci`
+- **Issue fermée** : #365
+- **Fichiers ajoutés** : `tests/fixtures/fake_kraken.py`, `.github/workflows/tests.yml`, `tests/test_phase3_scoring.py`
+- **Suite de tests après merge** : 29 tests (17 existants + 12 nouveaux)
+
+La PR #372 est le milestone M2 de l'épic testabilité : elle pose les trois briques sans lesquelles aucun test d'intégration n'est possible. Primo, `fake_kraken.py` — un stub exécutable de `kraken-cli` piloté par un scénario JSON injecté via la variable d'environnement `FAKE_KRAKEN_SCENARIO`. Il répond aux commandes `ticker`, `balance`, `pairs`, `order buy/sell`, `query-orders` depuis un fichier de données synthétiques, sans appel réseau réel. Secundo, `.github/workflows/tests.yml` : la première CI du projet, déclenchée sur chaque PR ouverte ou mise à jour, qui installe Python 3.11, les dépendances, et exécute `python -m unittest discover tests/ -v`. Tertio, `test_phase3_scoring.py` — 12 tests de démonstration couvrant la formule de score (chaque critère +N), les seuils `min_signal_score` et mode dégradé, l'exigence `signal_4h` BUY/STRONG_BUY, `max_open_positions`, `max_correlated_positions` (groupe SOL/SUI/STX/ETH), et la décision SELL.
+
+Choix technique notable : unittest stdlib plutôt que pytest — aligné avec la philosophie minimaliste du bot (pas de dépendance supplémentaire). L'import de `phase3_scoring.py` via `importlib.util.spec_from_file_location` + `exec_module` (le script est un top-level sans fonctions exportées) est la technique retenue pour ré-exécuter le vrai module à chaque cas de test.
+
+Effet de bord repéré mais non corrigé (hors scope) : `core/env.py:assemble_prompt()` ouvre les fichiers prompts sans context manager → `ResourceWarning: unclosed file` visible dans la sortie verbose de unittest. Pas un échec fonctionnel.
+
+**Doc tech** : [docs/technique/pr-372-harness-test-kraken-cli-ci.md](../technique/pr-372-harness-test-kraken-cli-ci.md)
+
+---
+
+#### PR #373 — [M3] Tests d'intégration : phases 0 et 1
+
+- **Heure de merge** : 16:07 UTC
+- **Branche** : `feat/issue-366-tests-integration-phases-0-1`
+- **Issue fermée** : #366
+- **Fichiers ajoutés** : `tests/fixtures/test_harness.py`, `tests/test_phase0_snapshot.py`, `tests/test_phase0_profit.py`, `tests/test_phase0_oco_retry.py`, `tests/test_phase1_scan.py`
+- **Fichier étendu** : `tests/test_phase0_trailing_stop.py` (+120 / -4 lignes)
+- **Suite de tests après merge** : 47 tests (29 → 47, +18)
+
+La PR #373 (milestone M3) remplit le harness de la PR #372 avec la couverture réelle des deux phases les plus critiques du cycle. Phase 0 gère les décisions automatiques sur les positions ouvertes (snapshot, clôture au profit, retry OCO, trailing stop) — les 4 plus susceptibles de perdre de l'argent si elles fonctionnent mal. Phase 1 filtre l'univers des coins tradables — une erreur ici détermine si le bot sélectionne les bons candidats.
+
+Domaines couverts par les tests d'intégration :
+
+| Phase | Domaine | Fichier de test | Invariant principal |
+|-------|---------|-----------------|---------------------|
+| Phase 0 | Snapshot positions | `test_phase0_snapshot.py` | Calcul P&L latent, distinction bot vs manuelle |
+| Phase 0 | Clôture au profit | `test_phase0_profit.py` | `profit_latent >= min_profit_pct_take` → SELL market |
+| Phase 0 | Retry OCO | `test_phase0_oco_retry.py` | Idempotence SL actif, force-close si prix > TP, fallback épuisement |
+| Phase 0 | Trailing stop | `test_phase0_trailing_stop.py` | Mise à jour stop si prix monte suffisamment, 3 skips conditionnels |
+| Phase 1 | Filtre volume | `test_phase1_scan.py` | Exclusion si volume < `min_volume_usdc`, inclusion forcée `portfolio_coins` |
+| Phase 1 | Mapping symboles | `test_phase1_scan.py` | XBT→BTC, XDG→DOGE (Kraken→TradingView) |
+
+Le harness partagé `test_harness.py` factorise ~150 lignes de duplication : interception ciblée de `builtins.open` uniquement pour `state/trade_history.json` (les écritures vers `/tmp/` passent par le vrai système), génération automatique des chemins de scénario kraken via `tempfile.NamedTemporaryFile`, exécution des scripts de phase via `importlib` avec capture des `SystemExit`.
+
+**Doc tech** : [docs/technique/pr-373-tests-integration-phases-0-1.md](../technique/pr-373-tests-integration-phases-0-1.md)
+
+---
+
+### Issues fermées (2)
+
+- **#365** — Harness de test kraken-cli + conventions tests/ + CI — fermée à 08:47 UTC par PR #372. Issue de la série tests (milestone M2).
+- **#366** — Tests d'intégration phases 0 et 1 — fermée à 16:07 UTC par PR #373. Issue de la série tests (milestone M3), débloquée par le harness M2 mergé le matin même.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé le 25 juillet. Journée d'exécution pure sur les issues ouvertes de l'épic testabilité.
+
+---
+
+### Commits directs notables sur `main`
+
+En parallèle des PRs, 2 commits docs poussés directement sur `main` par l'agent `binance-doc-tech` :
+
+- **`9da752f`** — `docs(tech): PR #372 — Harness de test kraken-cli + conventions tests/ + CI` : documentation technique de la PR #372 dans `docs/technique/pr-372-harness-test-kraken-cli-ci.md`.
+- **`2941698`** — `docs(tech): PR #373 — Tests d'intégration phases 0 et 1` : documentation technique de la PR #373 dans `docs/technique/pr-373-tests-integration-phases-0-1.md`.
+
+---
+
+### Cycles d'auto-trading observés
+
+4 cycles visibles dans `main` : `00:05`, `04:05`, `08:05`, `16:05` UTC — cycles de routine. La PR #373 a été mergée à 16:07 UTC, soit 2 minutes après le cycle 16:05 — le premier cycle qui tournera avec la suite complète à 47 tests en CI sera le 20:05 UTC.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "Un stub de 150 lignes qui remplace une API de trading"**. `fake_kraken.py` est un exécutable Python qui répond à `ticker`, `balance`, `order buy`, `query-orders` depuis un fichier JSON de scénario. C'est le pattern du double de test porté au niveau d'un outil CLI externe : pas de mock de bibliothèque, pas de monkey-patching, mais un vrai programme qu'on swape dans la variable d'environnement `FAKE_KRAKEN_SCENARIO`. Ce niveau d'isolation — tester le script de phase comme une boîte noire, en remplaçant la dépendance externe par un exécutable de test — est rarement mentionné dans les tutoriels de testing Python. Article sur les "process doubles" vs les "object doubles" : quand votre dépendance est un programme, pas une fonction.
+
+> **Angle 2 — "47 tests pour le cerveau d'un bot de trading"**. En une journée, la suite de tests est passée de 17 tests unitaires (fonctions utilitaires isolées) à 47 tests d'intégration qui couvrent les décisions critiques : clôture au profit, protection des positions, filtrage de l'univers. Ce n'est pas une progression linéaire — c'est le résultat de deux PR en séquence, où la première (harness) débloque la seconde (couverture). L'angle narratif : dans un bot de trading piloté par un LLM, "tester" ne veut pas dire la même chose que dans une API REST classique. Les scripts de phase sont des programmes autonomes qui lisent des JSON en entrée et écrivent des JSON en sortie — ils sont testables comme des CLIs, pas comme des fonctions. La décision d'architecture (phase → script Python autonome) prise début juillet rend ce testing possible.
+
+> **Angle 3 — "La CI comme premier acteur de sécurité"**. Le `.github/workflows/tests.yml` ajouté par PR #372 est le premier filet de sécurité automatique du projet. Avant, chaque PR dépendait de l'agent `binance-dev` pour signaler les régressions — et seulement si les tests existaient. Maintenant, GitHub Actions exécute les 47 tests sur chaque PR avant merge. Ce qui est frappant dans l'ordre des opérations : le harness (M2) a été mergé le matin, et la PR #373 (M3) qui en dépend a été ouverte 42 minutes plus tard, avec les tests qui ont passé la CI dans la foulée. Ce n'est pas un pipeline imaginé a priori — c'est le résultat de tickets structurés avec des dépendances explicites (M2 bloque M3, documenté dans l'issue). Article sur la valeur des dépendances explicites entre tickets dans un projet agent-first.
+
+> **Angle 4 — "La Phase 0 comme zone de risque maximal"**. La PR #373 consacre la majorité de sa couverture à la Phase 0. Snapshot, clôture au profit, retry OCO, trailing stop — 4 fichiers de test pour une seule phase. Ce n'est pas un hasard : Phase 0 est exécutée à chaque cycle automatique (6×/jour), elle touche les positions ouvertes, et une erreur dans son code se traduit directement par une perte financière ou une position non protégée. La concentration des tests sur cette phase est une décision de priorisation du risque, pas une décision technique. Article court sur comment on évalue "qu'est-ce qui mérite d'être testé en premier" dans un système financier autonome.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **2** (#372, #373)
+- Issues fermées : **2** (#365, #366 — toutes deux dans la série tests)
+- Tickets créés : **0**
+- Tests unitaires/intégration ajoutés : **+30** (17 → 47)
+- Commits directs sur `main` : **2** (docs/technique automatiques)
+- Cycles auto-trading visibles : **4** (00:05, 04:05, 08:05, 16:05 UTC)
+- Première CI GitHub Actions active sur les PRs : **✓** (`.github/workflows/tests.yml`)
+
+---
+
 ## 2026-07-24
 
 ### PRs mergées (2)
