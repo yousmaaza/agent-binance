@@ -209,7 +209,7 @@ class TestFakeKrakenStub(unittest.TestCase):
             scenario_path = f.name
         try:
             env = {**os.environ, "FAKE_KRAKEN_SCENARIO": scenario_path}
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: PLW1510 — returncode vérifié explicitement ci-dessous, avec message stderr
                 [sys.executable, FAKE_KRAKEN_PATH, "ticker", "ETHUSDC", "-o", "json"],
                 capture_output=True, text=True, env=env, timeout=10,
             )
