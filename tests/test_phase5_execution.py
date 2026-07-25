@@ -77,7 +77,7 @@ class TestSkipTypeCOnPriceDrift(unittest.TestCase):
     def test_order_skipped_when_price_drift_exceeds_threshold(self):
         order = dict(BASE_ORDER)
         kraken_scenario = {"ticker": {"ETHUSDC": {"c": ["2200.0", "0.01"]}}}  # drift = 10% > 2%
-        output, mock_tg, mock_save, _ = _run_phase5_execution([order], kraken_scenario=kraken_scenario)
+        output, _mock_tg, mock_save, _ = _run_phase5_execution([order], kraken_scenario=kraken_scenario)
 
         self.assertEqual(output["executed"], 0)
         self.assertEqual(output["skipped"], 1)
@@ -95,7 +95,7 @@ class TestSkipTypeCOnInsufficientBalance(unittest.TestCase):
             "ticker": {"ETHUSDC": {"c": ["2000.0", "0.01"]}},  # drift nul
             "balance": {"USDC": "5.0"},  # < montant_ordre 200
         }
-        output, mock_tg, mock_save, _ = _run_phase5_execution([order], kraken_scenario=kraken_scenario)
+        output, _mock_tg, mock_save, _ = _run_phase5_execution([order], kraken_scenario=kraken_scenario)
 
         self.assertEqual(output["executed"], 0)
         self.assertEqual(output["skipped"], 1)
@@ -117,7 +117,7 @@ class TestNominalBuyAndStopLossSucceed(unittest.TestCase):
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             "order_sell_ETHUSDC": {"txid": ["SLTX1"]},
         }
-        output, mock_tg, mock_save, saved_history = _run_phase5_execution([order], kraken_scenario=kraken_scenario)
+        output, _mock_tg, mock_save, saved_history = _run_phase5_execution([order], kraken_scenario=kraken_scenario)
 
         self.assertEqual(output["executed"], 1)
         self.assertEqual(output["skipped"], 0)
@@ -153,7 +153,7 @@ class TestImmediateCloseWhenPriceAboveTpAtFill(unittest.TestCase):
             "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
             "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "202.0", "vol_exec": "0.1"}},
         }
-        output, mock_tg, mock_save, saved_history = _run_phase5_execution(
+        output, _mock_tg, mock_save, saved_history = _run_phase5_execution(
             [order], config=config, kraken_scenario=kraken_scenario,
         )
 
