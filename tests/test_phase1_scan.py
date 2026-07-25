@@ -4,63 +4,47 @@ Même approche que test_phase3_scoring.py : import direct du script top-level vi
 importlib, appel réel au stub fake_kraken.py (core.trade_helpers._EXCHANGE_CLI), config
 mockée via core.trade_helpers._load_config. tg() mockée par précaution (le script ne
 l'appelle pas aujourd'hui, mais aucun risque de vrai curl si ça change).
+
+Helpers partagés : voir tests/fixtures/test_harness.py.
 """
 import contextlib
-import importlib.util
-import json
 import os
 import sys
 import unittest
-import uuid
 from unittest.mock import patch
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "tests"))
+
+from fixtures import test_harness as harness  # noqa: E402
 
 PHASE1_SCAN_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase1_scan.py")
-FAKE_KRAKEN_PATH = os.path.join(PROJECT_DIR, "tests", "fixtures", "fake_kraken.py")
 
 DEFAULT_CONFIG = {"min_volume_usdc": 1_000_000, "portfolio_coins": []}
 
 
 def _run_phase1_scan(pairs_data, ticker_data, config=None):
     """Exécute phase1_scan.py sur un scénario donné. Retourne (output_json, mock_tg)."""
-    cycle_id = f"test_{uuid.uuid4().hex[:12]}"
-    scenario_path = f"/tmp/fake_kraken_scenario_{cycle_id}.json"
-    with open(scenario_path, "w") as f:
-        json.dump({"pairs": pairs_data, "ticker": ticker_data}, f)
-
+    cycle_id = harness.new_cycle_id()
+    scenario_path = harness.write_kraken_scenario({"pairs": pairs_data, "ticker": ticker_data})
     out_path = f"/tmp/cycle_{cycle_id}_phase1_output.json"
     cfg = config if config is not None else DEFAULT_CONFIG
 
-    old_argv = sys.argv
-    old_env = os.environ.get("FAKE_KRAKEN_SCENARIO")
-    sys.argv = ["phase1_scan.py", cycle_id]
-    os.environ["FAKE_KRAKEN_SCENARIO"] = scenario_path
+    old_env = harness.set_fake_kraken_env(scenario_path)
     try:
         with contextlib.ExitStack() as stack:
             mock_tg = stack.enter_context(patch("core.trade_helpers.tg"))
             stack.enter_context(patch("core.trade_helpers._load_config", return_value=cfg))
-            stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", FAKE_KRAKEN_PATH))
+            stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", harness.FAKE_KRAKEN_PATH))
 
-            spec = importlib.util.spec_from_file_location(f"phase1_scan_{cycle_id}", PHASE1_SCAN_PATH)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
+            harness.exec_phase_script(PHASE1_SCAN_PATH, cycle_id)
 
-        output = None
-        if os.path.exists(out_path):
-            with open(out_path) as f:
-                output = json.load(f)
+        output = harness.load_and_remove_json(out_path)
         return output, mock_tg
     finally:
-        sys.argv = old_argv
-        if old_env is None:
-            os.environ.pop("FAKE_KRAKEN_SCENARIO", None)
-        else:
-            os.environ["FAKE_KRAKEN_SCENARIO"] = old_env
-        for p in (scenario_path, out_path):
-            if os.path.exists(p):
-                os.remove(p)
+        harness.restore_fake_kraken_env(old_env)
+        harness.remove_if_exists(scenario_path, out_path)
 
 
 class TestVolumeFilter(unittest.TestCase):

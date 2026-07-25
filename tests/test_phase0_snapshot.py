@@ -5,35 +5,24 @@ PROJECT_DIR) : intercepté ici via un patch de builtins.open ciblé sur ce chemi
 (StringIO en mémoire), le vrai fichier n'est jamais touché. tg() et l'appel kraken (binance())
 sont mockés comme dans test_phase3_scoring.py : tg() via core.trade_helpers.tg,
 binance() via core.trade_helpers._EXCHANGE_CLI pointé vers le stub fake_kraken.py.
+
+Helpers partagés (fake_open_factory, gestion du scénario kraken, exec du script) : voir
+tests/fixtures/test_harness.py.
 """
-import builtins
 import contextlib
-import importlib.util
-import io
 import json
 import os
 import sys
 import unittest
-import uuid
 from unittest.mock import patch
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "tests"))
+
+from fixtures import test_harness as harness  # noqa: E402
 
 PHASE0_SNAPSHOT_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase0_snapshot.py")
-FAKE_KRAKEN_PATH = os.path.join(PROJECT_DIR, "tests", "fixtures", "fake_kraken.py")
-TRADE_HISTORY_PATH = os.path.join(PROJECT_DIR, "state", "trade_history.json")
-
-_real_open = builtins.open
-
-
-def _fake_open_factory(history_text):
-    """Intercepte uniquement la lecture de trade_history.json — tout le reste passe par le vrai open()."""
-    def _fake_open(path, mode="r", *args, **kwargs):
-        if os.path.abspath(str(path)) == TRADE_HISTORY_PATH and "r" in mode:
-            return io.StringIO(history_text)
-        return _real_open(path, mode, *args, **kwargs)
-    return _fake_open
 
 
 def _run_phase0_snapshot(history_data=None, history_text=None, ticker_scenario=None):
@@ -41,46 +30,25 @@ def _run_phase0_snapshot(history_data=None, history_text=None, ticker_scenario=N
 
     Retourne (output_json_ou_None, mock_tg, exit_code_ou_None).
     """
-    cycle_id = f"test_{uuid.uuid4().hex[:12]}"
-    scenario_path = f"/tmp/fake_kraken_scenario_{cycle_id}.json"
-    with open(scenario_path, "w") as f:
-        json.dump({"ticker": ticker_scenario or {}}, f)
-
+    cycle_id = harness.new_cycle_id()
+    scenario_path = harness.write_kraken_scenario({"ticker": ticker_scenario or {}})
     out_path = f"/tmp/cycle_{cycle_id}_phase0_snapshot_output.json"
     text = history_text if history_text is not None else json.dumps(history_data or [])
 
-    old_argv = sys.argv
-    old_env = os.environ.get("FAKE_KRAKEN_SCENARIO")
-    sys.argv = ["phase0_snapshot.py", cycle_id]
-    os.environ["FAKE_KRAKEN_SCENARIO"] = scenario_path
-    exit_code = None
+    old_env = harness.set_fake_kraken_env(scenario_path)
     try:
         with contextlib.ExitStack() as stack:
             mock_tg = stack.enter_context(patch("core.trade_helpers.tg"))
-            stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", FAKE_KRAKEN_PATH))
-            stack.enter_context(patch("builtins.open", side_effect=_fake_open_factory(text)))
+            stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", harness.FAKE_KRAKEN_PATH))
+            stack.enter_context(patch("builtins.open", side_effect=harness.fake_open_factory(text)))
 
-            spec = importlib.util.spec_from_file_location(f"phase0_snapshot_{cycle_id}", PHASE0_SNAPSHOT_PATH)
-            mod = importlib.util.module_from_spec(spec)
-            try:
-                spec.loader.exec_module(mod)
-            except SystemExit as e:
-                exit_code = e.code
+            exit_code = harness.exec_phase_script(PHASE0_SNAPSHOT_PATH, cycle_id)
 
-        output = None
-        if os.path.exists(out_path):
-            with open(out_path) as f:
-                output = json.load(f)
+        output = harness.load_and_remove_json(out_path)
         return output, mock_tg, exit_code
     finally:
-        sys.argv = old_argv
-        if old_env is None:
-            os.environ.pop("FAKE_KRAKEN_SCENARIO", None)
-        else:
-            os.environ["FAKE_KRAKEN_SCENARIO"] = old_env
-        for p in (scenario_path, out_path):
-            if os.path.exists(p):
-                os.remove(p)
+        harness.restore_fake_kraken_env(old_env)
+        harness.remove_if_exists(scenario_path, out_path)
 
 
 class TestSnapshotOpenPositions(unittest.TestCase):

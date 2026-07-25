@@ -1,82 +1,53 @@
-#!/usr/bin/env python3
 """Unit tests pour les fonctions utilitaires de phase0_trailing_stop.py + tests d'intégration
 sur le recalcul du trailing stop lui-même (voir classes TestTrailingStopRecalc* en bas du
 fichier). Ces derniers suivent la même approche que test_phase0_profit.py : trade_history.json
 intercepté via patch de builtins.open ciblé, tg()/_save_trade_history_atomic/log_phase0_event
 mockés, binance() redirigée vers le stub fake_kraken.py.
+
+Helpers partagés : voir tests/fixtures/test_harness.py.
 """
-import unittest
-import math
-import sys
-import os
-import builtins
 import contextlib
-import importlib.util
-import io
 import json
-import uuid
+import math
+import os
+import sys
+import unittest
 from unittest.mock import patch
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot", "core", "phases"))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "tests"))
+
+from fixtures import test_harness as harness  # noqa: E402
 
 PHASE0_TS_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase0_trailing_stop.py")
-FAKE_KRAKEN_PATH = os.path.join(PROJECT_DIR, "tests", "fixtures", "fake_kraken.py")
-TRADE_HISTORY_PATH = os.path.join(PROJECT_DIR, "state", "trade_history.json")
-
-_real_open = builtins.open
-
-
-def _fake_open_factory(history_text):
-    def _fake_open(path, mode="r", *args, **kwargs):
-        if os.path.abspath(str(path)) == TRADE_HISTORY_PATH and "r" in mode:
-            return io.StringIO(history_text)
-        return _real_open(path, mode, *args, **kwargs)
-    return _fake_open
 
 
 def _run_phase0_trailing_stop(history_data, kraken_scenario=None):
     """Exécute phase0_trailing_stop.py. Retourne (output_json, mock_tg, mock_save, saved_history)."""
-    cycle_id = f"test_{uuid.uuid4().hex[:12]}"
-    scenario_path = f"/tmp/fake_kraken_scenario_{cycle_id}.json"
-    with open(scenario_path, "w") as f:
-        json.dump(kraken_scenario or {}, f)
-
+    cycle_id = harness.new_cycle_id()
+    scenario_path = harness.write_kraken_scenario(kraken_scenario)
     out_path = f"/tmp/cycle_{cycle_id}_phase0_trailing_stop_output.json"
     text = json.dumps(history_data)
 
-    old_argv = sys.argv
-    old_env = os.environ.get("FAKE_KRAKEN_SCENARIO")
-    sys.argv = ["phase0_trailing_stop.py", cycle_id]
-    os.environ["FAKE_KRAKEN_SCENARIO"] = scenario_path
+    old_env = harness.set_fake_kraken_env(scenario_path)
     try:
         with contextlib.ExitStack() as stack:
             mock_tg = stack.enter_context(patch("core.trade_helpers.tg"))
             mock_save = stack.enter_context(patch("core.trade_helpers._save_trade_history_atomic"))
             stack.enter_context(patch("core.trade_helpers.log_phase0_event"))
-            stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", FAKE_KRAKEN_PATH))
-            stack.enter_context(patch("builtins.open", side_effect=_fake_open_factory(text)))
+            stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", harness.FAKE_KRAKEN_PATH))
+            stack.enter_context(patch("builtins.open", side_effect=harness.fake_open_factory(text)))
 
-            spec = importlib.util.spec_from_file_location(f"phase0_trailing_stop_{cycle_id}", PHASE0_TS_PATH)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
+            harness.exec_phase_script(PHASE0_TS_PATH, cycle_id)
 
-        output = None
-        if os.path.exists(out_path):
-            with open(out_path) as f:
-                output = json.load(f)
+        output = harness.load_and_remove_json(out_path)
         saved_history = mock_save.call_args[0][0] if mock_save.call_args else None
         return output, mock_tg, mock_save, saved_history
     finally:
-        sys.argv = old_argv
-        if old_env is None:
-            os.environ.pop("FAKE_KRAKEN_SCENARIO", None)
-        else:
-            os.environ["FAKE_KRAKEN_SCENARIO"] = old_env
-        for p in (scenario_path, out_path):
-            if os.path.exists(p):
-                os.remove(p)
+        harness.restore_fake_kraken_env(old_env)
+        harness.remove_if_exists(scenario_path, out_path)
 
 
 def _round_price(p, tick):
@@ -220,7 +191,7 @@ class TestTrailingStopRecalcMovesUp(unittest.TestCase):
             "pairs": {"ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"}},
             "order_sell_ETHUSDC": {"txid": ["NEWSLTX"]},
         }
-        output, mock_tg, mock_save, saved_history = _run_phase0_trailing_stop(history_data, kraken_scenario)
+        output, mock_tg, _, saved_history = _run_phase0_trailing_stop(history_data, kraken_scenario)
 
         self.assertEqual(output["updated"], 1)
         pos = saved_history[0]
@@ -242,7 +213,7 @@ class TestTrailingStopSkipTooClose(unittest.TestCase):
         kraken_scenario = {
             "ticker": {"ETHUSDC": {"c": ["1010.0", "0.01"]}},  # trail_dist=100 -> new_stop=910 <= 900+20
         }
-        output, mock_tg, mock_save, saved_history = _run_phase0_trailing_stop(history_data, kraken_scenario)
+        output, mock_tg, mock_save, _ = _run_phase0_trailing_stop(history_data, kraken_scenario)
 
         self.assertEqual(output["updated"], 0)
         mock_save.assert_not_called()
@@ -260,7 +231,7 @@ class TestTrailingStopSkipTooHigh(unittest.TestCase):
         kraken_scenario = {
             "ticker": {"ETHUSDC": {"c": ["6000.0", "0.01"]}},  # trail_dist=100 -> new_stop=5900 >= 6000*0.98
         }
-        output, mock_tg, mock_save, saved_history = _run_phase0_trailing_stop(history_data, kraken_scenario)
+        output, mock_tg, mock_save, _ = _run_phase0_trailing_stop(history_data, kraken_scenario)
 
         self.assertEqual(output["updated"], 0)
         mock_save.assert_not_called()
@@ -275,7 +246,7 @@ class TestTrailingStopIgnoresPositionsWithoutSl(unittest.TestCase):
             {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": 1000,
              "stop_price": 900, "quantity": 1},
         ]
-        output, mock_tg, mock_save, saved_history = _run_phase0_trailing_stop(history_data, kraken_scenario={})
+        output, mock_tg, mock_save, _ = _run_phase0_trailing_stop(history_data, kraken_scenario={})
 
         self.assertEqual(output["updated"], 0)
         mock_save.assert_not_called()
