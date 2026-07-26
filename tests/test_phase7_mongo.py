@@ -94,7 +94,7 @@ class TestMongoWriteFails(unittest.TestCase):
     """Exception levée par MongoClient -> notification tg(), status=error, exit code 1."""
 
     def test_notifies_and_exits_nonzero_on_mongo_error(self):
-        stdout, exit_code, mock_tg, mock_mongo_client = _run_phase7_mongo(
+        stdout, exit_code, mock_tg, _mock_mongo_client = _run_phase7_mongo(
             {"executed": 1}, mongo_uri="mongodb://fake",
             mongo_client_side_effect=ConnectionError("boom"),
         )

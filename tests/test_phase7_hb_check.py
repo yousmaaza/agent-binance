@@ -36,8 +36,7 @@ def _write_heartbeats(cycle_id, phases):
     """Écrit un fichier logs/cycle_{cycle_id}_phases.jsonl minimal avec les phases données."""
     path = _hb_log_path(cycle_id)
     with open(path, "w") as f:
-        for p in phases:
-            f.write(json.dumps({"phase": p, "status": "ok", "duration_s": 1.0}) + "\n")
+        f.writelines(json.dumps({"phase": p, "status": "ok", "duration_s": 1.0}) + "\n" for p in phases)
 
 
 def _run_phase7_hb_check(cycle_id):
