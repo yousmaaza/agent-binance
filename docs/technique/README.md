@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#374](pr-374-tests-integration-phases-4-5.md) | [M4] Tests d'intégration : phases 4 et 5 (sizing + exécution) | 2026-07-26 |
 | [#373](pr-373-tests-integration-phases-0-1.md) | [M3] Tests d'intégration : phases 0 et 1 | 2026-07-25 |
 | [#372](pr-372-harness-test-kraken-cli-ci.md) | [M2] Harness de test kraken-cli + conventions tests/ + CI | 2026-07-25 |
 | [#371](pr-371-nettoyer-phase4-sizing.md) | [M1-bis] Nettoyer phase4_sizing.txt (pseudo-code dupliqué avec le script) | 2026-07-24 |
