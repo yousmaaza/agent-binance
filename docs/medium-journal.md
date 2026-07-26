@@ -10,6 +10,110 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-26
+
+### PRs mergées (2)
+
+Journée de clôture d'épic : les deux derniers milestones de la spec de testabilité du 24 juillet ont été mergés en 26 minutes (08:01–08:27 UTC), portant la suite de tests de 47 à 77 tests. La spec `docs/superpowers/specs/2026-07-24-tests-integration-design.md` est désormais intégralement complétée — 5 tickets sur 5.
+
+#### PR #374 — [M4] Tests d'intégration : phases 4 et 5 (sizing + exécution)
+
+- **Heure de merge** : 08:01 UTC
+- **Branche** : `feat/issue-367-tests-integration-phases-4-5`
+- **Issue fermée** : #367
+- **Fichiers ajoutés** : `tests/test_phase4_sizing.py` (160 lignes, 6 tests), `tests/test_phase5_execution.py` (203 lignes, 5 tests)
+- **Suite de tests après merge** : 58 tests (47 → 58, +11)
+
+La PR #374 (milestone M4) couvre les deux phases qui touchent directement à l'argent : Phase 4 dimensionne les ordres (calcul stop ATR, TP reward/risk, filtres ordermin/costmin Kraken, arrondi lot_decimals), Phase 5 les exécute (BUY MARKET, pose du SL, gestion des cas d'échec). Six invariants testés pour Phase 4 : calcul du prix stop via `atr_stop_multiplier`, calcul du TP via `reward_risk_ratio`, filtre `min_order_usdc` (11 USDC), filtres `ordermin`/`costmin` de Kraken via `fake_kraken.py`, arrondi quantité au floor selon `lot_decimals`. Cinq invariants pour Phase 5 : skip TYPE_C sur drift prix (> `price_deviation_max_pct`), skip TYPE_C sur solde USDC insuffisant, BUY MARKET nominal + pose SL réussie, clôture immédiate si prix post-fill ≥ TP recalculé (`close_reason: "market_above_tp_at_fill"`), `protection_failed=True` + alerte Telegram si la pose du SL échoue.
+
+Les deux fichiers réutilisent intégralement le harness partagé `tests/fixtures/test_harness.py` (PR #372) — helpers `new_cycle_id`, `write_kraken_scenario`, `set_fake_kraken_env`, `exec_phase_script`, `fake_open_factory` — sans duplication.
+
+Bug adjacent signalé (hors scope) : `core/env.py::assemble_prompt()` ouvre les fichiers prompts sans context manager → `ResourceWarning: unclosed file` visible dans la sortie verbose unittest. Non corrigé ici.
+
+**Doc tech** : [docs/technique/pr-374-tests-integration-phases-4-5.md](../technique/pr-374-tests-integration-phases-4-5.md)
+
+---
+
+#### PR #375 — [M5] Tests d'intégration : phases 6/7/8 + routing webhook_server.py
+
+- **Heure de merge** : 08:27 UTC
+- **Branche** : `feat/issue-368-tests-integration-phases-6-7-8-webhook`
+- **Issue fermée** : #368
+- **Fichiers ajoutés** : `tests/test_phase6_next_cycle.py` (97 lignes), `tests/test_phase7_mongo.py` (109 lignes), `tests/test_phase7_hb_check.py` (105 lignes), `tests/test_phase8_cycle_log.py` (161 lignes), `tests/test_webhook_server_routing.py` (141 lignes)
+- **Suite de tests après merge** : 77 tests (58 → 77, +19)
+- **Spec clôturée** : `docs/superpowers/specs/2026-07-24-tests-integration-design.md` — 5/5 tickets complétés ✅
+
+La PR #375 (milestone M5) couvre les phases d'infrastructure du cycle, celles qu'on n'associe pas spontanément au "trading" mais qui garantissent sa continuité :
+
+| Phase / Composant | Ce qui est testé | Technique d'isolation |
+|---|---|---|
+| Phase 6 (next_cycle) | Calcul du prochain slot 4h UTC, transitions jour/nuit, cas limite sur frontière | `datetime.now()` patché via sous-classe custom |
+| Phase 7 (mongo) | Skip sans MONGODB_URI, upsert réussi, erreur Mongo → notif tg() + exit 1 | `pymongo.MongoClient` mocké dans le module partagé avant import |
+| Phase 7 (hb_check) | Détection heartbeats manquants, recovery + notif, fichier jsonl absent | `hb()` exécuté réellement (écriture jsonl), nettoyage post-test |
+| Phase 8 (cycle_log) | Append JSONL, rotation exacte à 90 lignes (89→90 sans rotate, 90→91 avec drop C0), push git | `os.path.exists`/`open` interceptés pour `cycle_log.jsonl` uniquement ; `subprocess.run` mocké |
+| Routing webhook | Dispatch `/status`, `/trade`, `/perf`, `/reset`, commande inconnue | `threading.Thread` → `_FakeThread` synchrone ; `tg_post` lève `_StopMainLoop` (BaseException) au 2e appel |
+
+Décision notable : le test du routing de `main_loop()` (une boucle `while True` infinie) repose sur une sentinelle `_StopMainLoop(BaseException)` jamais catchée par le `except Exception` du polling. Permet d'exécuter la vraie fonction avec tous les I/O mockés sans modifier le code de production.
+
+**Doc tech** : [docs/technique/pr-375-tests-integration-phases-6-7-8-routing.md](../technique/pr-375-tests-integration-phases-6-7-8-routing.md)
+
+---
+
+### Issues fermées (2)
+
+- **#367** — Tests d'intégration phases 4 et 5 — fermée à 08:01 UTC par PR #374. Issue de la série tests (milestone M4), débloquée par le harness M2 et les conventions posées en M3.
+- **#368** — Tests d'intégration phases 6/7/8 + routing webhook — fermée à 08:27 UTC par PR #375. Issue de la série tests (milestone M5). Sa fermeture clôt la spec complète du 24 juillet.
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé le 26 juillet. Journée d'exécution pure sur les deux derniers milestones de l'épic testabilité.
+
+---
+
+### Commits directs notables sur `main`
+
+En parallèle des merges de PR, 2 commits docs + 6 cycle logs poussés directement sur `main` :
+
+- **`d6f1ddc`** — `docs(tech): PR #374 — tests d'intégration phases 4 et 5` : documentation technique de la PR #374 dans `docs/technique/pr-374-tests-integration-phases-4-5.md` (poussé à 08:03 UTC par l'agent `binance-doc-tech`).
+- **`46bfa35`** — `docs(tech): PR #375 — tests intégration phases 6/7/8 + routing webhook` : documentation technique de la PR #375 dans `docs/technique/pr-375-tests-integration-phases-6-7-8-routing.md` (poussé à 08:29 UTC).
+- **Cycle logs** : 6 commits `chore: cycle log` aux slots 00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC — tous présents, couverture complète de la journée.
+
+---
+
+### Cycles d'auto-trading observés
+
+6 cycle logs dans `main` : `00:05`, `04:05`, `08:05`, `12:05`, `16:05`, `20:05` UTC — couverture complète. Le merge de PR #374 à 08:01 UTC précède le cycle 08:05 de 4 minutes — le premier cycle qui tourne avec 58 tests en CI est le 08:05 UTC ; le premier avec les 77 tests est le 12:05 UTC (PR #375 mergée à 08:27 UTC).
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "La spec close en 3 jours"**. Le 24 juillet au matin, l'utilisateur rédige et commit une spec de testabilité sur 5 milestones : refactor Phase 5, harness, phases 0/1, phases 4/5, phases 6/7/8 + routing. Le 26 juillet à 08:27 UTC, le dernier milestone est mergé. 2 jours, 10 heures et 27 minutes entre la création de la spec et la fermeture du dernier ticket. 5 tickets, 5 PRs, 77 tests. Ce n'est pas la vitesse d'exécution qui est le sujet — c'est la faisabilité de rédiger une spec complète d'une épic et de la voir exécutée intégralement sans la réécrire. Article sur la différence entre une spec qui guide et une spec qui contraint : ici les 5 milestones ont tous été implémentés dans l'ordre prévu, sans ticket de découpage supplémentaire en cours de route. Est-ce de la chance ou de la discipline de spec-writing ?
+
+> **Angle 2 — "Tester une boucle infinie"**. `main_loop()` est une `while True` de polling Telegram qui ne s'arrête jamais. La PR #375 l'a quand même testée — sans modifier le code de production d'une ligne. La technique : une sentinelle `_StopMainLoop(BaseException)` levée par le mock de `tg_post` au 2e appel. Parce qu'elle hérite de `BaseException` (et non d'`Exception`), le `except Exception` du polling ne la rattrape pas — la boucle s'arrête proprement. C'est un pattern de test pour les serveurs et les loops événementiels : on ne teste pas la boucle, on teste ce qu'elle dispatche, et on choisit le vecteur d'interruption qui ne perturbe pas la logique testée. Article sur les techniques de test pour les processus longs-running — pas de mock de la boucle elle-même, mais injection d'une condition d'arrêt contrôlée.
+
+> **Angle 3 — "Tester MongoDB sans connexion"**. `phase7_mongo.py` se connecte à MongoDB Atlas. Le test en PR #375 ne fait jamais une vraie connexion — il patche `pymongo.MongoClient` dans le module `pymongo` partagé *avant* que le script l'importe. Ainsi, le `from pymongo import MongoClient` à l'intérieur du script récupère automatiquement la version mockée. C'est un pattern Python méconnu : patcher dans le module d'origine (pas dans le module qui l'utilise), de sorte que tous les imports ultérieurs reçoivent le mock. L'avantage dans ce contexte : aucune variable d'environnement `MONGODB_URI` factice, aucun conteneur Docker, aucun client Mongo de test — le test passe sur n'importe quelle machine avec `unittest` stdlib. Article sur les niveaux d'isolation des tests de base de données : mock objet, mock driver, mock conteneur, base réelle — et quand choisir lequel.
+
+> **Angle 4 — "77 tests pour surveiller un bot qui tourne en production"**. La suite de tests ne cherche pas à couvrir le code — elle cherche à couvrir les modes de défaillance. Phase 0 : ce qui peut perdre de l'argent (trailing stop mal calculé, OCO non posé, profit non réalisé). Phase 5 : ce qui peut passer un mauvais ordre (drift prix, solde insuffisant, SL non protégé). Phase 7 : ce qui peut produire des données silencieusement erronées en Mongo. Chaque test est la trace d'un scénario de risque identifié — pas d'une ligne de code à couvrir. Dans un bot de trading piloté par un LLM, "tester" est une discipline de gestion du risque autant que d'ingénierie logicielle. Article sur la cartographie des risques comme point de départ d'une suite de tests.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **2** (#374, #375)
+- Fenêtre de merge : **26 minutes** (08:01 → 08:27 UTC)
+- Issues fermées : **2** (#367, #368)
+- Tickets créés : **0**
+- Tests unitaires/intégration ajoutés : **+30** (47 → 77)
+- Commits directs sur `main` : **2** docs/technique + 6 cycle logs
+- Cycles auto-trading visibles : **6** (00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC)
+- Spec `2026-07-24-tests-integration-design.md` : **clôturée** (5/5 milestones) ✓
+- Suite de tests complète : **Phase 0–8 + routing webhook** tous couverts ✓
+
+---
+
 ## 2026-07-25
 
 ### PRs mergées (2)
