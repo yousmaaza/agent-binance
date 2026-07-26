@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#375](pr-375-tests-integration-phases-6-7-8-routing.md) | [M5] Tests d'intégration : phases 6/7/8 + routing webhook_server.py | 2026-07-26 |
 | [#374](pr-374-tests-integration-phases-4-5.md) | [M4] Tests d'intégration : phases 4 et 5 (sizing + exécution) | 2026-07-26 |
 | [#373](pr-373-tests-integration-phases-0-1.md) | [M3] Tests d'intégration : phases 0 et 1 | 2026-07-25 |
 | [#372](pr-372-harness-test-kraken-cli-ci.md) | [M2] Harness de test kraken-cli + conventions tests/ + CI | 2026-07-25 |

@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-26 (PR #374)
+> **Dernière mise à jour** : 2026-07-26 (PR #375)
 > **Commit** : <current>
 
 ---
@@ -320,6 +320,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#375](pr-375-tests-integration-phases-6-7-8-routing.md) | 2026-07-26 | [M5] Tests d'intégration phases 6/7/8 + routing webhook : 19 tests nouveaux (phase 6: slot 4h, transitions jour/nuit, limite; phase 7 mongo: skip sans URI, upsert succès, erreur notif; phase 7 heartbeats: détection phases manquantes, recovery; phase 8 cycle_log: append JSONL, rotation 90 lignes; webhook routing: /status/trade/perf/reset, commande inconnue) — réutilisation harness, isolation production state, suite 58 → 77 tests, clôture spec #368 |
 | [#374](pr-374-tests-integration-phases-4-5.md) | 2026-07-26 | [M4] Tests d'intégration phases 4 et 5 : 11 tests unitaires (6 phase 4, 5 phase 5) validant dimensionnement ordres (ATR stop, reward/risk TP, filtres min_order/ordermin/costmin, arrondi lot_decimals), exécution BUY MARKET (drift prix < 2%, solde USDC suffisant, clôture immédiate au TP recalculé), protection_failed alert sur échec SL — réutilisation complète harness partagé, zéro duplication code test, suite augmentée 47 → 58 tests |
 | [#373](pr-373-tests-integration-phases-0-1.md) | 2026-07-25 | [M3] Tests d'intégration phases 0 et 1 : 5 fichiers de test d'intégration couvrant snapshot positions (P&L, bot vs manuel), clôture auto au profit `min_profit_pct_take`, retry OCO (idempotence SL, force-close au-dessus TP, fallback épuisement retry), recalcul trailing stop (montée prix, skips conditionnels), filtre volume + mapping Kraken→TradingView (XBT→BTC, XDG→DOGE) + harness partagé (`test_harness.py`) factorisant fake_open ciblée, gestion scénario kraken, exec script via importlib — 47 tests validés, aucune modification d'architecture |
 | [#372](pr-372-harness-test-kraken-cli-ci.md) | 2026-07-25 | [M2] Harness de test kraken-cli + conventions tests/ + CI : introduction du stub `fake_kraken.py` piloté par scénarios JSON, convention `tests/test_<module>.py` en `unittest` stdlib, première batterie de tests pour Phase 3 (formule score, seuils, corrélation, SELL), workflow GitHub Actions sur les PR — base pour les tickets M2a/b/c (tests phases 0/1, 4/5, 6/7/8 + routing) |
