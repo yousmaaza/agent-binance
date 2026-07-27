@@ -1063,12 +1063,13 @@
     "entry_order_id": "ON4U42-74EKD-K4OFYX",
     "sl_order_txid": null,
     "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "oco_retry_count": 1
+    "status": "closed",
+    "exit_price": 1928.8700068366052,
+    "exit_date": "2026-07-27T16:12:56.492373+00:00",
+    "pnl_usdc": -1.9009969999999865,
+    "pnl_pct": -1.7261492492378363,
+    "oco_retry_count": 2,
+    "close_reason": "signal_sell_score3"
   },
   {
     "trade_id": "544e7a44",
@@ -1078,16 +1079,18 @@
     "signal_score": 6,
     "entry_price": 8.762010019612177,
     "stop_price": 6.155312038777553,
-    "tp_price": 13.975405981281424,
+    "tp_price": 9.03658,
     "quantity": 2.10366226,
     "risk_usdc": 5.4661325632,
     "entry_order_id": "OALRPH-ELEQ5-26TI4L",
     "sl_order_txid": null,
     "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 8.578939995814727,
+    "exit_date": "2026-07-27T16:12:56.995096+00:00",
+    "pnl_usdc": -0.3851174999999976,
+    "pnl_pct": -2.089361041446893,
+    "oco_retry_count": 1,
+    "close_reason": "signal_sell_score3"
   }
 ]
