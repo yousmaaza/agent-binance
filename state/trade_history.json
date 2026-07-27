@@ -1048,5 +1048,25 @@
     "pnl_usdc": -0.5308,
     "pnl_pct": -0.9406,
     "close_reason": "signal_sell_score3"
+  },
+  {
+    "trade_id": "b8ec19cd",
+    "date": "2026-07-27T08:09:59.531072+00:00",
+    "coin": "ETH",
+    "side": "BUY",
+    "signal_score": 6,
+    "entry_price": 1962.7500012475555,
+    "stop_price": 1825.3575011602265,
+    "tp_price": 2237.5350014222136,
+    "quantity": 0.05610972,
+    "risk_usdc": 7.682,
+    "entry_order_id": "ON4U42-74EKD-K4OFYX",
+    "sl_order_txid": null,
+    "protection_failed": true,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null
   }
 ]
