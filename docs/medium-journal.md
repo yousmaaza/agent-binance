@@ -10,6 +10,105 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-07-29
+
+### PRs mergées (1)
+
+Journée focalisée sur un bug de production unique, traité en bout-en-bout en moins de 10 minutes : issue créée à 06:58 UTC, PR ouverte à 07:02, mergée à 07:05. Le TradingView MCP était en panne depuis le cycle 28/07 20:05 UTC — la correction pinne explicitement les versions `uv` dans `.mcp.json` pour rendre la résolution déterministe.
+
+#### PR #377 — [BUG] Pinner versions mcp/tradingview-mcp-server dans .mcp.json
+
+- **Heure de merge** : 07:05 UTC (09:05 Europe/Paris)
+- **Branche** : `feat/issue-376-pinner-versions-mcp-tradingview`
+- **Issue fermée** : #376
+- **Fichier modifié** : `.mcp.json` (unique, configuration pure — aucun code métier touché)
+
+**Contexte du bug** : `uv` résolvait `mcp` vers la version 2.0.0 (breaking change majeur), qui a supprimé le module `mcp.server.fastmcp` utilisé par `tradingview-mcp-server==0.7.1`. Sans pin explicite, toute invalidation du cache `uv` pouvait déclencher cette régression — et c'est exactement ce qui s'est produit. Les cycles du 26/07 au 28/07 16:05 UTC fonctionnaient ; l'échec est apparu au cycle du 28/07 20:05, puis s'est répété sur les cycles du 29/07 00:05 et 04:05.
+
+**Correction appliquée** :
+```json
+// Avant
+"args": ["--from", "tradingview-mcp-server", "tradingview-mcp"]
+
+// Après
+"args": ["--from", "tradingview-mcp-server==0.7.1", "--with", "mcp==1.29.0", "tradingview-mcp"]
+```
+
+- `tradingview-mcp-server==0.7.1` : dernière version PyPI du package (pas de fix natif mcp 2.x publié)
+- `mcp==1.29.0` : dernière version 1.x compatible avec `mcp.server.fastmcp` (supprimé en 2.0.0)
+
+**Impact** : sans TradingView MCP, la Phase 2 (analyse) tournait en mode dégradé (signaux NEUTRAL) et la Phase 3 (scoring) ne produisait aucun candidat BUY exploitable. Le bot continuait de tourner sans signaler d'erreur critique — un silence qui peut tromper.
+
+**Doc tech** : `docs/technique/pr-377-pinner-versions-mcp.md`
+
+---
+
+### Issues fermées (1)
+
+- **#376** — [BUG] Pinner versions mcp/tradingview-mcp-server dans `.mcp.json` — fermée à 07:05 UTC par PR #377. Durée totale de l'issue : **7 minutes** (06:58 → 07:05).
+
+---
+
+### Nouveaux tickets créés (1)
+
+- **#376** — [BUG] Pinner versions mcp/tradingview-mcp-server dans `.mcp.json` — créée à 06:58 UTC, fermée le même jour à 07:05 UTC. Ticket ouvert et résolu dans la même session. Catégorie : bug de configuration infra (`.mcp.json`), déclencheur : investigation post-cycle sur les logs stderr du 28/07.
+
+---
+
+### Commits directs notables sur `main`
+
+En parallèle de la PR, plusieurs commits de maintenance et réconciliation :
+
+- **`e41657d`** — `docs(tech): documenter PR #377 — pin versions mcp/tradingview-mcp-server` : fiche technique dans `docs/technique/pr-377-pinner-versions-mcp.md` (poussée à ~07:08 UTC par `binance-doc-tech`).
+- **`a308266`** — `chore: réconcilie position SOL non trackée (0.9187 SOL, achat 20/07 16:11 UTC, hors sync #360)` : correction manuelle d'une position SOL achetée le 20 juillet mais jamais enregistrée dans `state/trade_history.json`.
+- **`4ab3100`** — `chore: renseigne tp_price manquant sur position SOL réconciliée (RR 2.0)` : complément du commit précédent — le `tp_price` manquait lors de la réconciliation initiale, renseigné ici avec ratio reward/risk 2.0.
+
+---
+
+### Cycles d'auto-trading observés
+
+5 cycle logs dans `main` (vs 6 attendus sur une journée complète) :
+
+| Heure UTC | Timestamp log | Statut |
+|---|---|---|
+| 00:05 | `20260729_000500` | ⚠️ slot régulier — TradingView MCP hors ligne |
+| 04:05 | `20260729_040506` | ⚠️ slot régulier — TradingView MCP hors ligne |
+| 06:30 | `20260729_063028` | ⚠️ hors-schedule (probable `/trade` manuel post-debug) |
+| 09:26 | `20260729_092651` | ⚠️ hors-schedule (probable test post-fix) |
+| 20:05 | `20260729_200502` | ✅ slot régulier — TradingView MCP restauré |
+
+**Cycles manquants** : les slots 12:05 et 16:05 UTC absents des logs à l'heure du récap (21h UTC). Données incomplètes — à vérifier dans les logs stderr VPS.
+
+**Anomalie notable** : les deux cycles hors-schedule (06:30 et 09:26 UTC) coïncident avec la période de debug et de fix du MCP TradingView. Il est probable que ces cycles aient été déclenchés manuellement via `/trade` pour vérifier le comportement pendant la panne, puis confirmer le retour du MCP après le merge de la PR #377.
+
+---
+
+### Matériel pour Medium
+
+> **Angle 1 — "7 minutes du bug au merge"**. À 06:58 UTC, une issue est ouverte. À 07:02, une PR est créée sur une branche dédiée. À 07:05, la PR est mergée. C'est la durée d'un café. Ce n'est pas une prouesse de vitesse — c'est la conséquence d'un problème bien diagnostiqué et d'un changement d'une seule ligne de configuration. Ce qui prend du temps dans un bug, ce n'est pas le fix : c'est le diagnostic. Ici, la cause a été identifiée directement sur la VPS en prod (`uvx --from tradingview-mcp-server tradingview-mcp` → `ModuleNotFoundError`). Une fois la root cause connue, le fix était trivial. Article sur la valeur des logs de production explicites par rapport aux logs "propres" qui noient l'erreur utile.
+
+> **Angle 2 — "Le silence qui trompe"**. Quand le MCP TradingView tombe, le bot ne s'arrête pas. Il continue de tourner, de loguer des cycles, d'envoyer des récaps Telegram — mais chaque cycle se termine avec 0 trade, sans jamais signaler d'erreur critique. L'information "TradingView MCP indisponible" est noyée dans le récap textuel. Pendant ≈11 heures (28/07 20:05 → 29/07 07:05 UTC), le bot a opéré en mode dégradé silencieux. C'est un pattern dangereux dans les systèmes automatisés : les pannes dégradées sont plus insidieuses que les pannes franches. Article sur la conception d'alertes de dégradation dans les systèmes à décision autonome — quand "continuer à tourner" est pire que "planter fort".
+
+> **Angle 3 — "La réconciliation SOL"**. Deux commits de maintenance témoignent d'un problème plus ancien : une position SOL achetée le 20 juillet (9 jours avant) n'était pas dans le tracking du bot. La réconciliation manuelle ajoute l'entrée + le `tp_price` à la main. C'est l'envers du décor d'un bot de trading automatisé : les données de référence peuvent dériver de la réalité si un achat se fait hors-cycle (via `/trade` manuel, ou si le cycle plante juste après l'exécution mais avant l'écriture d'état). Article sur les stratégies de réconciliation état-broker dans un bot de trading — de l'idempotence à la réconciliation manuelle post-incident.
+
+> **Angle 4 — "Pinner les versions, un acte de lucidité"**. Le bug `.mcp.json` n'est pas un bug de code — c'est un bug d'assumptions. L'assumption : `uv` va toujours résoudre `mcp` vers une version compatible. La réalité : sans pin, `uv` a le droit de résoudre vers `mcp==2.0.0`, et c'est précisément ce qu'il a fait dès que son cache a été invalidé. Ce n'est pas une surprise — c'est la sémantique du semver sans contrainte. Pinner les versions est l'acte qui transforme une dépendance probabiliste ("ça marchera probablement") en garantie déterministe ("ça marchera"). Dans un système qui prend des décisions financières autonomes, "probablement" n'est pas une tolérance acceptable. Article sur le pinning des dépendances dans les systèmes embarqués IA — et pourquoi "latest" est le mot le plus dangereux d'un fichier de config.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **1** (#377)
+- Durée issue → merge : **7 minutes** (06:58 → 07:05 UTC)
+- Issues fermées : **1** (#376)
+- Tickets créés : **1** (#376, ouvert et fermé le même jour)
+- Fichiers modifiés : **1** (`.mcp.json` uniquement)
+- Commits directs sur `main` : **1** doc/technique + 2 réconciliation état + 5 cycle logs
+- Cycles auto-trading visibles : **5** (00:05⚠️, 04:05⚠️, 06:30⚠️hors-schedule, 09:26⚠️hors-schedule, 20:05✅)
+- Cycles manquants : **2** (12:05 et 16:05 à confirmer)
+- Durée de la panne TradingView MCP : **≈11h** (28/07 20:05 → 29/07 07:05 UTC)
+
+---
+
 ## 2026-07-26
 
 ### PRs mergées (2)
