@@ -987,6 +987,27 @@
     "close_reason": "signal_sell_score3"
   },
   {
+    "trade_id": "sol-recovery-20260720",
+    "date": "2026-07-20T16:11:39.570495+00:00",
+    "coin": "SOL",
+    "side": "BUY",
+    "signal_score": null,
+    "entry_price": 77.67,
+    "stop_price": 72.23,
+    "tp_price": null,
+    "quantity": 0.91845837,
+    "risk_usdc": 4.9964,
+    "entry_order_id": "OQFAZL-QBQWO-UGVIVK",
+    "sl_order_txid": "OWBRIA-QCNPD-VQJA4L",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null,
+    "close_reason": null
+  },
+  {
     "trade_id": "246f2bd5",
     "date": "2026-07-21T12:12:00.780980+00:00",
     "coin": "ETH",
