@@ -1122,7 +1122,7 @@
     "signal_score": 7,
     "entry_price": 0.1698484821668571,
     "stop_price": 0.14606969466349712,
-    "tp_price": 0.2174060571735771,
+    "tp_price": 0.18551399999999998,
     "quantity": 320.79283403,
     "risk_usdc": 7.6056323912,
     "entry_order_id": "ORLOTS-XJOEF-FVVT6X",
@@ -1132,6 +1132,7 @@
     "exit_price": null,
     "exit_date": null,
     "pnl_usdc": null,
-    "pnl_pct": null
+    "pnl_pct": null,
+    "oco_retry_count": 1
   }
 ]
