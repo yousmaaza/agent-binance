@@ -1127,12 +1127,13 @@
     "risk_usdc": 7.6056323912,
     "entry_order_id": "ORLOTS-XJOEF-FVVT6X",
     "sl_order_txid": null,
-    "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "oco_retry_count": 3
+    "protection_failed": false,
+    "status": "closed",
+    "exit_price": 0.1685158095362708,
+    "exit_date": "2026-07-31T16:06:28.697262+00:00",
+    "pnl_usdc": -0.42751182999999837,
+    "pnl_pct": -0.7846243979249169,
+    "oco_retry_count": 0,
+    "close_reason": "protection_exhausted"
   }
 ]
