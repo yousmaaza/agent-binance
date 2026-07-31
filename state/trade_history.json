@@ -1133,6 +1133,6 @@
     "exit_date": null,
     "pnl_usdc": null,
     "pnl_pct": null,
-    "oco_retry_count": 1
+    "oco_retry_count": 2
   }
 ]
