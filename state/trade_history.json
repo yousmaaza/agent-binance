@@ -1000,12 +1000,12 @@
     "entry_order_id": "OQFAZL-QBQWO-UGVIVK",
     "sl_order_txid": "OWBRIA-QCNPD-VQJA4L",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "close_reason": null
+    "status": "closed",
+    "exit_price": 72.21999947586085,
+    "exit_date": "2026-08-02T12:06:06.996383+00:00",
+    "pnl_usdc": -5.0056,
+    "pnl_pct": -7.02,
+    "close_reason": "sl_hit"
   },
   {
     "trade_id": "246f2bd5",
