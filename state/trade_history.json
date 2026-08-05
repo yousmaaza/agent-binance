@@ -1144,7 +1144,7 @@
     "signal_score": 6,
     "entry_price": 1878.3600022527958,
     "stop_price": 1779.746102134524,
-    "tp_price": 2075.587802489339,
+    "tp_price": 2014.292,
     "quantity": 0.09073171,
     "risk_usdc": 8.9027182936,
     "entry_order_id": "O76E64-WY7FW-WYIDOZ",
@@ -1154,7 +1154,8 @@
     "exit_price": null,
     "exit_date": null,
     "pnl_usdc": null,
-    "pnl_pct": null
+    "pnl_pct": null,
+    "oco_retry_count": 1
   },
   {
     "trade_id": "0ab4a34f",
@@ -1164,7 +1165,7 @@
     "signal_score": 5,
     "entry_price": 64482.75020908837,
     "stop_price": 61774.47470030666,
-    "tp_price": 69899.3012266518,
+    "tp_price": 65986.144,
     "quantity": 0.00315656,
     "risk_usdc": 8.9027182936,
     "entry_order_id": "OIQQA4-VXGYL-5KBHNM",
@@ -1174,6 +1175,7 @@
     "exit_price": null,
     "exit_date": null,
     "pnl_usdc": null,
-    "pnl_pct": null
+    "pnl_pct": null,
+    "oco_retry_count": 1
   }
 ]
