@@ -1149,13 +1149,14 @@
     "risk_usdc": 8.9027182936,
     "entry_order_id": "O76E64-WY7FW-WYIDOZ",
     "sl_order_txid": null,
-    "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "oco_retry_count": 3
+    "protection_failed": false,
+    "status": "closed",
+    "exit_price": 1908.7399983974733,
+    "exit_date": "2026-08-06T08:06:20.067245+00:00",
+    "pnl_usdc": 2.756429,
+    "pnl_pct": 1.6173681354075646,
+    "oco_retry_count": 0,
+    "close_reason": "protection_exhausted"
   },
   {
     "trade_id": "0ab4a34f",
@@ -1170,12 +1171,13 @@
     "risk_usdc": 8.9027182936,
     "entry_order_id": "OIQQA4-VXGYL-5KBHNM",
     "sl_order_txid": null,
-    "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "oco_retry_count": 3
+    "protection_failed": false,
+    "status": "closed",
+    "exit_price": 64770.788453252906,
+    "exit_date": "2026-08-06T08:06:21.476107+00:00",
+    "pnl_usdc": 0.9092100000000023,
+    "pnl_pct": 0.44669038344449735,
+    "oco_retry_count": 0,
+    "close_reason": "protection_exhausted"
   }
 ]
