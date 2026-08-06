@@ -1155,7 +1155,7 @@
     "exit_date": null,
     "pnl_usdc": null,
     "pnl_pct": null,
-    "oco_retry_count": 1
+    "oco_retry_count": 2
   },
   {
     "trade_id": "0ab4a34f",
@@ -1176,6 +1176,6 @@
     "exit_date": null,
     "pnl_usdc": null,
     "pnl_pct": null,
-    "oco_retry_count": 1
+    "oco_retry_count": 2
   }
 ]
