@@ -1179,5 +1179,25 @@
     "pnl_pct": 0.44669038344449735,
     "oco_retry_count": 0,
     "close_reason": "protection_exhausted"
+  },
+  {
+    "trade_id": "ee59efff",
+    "date": "2026-08-07T12:11:24.257377+00:00",
+    "coin": "ETH",
+    "side": "BUY",
+    "signal_score": 6,
+    "entry_price": 1935.0000033113838,
+    "stop_price": 1867.2750031954854,
+    "tp_price": 2070.4500035431806,
+    "quantity": 0.10569599,
+    "risk_usdc": 8.879,
+    "entry_order_id": "OKJS7R-FBJUU-7TNXYJ",
+    "sl_order_txid": "OJXC5A-DJ2UY-VU5ONN",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null
   }
 ]
