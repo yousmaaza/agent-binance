@@ -1192,13 +1192,14 @@
     "quantity": 0.10569599,
     "risk_usdc": 8.879,
     "entry_order_id": "OKJS7R-FBJUU-7TNXYJ",
-    "sl_order_txid": "OJXC5A-DJ2UY-VU5ONN",
+    "sl_order_txid": null,
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 1921.7900035753485,
+    "exit_date": "2026-08-09T08:11:59.627728+00:00",
+    "pnl_usdc": -1.3962439999999943,
+    "pnl_pct": -0.6826873236914184,
+    "close_reason": "signal_sell_score3"
   },
   {
     "trade_id": "7c73f872",
@@ -1212,13 +1213,14 @@
     "quantity": 0.00105202,
     "risk_usdc": 4.7640437736,
     "entry_order_id": "ONWHM4-VIJHW-D2YJLU",
-    "sl_order_txid": "OZEV2W-IXX7E-EFE77Q",
+    "sl_order_txid": null,
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 64868.79527005189,
+    "exit_date": "2026-08-09T08:12:02.106678+00:00",
+    "pnl_usdc": -0.10229999999999959,
+    "pnl_pct": -0.14968051330905516,
+    "close_reason": "signal_sell_score3"
   },
   {
     "trade_id": "9e3abf0c",
@@ -1261,7 +1263,7 @@
     "exit_date": null,
     "pnl_usdc": null,
     "pnl_pct": null,
-    "oco_retry_count": 2
+    "oco_retry_count": 3
   },
   {
     "trade_id": "c05af599",
@@ -1271,7 +1273,7 @@
     "signal_score": 4,
     "entry_price": 601.6191308025801,
     "stop_price": 568.9812929565402,
-    "tp_price": 666.8948064946601,
+    "tp_price": 603.81,
     "quantity": 0.09457,
     "risk_usdc": 3.0664,
     "entry_order_id": "OGCUR2-A3AOK-C6XLZA",
@@ -1281,6 +1283,7 @@
     "exit_price": null,
     "exit_date": null,
     "pnl_usdc": null,
-    "pnl_pct": null
+    "pnl_pct": null,
+    "oco_retry_count": 1
   }
 ]
