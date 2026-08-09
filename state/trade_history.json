@@ -1228,7 +1228,7 @@
     "signal_score": 4,
     "entry_price": 602.75,
     "stop_price": 537.351625,
-    "tp_price": 733.5467500000001,
+    "tp_price": 603.811,
     "quantity": 0.05204,
     "risk_usdc": 3.3889309736000004,
     "entry_order_id": "O2HH7F-XMEDO-NGMCHV",
@@ -1238,7 +1238,8 @@
     "exit_price": null,
     "exit_date": null,
     "pnl_usdc": null,
-    "pnl_pct": null
+    "pnl_pct": null,
+    "oco_retry_count": 1
   },
   {
     "trade_id": "f0829035",
@@ -1248,7 +1249,7 @@
     "signal_score": 4,
     "entry_price": 76.2000012179452,
     "stop_price": 59.61126095279853,
-    "tp_price": 109.37748174823854,
+    "tp_price": 79.2068,
     "quantity": 0.20526375,
     "risk_usdc": 3.3889309736000004,
     "entry_order_id": "OD2OZX-TCYTS-TSKJXE",
@@ -1258,6 +1259,7 @@
     "exit_price": null,
     "exit_date": null,
     "pnl_usdc": null,
-    "pnl_pct": null
+    "pnl_pct": null,
+    "oco_retry_count": 1
   }
 ]
