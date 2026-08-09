@@ -1234,12 +1234,13 @@
     "entry_order_id": "O2HH7F-XMEDO-NGMCHV",
     "sl_order_txid": null,
     "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "oco_retry_count": 1
+    "status": "closed",
+    "exit_price": 602.5510261337432,
+    "exit_date": "2026-08-09T00:38:04.329567+00:00Z",
+    "pnl_usdc": -0.01035460000000277,
+    "pnl_pct": -0.033011010577648915,
+    "oco_retry_count": 1,
+    "close_reason": "tp_watcher"
   },
   {
     "trade_id": "f0829035",
@@ -1260,6 +1261,26 @@
     "exit_date": null,
     "pnl_usdc": null,
     "pnl_pct": null,
-    "oco_retry_count": 1
+    "oco_retry_count": 2
+  },
+  {
+    "trade_id": "c05af599",
+    "date": "2026-08-09T04:10:19.674358+00:00",
+    "coin": "BNB",
+    "side": "BUY",
+    "signal_score": 4,
+    "entry_price": 601.6191308025801,
+    "stop_price": 568.9812929565402,
+    "tp_price": 666.8948064946601,
+    "quantity": 0.09457,
+    "risk_usdc": 3.0664,
+    "entry_order_id": "OGCUR2-A3AOK-C6XLZA",
+    "sl_order_txid": null,
+    "protection_failed": true,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null
   }
 ]
