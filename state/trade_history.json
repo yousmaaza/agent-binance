@@ -1257,13 +1257,14 @@
     "risk_usdc": 3.3889309736000004,
     "entry_order_id": "OD2OZX-TCYTS-TSKJXE",
     "sl_order_txid": null,
-    "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "oco_retry_count": 3
+    "protection_failed": false,
+    "status": "closed",
+    "exit_price": 76.01999866026028,
+    "exit_date": "2026-08-10T16:05:56.492948+00:00",
+    "pnl_usdc": -0.036947999999997,
+    "pnl_pct": -0.23622382520713697,
+    "oco_retry_count": 0,
+    "close_reason": "protection_exhausted"
   },
   {
     "trade_id": "c05af599",
@@ -1279,11 +1280,12 @@
     "entry_order_id": "OGCUR2-A3AOK-C6XLZA",
     "sl_order_txid": null,
     "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "oco_retry_count": 1
+    "status": "closed",
+    "exit_price": 603.7980606957809,
+    "exit_date": "2026-08-09T10:13:22.392985+00:00Z",
+    "pnl_usdc": 0.20606139999999987,
+    "pnl_pct": 0.3621776272795775,
+    "oco_retry_count": 1,
+    "close_reason": "tp_watcher"
   }
 ]
