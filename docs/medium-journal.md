@@ -10,6 +10,77 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-08-12
+
+### PRs mergées (0)
+
+Journée sans activité de développement. Aucune PR créée ni mergée. Le dernier merge remonte au 2026-07-29 (PR #377), soit **14 jours d'absence de changement de code** — la plus longue pause de développement depuis le lancement du projet en mai.
+
+---
+
+### Issues fermées (0)
+
+Aucune issue fermée aujourd'hui. Backlog open : **16 issues** actives, dont 2 bugs (priorité XS : #354, #355), 1 doc (#352), et 1 epic de fond (#318 — qualité des signaux).
+
+---
+
+### Nouveaux tickets créés (0)
+
+Aucun ticket créé aujourd'hui.
+
+---
+
+### Commits directs notables sur `main`
+
+Uniquement des commits automatiques de cycle log :
+
+| Timestamp UTC | Hash | Type |
+|---|---|---|
+| 00:05 | `3a0efb9` | chore: cycle log 20260812_000506 |
+| 04:05 | `ed3f77c` | chore: cycle log 20260812_040509 |
+| 08:05 | `a478e5e` | chore: cycle log 20260812_080502 |
+| 12:05 | `2215632` | chore: cycle log 20260812_120508 |
+| 16:05 | `14b625f` | chore: cycle log 20260812_160504 |
+| 20:05 | `bcd52cf` | chore: cycle log 20260812_200508 |
+
+---
+
+### Cycles d'auto-trading observés
+
+6/6 slots couverts — tous les cycles attendus sont présents dans les logs. Le bot a tourné sans interruption sur l'ensemble des slots 4h de la journée.
+
+| Heure UTC | Timestamp log | Statut |
+|---|---|---|
+| 00:05 | `20260812_000506` | ✅ slot régulier |
+| 04:05 | `20260812_040509` | ✅ slot régulier |
+| 08:05 | `20260812_080502` | ✅ slot régulier |
+| 12:05 | `20260812_120508` | ✅ slot régulier |
+| 16:05 | `20260812_160504` | ✅ slot régulier |
+| 20:05 | `20260812_200508` | ✅ slot régulier |
+
+**Stabilité opérationnelle** : aucune interruption, aucun crash signalé via les logs de cycle. Le bot est en phase de « running steady » depuis le correctif de déploiement VPS (2026-07-24) et le pinning des dépendances MCP (2026-07-29).
+
+---
+
+### Matériel pour Medium
+
+> **Angle — "14 jours sans toucher au code"**. Entre le 29 juillet et le 12 août, le bot a tourné seul : 84 cycles automatiques (6/jour × 14 jours), sans aucune modification de code. C'est l'objectif de tout système autonome — devenir suffisamment stable pour qu'on n'ait plus besoin d'intervenir en urgence. Pour un projet de trading botté par un LLM, c'est aussi une période de collecte de données réelles : les décisions de l'IA, les types de skip, les positions ouvertes. Ce silence de développement cache 84 cycles de données. L'article pertinent : pourquoi la phase de stabilisation est souvent la plus informative, même si elle ne génère pas de commits.
+
+> **Angle — "16 issues ouvertes, aucune urgente"**. Le backlog actif compte 16 issues. Deux bugs xs (#354, #355 — push state + quota classification), une doc (#352), un epic de fond (#318). Aucune n'est bloquante en production. C'est un signal de maturité : au démarrage (mai 2026), chaque bug bloquait le bot. Aujourd'hui, un bug xs peut attendre 2 semaines sans incident. Article sur les critères de priorisation des tickets dans un projet autonome : quand est-ce qu'un bug est vraiment urgent ?
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **0**
+- Issues fermées : **0**
+- Tickets créés : **0**
+- Cycles auto-trading : **6/6** (100% des slots couverts)
+- Jours depuis le dernier merge : **14** (PR #377 — 2026-07-29)
+- Backlog open : **16 issues**
+
+---
+
 ## 2026-07-29
 
 ### PRs mergées (1)
