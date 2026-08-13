@@ -10,6 +10,113 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-08-13
+
+### PRs mergées (2)
+
+Deux PRs mergées en soirée, toutes deux issues de bugs découverts à l'observation des cycles de production. Un fix précis, une amélioration calibrage — les deux en moins de 15 minutes du premier commit au merge.
+
+#### PR #379 — [BUG] Arrondir le prix stop-loss au tick_size avant pose Kraken
+
+- **Heure de merge** : 18:55 UTC (20:55 Europe/Paris)
+- **Branche** : `feat/issue-378-arrondir-stop-loss-tick-size`
+- **Issue fermée** : #378
+- **Fichiers modifiés** : 4 (`phase5_execution.py`, `phase0_oco_retry.py`, 2 fichiers test)
+- **Diff** : +55 / -2 lignes — 79 tests verts (suite complète, 0 régression)
+
+**Contexte** : Kraken rejette silencieusement les ordres stop-loss dont le prix ne respecte pas le `tick_size` de la paire (SOL : 0.01 USDC, LINK : 0.00001 USDC). Le bot calculait le SL avec une précision flottante arbitraire (ex. 42.5678) et envoyait ce prix brut à l'API, qui le rejetait. Le correctif arrondit `actual_stop` au tick le plus proche (`round(round(p/tick)*tick, 8)`) — pattern déjà présent dans `phase0_trailing_stop.py`, réutilisé à l'identique. Aucun appel API supplémentaire : `tick_size` vient du même appel `binance("pairs", ...)` que le `lot_decimals` déjà présent. Correction appliquée à la fois en Phase 5 (pose initiale du SL) et Phase 0 (retry OCO).
+
+#### PR #381 — [M1] Élargir la zone RSI bonus Phase 3 et la rendre configurable
+
+- **Heure de merge** : 19:06 UTC (21:06 Europe/Paris)
+- **Branche** : `feat/issue-380-rsi-zone-config`
+- **Issue fermée** : #380
+- **Fichiers modifiés** : 3 (`phase3_scoring.py`, `config.json`, `tests/test_phase3_scoring.py`)
+- **Diff** : +28 / -2 lignes — 11/11 tests phase3 verts
+
+**Contexte** : Sur 4 cycles observés, LINK présentait un signal 4h+1D BUY valide avec RSI entre 59 et 65 — zone normalement considérée comme « légèrement surchauffée » mais non extrême. Avec l'ancienne borne de 55 codée en dur, le score plafonnnait à 5/10 (juste sous le seuil minimum `min_signal_score` = 6), éliminant des opportunités réelles. La borne passe de 55 à 65 et devient configurable via `config.json` (`rsi_zone_min`/`rsi_zone_max`), suivant le pattern `cfg.get(..., default)` uniforme des autres seuils. Rétrocompatible : si les clés absentes de `config.json`, les défauts (30/65) s'appliquent.
+
+---
+
+### Issues fermées (2)
+
+- **#378** — [BUG] Arrondir le prix stop-loss au tick_size avant pose sur Kraken → fermée par PR #379
+- **#380** — [M1] Élargir la zone RSI bonus Phase 3 et la rendre configurable → fermée par PR #381
+
+---
+
+### Nouveaux tickets créés (1)
+
+#### #382 — [BUG] PnL calculé sans soustraire les frais Kraken (fee)
+
+- **Label** : `bug`
+- **Créé** : 19:18 UTC
+- **Statut** : open
+
+**Contexte** : Analyse de l'historique complet de production (61 trades depuis juin 2026). Le `pnl_usdc` stocké dans `state/trade_history.json` est calculé sur la différence de prix brute entre entrée et sortie — les frais Kraken (`fee` retourné par `query-orders`) ne sont nulle part soustraits dans le code. Sur un ordre mesuré en direct : `cost: 125.65 USDC, fee: 0.7539 USDC` (0.60% côté achat). Extrapolation sur 58 trades clôturés (~3234 USDC de notionnel total, ~1.2% de frais aller-retour) :
+
+- PnL brut affiché : **+19.22 USDC**
+- Frais aller-retour estimés : **~38.8 USDC**
+- PnL net réel estimé : **≈ -19.6 USDC**
+
+Le bot s'affiche en gain alors que la performance réelle nette est probablement négative. Fichiers à modifier : `phase5_execution.py`, `phase0_profit.py`, `phase0_oco_retry.py`, TP watcher. Un champ `fees_usdc` sera ajouté dans chaque entrée de `trade_history.json` pour traçabilité.
+
+---
+
+### Commits directs notables sur `main`
+
+Commits automatiques de cycle log :
+
+| Timestamp UTC | Hash | Type |
+|---|---|---|
+| 00:05 | `bc67a04` | chore: cycle log 20260813_000501 |
+| 04:05 | `ef427fb` | chore: cycle log 20260813_040506 |
+| 08:05 | `2495d0a` | chore: cycle log 20260813_080507 |
+| 12:05 | `6205462` | chore: cycle log 20260813_120506 |
+| 16:05 | `2324309` | chore: cycle log 20260813_160507 |
+| 19:16 | `1b1c879` | chore: cycle log 20260813_191657 |
+
+Note : le cycle de 19:16 UTC ne correspond pas à un slot 4h régulier (00:05 / 04:05 / … / 20:05). Il a probablement été déclenché manuellement via `/trade` après le déploiement des deux PRs (merges à 18:55 et 19:06 UTC). Le cycle 20:05 UTC n'était pas encore commité au moment de la génération de ce récap (21:00 UTC).
+
+---
+
+### Cycles d'auto-trading observés
+
+5 slots réguliers + 1 cycle manuel post-déploiement.
+
+| Heure UTC | Timestamp log | Statut |
+|---|---|---|
+| 00:05 | `20260813_000501` | ✅ slot régulier |
+| 04:05 | `20260813_040506` | ✅ slot régulier |
+| 08:05 | `20260813_080507` | ✅ slot régulier |
+| 12:05 | `20260813_120506` | ✅ slot régulier |
+| 16:05 | `20260813_160507` | ✅ slot régulier |
+| 19:16 | `20260813_191657` | 🔧 cycle non-standard (probablement /trade manuel) |
+
+---
+
+### Matériel pour Medium
+
+> **Angle — "Le bug qu'on ne voit pas tant qu'on ne compte pas"**. Le bot affiche +19 USDC de gain depuis juin. Ce soir, une analyse simple des logs de Kraken révèle que les frais ne sont jamais soustraits du PnL. Résultat réel estimé : -19.6 USDC. Le bot « gagnant » est en réalité perdant. Ce n'est pas un bug de logique de trading — c'est un bug de mesure. La stratégie n'a peut-être pas tort ; on n'a simplement jamais su la lire correctement. Article sur les KPIs de trading qu'on oublie de construire correctement au départ, et pourquoi les frais sont toujours le dernier point qu'on règle.
+
+> **Angle — "Calibrer l'IA à la main, ligne par ligne"**. Quatre cycles observés, LINK score 5/10 à chaque fois malgré un signal fort. Un RSI de 62 est-il vraiment « trop élevé » pour trader ? La borne de 55 venait d'une heuristique initiale jamais vérifiée sur données réelles. Aujourd'hui, on la passe à 65 sur la base des observations de production. Ce n'est pas de l'IA qui s'améliore toute seule — c'est l'opérateur humain qui ajuste le levier après avoir regardé les cycles. Article sur la boucle humain-IA dans un bot semi-autonome : ce que l'IA ne peut pas décider seule.
+
+> **Angle — "Le tick_size ou comment Kraken rejette silencieusement vos ordres"**. Le bot posait des ordres stop-loss avec des prix flottants précis (42.5678 USDC). Kraken les rejetait sans explication d'erreur claire. Le correctif : arrondir au `tick_size` de la paire avant l'envoi — une contrainte d'exchange que la documentation ne met pas en avant. Trois lignes de code pour corriger un bug qui annulait la protection de toutes les positions ouvertes sur les paires à `tick_size` non trivial. Article sur les contraintes techniques cachées des exchanges et pourquoi les backtests ne les capturent jamais.
+
+---
+
+### Chiffres du jour
+
+- PRs mergées : **2** (#379, #381)
+- Issues fermées : **2** (#378, #380)
+- Tickets créés : **1** (#382 — bug PnL/frais)
+- Cycles auto-trading : **5/5 slots réguliers** + 1 cycle manuel
+- PnL brut affiché (cumul prod) : **+19.22 USDC**
+- PnL net réel estimé après frais (cumul prod, 58 trades) : **≈ -19.6 USDC**
+- Jours depuis le dernier merge avant aujourd'hui : **15** (PR #377 — 2026-07-29)
+
+---
+
 ## 2026-08-12
 
 ### PRs mergées (0)
