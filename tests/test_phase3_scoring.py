@@ -84,7 +84,7 @@ class TestScoreFormula(unittest.TestCase):
             "TESTCOIN": {
                 "signal_4h": "STRONG_BUY",       # +2
                 "signal_1d": "BUY",               # +2
-                "rsi_4h": 45,                      # +1 (30-55)
+                "rsi_4h": 45,                      # +1 (30-65)
                 "macd_bullish_4h": True,           # +1
                 "volume_24h": 500,                 # +1 (> 2*median)
             },
@@ -197,6 +197,28 @@ class TestSellDecision(unittest.TestCase):
         self.assertLessEqual(detail["score"], 3)
         self.assertEqual(detail["decision"], "SELL")
         self.assertIn("HELDCOIN", [c["coin"] for c in out["sell_candidates"]])
+
+
+class TestRsiZoneBonus(unittest.TestCase):
+    """Bornes par défaut (30-65, cf. issue #380) appliquées via rsi_zone_min/rsi_zone_max."""
+
+    def test_rsi_60_within_default_zone_gets_bonus(self):
+        analysis_results = {
+            "INZONE": {"signal_4h": "STRONG_BUY", "rsi_4h": 60},
+        }
+        out = _run_phase3(analysis_results, config=DEFAULT_CONFIG)
+        detail = out["scores_detail"]["INZONE"]
+        self.assertEqual(detail["score"], 3)
+        self.assertNotIn("RSI 60 hors zone", detail["reasons"])
+
+    def test_rsi_66_outside_default_zone_no_bonus(self):
+        analysis_results = {
+            "OUTOFZONE": {"signal_4h": "STRONG_BUY", "rsi_4h": 66},
+        }
+        out = _run_phase3(analysis_results, config=DEFAULT_CONFIG)
+        detail = out["scores_detail"]["OUTOFZONE"]
+        self.assertEqual(detail["score"], 2)
+        self.assertIn("RSI 66 hors zone", detail["reasons"])
 
 
 class TestFakeKrakenStub(unittest.TestCase):

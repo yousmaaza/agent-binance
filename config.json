@@ -14,6 +14,8 @@
   "min_signal_score": 6,
   "min_signal_score_degraded": 4,
   "max_correlated_positions": 2,
+  "rsi_zone_min": 30,
+  "rsi_zone_max": 65,
   "daily_loss_limit_pct": 0.05,
   "atr_stop_multiplier": 3.5,
   "timeframes_required": ["4h"],
