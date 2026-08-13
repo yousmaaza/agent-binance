@@ -137,6 +137,30 @@ class TestNominalBuyAndStopLossSucceed(unittest.TestCase):
         self.assertAlmostEqual(pos["entry_price"], 2000.0)
 
 
+class TestStopLossPriceRoundedToTickSize(unittest.TestCase):
+    """actual_stop est arrondi au tick_size de la paire avant l'appel kraken order --price (#378)."""
+
+    def test_actual_stop_rounded_to_tick_size_before_sl_order(self):
+        order = dict(BASE_ORDER, prix_entry=70.0, stop_distance_pct=0.041234)
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["70.0", "0.01"]}},  # drift nul, prix post-fill sous le TP
+            "balance": {"USDC": "500.0"},
+            "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
+            "query-orders_BUYTX1": {"BUYTX1": {"status": "closed", "cost": "700.0", "vol_exec": "10.0"}},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"}},
+            "order_sell_ETHUSDC": {"txid": ["SLTX1"]},
+        }
+        output, _mock_tg, mock_save, saved_history = _run_phase5_execution([order], kraken_scenario=kraken_scenario)
+
+        # actual_entry=70.0, stop_distance_pct=0.041234 -> raw actual_stop = 70*(1-0.041234) = 67.11362
+        # arrondi au tick 0.01 -> 67.11
+        executed = output["orders_executed"][0]
+        self.assertEqual(executed["actual_stop"], 67.11)
+
+        pos = saved_history[0]
+        self.assertEqual(pos["stop_price"], 67.11)
+
+
 class TestImmediateCloseWhenPriceAboveTpAtFill(unittest.TestCase):
     """Prix post-fill >= TP recalculé -> clôture immédiate au marché (close_reason dédié)."""
 

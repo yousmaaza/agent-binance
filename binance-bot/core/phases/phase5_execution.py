@@ -12,7 +12,7 @@ Pour chaque ordre, dans l'ordre de score décroissant :
 2. Re-fetch solde USDC, skip TYPE_C si insuffisant
 3. BUY MARKET puis query du fill (3 tentatives, 1s d'intervalle), skip TYPE_C si non rempli
 4. Recalcule TP/SL sur actual_entry ; clôture immédiate au marché si prix post-fill >= actual_tp
-5. Récupère lot_decimals pour arrondir la quantité de l'ordre SL
+5. Récupère lot_decimals/tick_size pour arrondir la quantité et le prix de l'ordre SL
 6. Pose l'ordre SELL STOP-LOSS ; protection_failed=True + alerte Telegram si échec
 
 Exécuté par Claude en Phase 5 :
@@ -157,12 +157,14 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
             })
             continue
 
-        # 5. Filtres marché (lot_decimals) pour l'ordre SL
+        # 5. Filtres marché (lot_decimals, tick_size) pour l'ordre SL
         pairs_raw = binance("pairs", "--pair", f"{coin}USDC", "-o", "json")
         pair_data = json.loads(pairs_raw).get(f"{coin}USDC", {})
         lot_dec = int(pair_data.get("lot_decimals", 8))
         step = 10 ** (-lot_dec)
         actual_qty_sl = round(math.floor(actual_qty / step) * step, lot_dec)
+        tick = float(pair_data.get("tick_size", "0.00000001"))
+        actual_stop = round(round(actual_stop / tick) * tick, 8)
 
         # 6. Placer l'ordre SELL STOP-LOSS
         protection_failed = False

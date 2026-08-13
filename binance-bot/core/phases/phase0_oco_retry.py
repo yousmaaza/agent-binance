@@ -148,6 +148,8 @@ try:
                 lot_dec = int(pair_data.get("lot_decimals", 8))
                 step = 10 ** (-lot_dec)
                 qty_adj = round(math.floor(qty / step) * step, lot_dec)
+                tick = float(pair_data.get("tick_size", "0.00000001"))
+                stop_calc = round(round(stop_calc / tick) * tick, 8)
 
                 sl_raw = binance("order", "sell", f"{coin}USDC", str(qty_adj), "--type", "stop-loss", "--price", str(stop_calc), "-o", "json", "--yes")
                 sl_resp = json.loads(sl_raw) if sl_raw.strip() else {}
