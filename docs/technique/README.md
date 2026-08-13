@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#381](pr-381-rsi-zone-config.md) | [M1] Élargir la zone RSI bonus Phase 3 et la rendre configurable | 2026-08-13 |
 | [#379](pr-379-arrondir-stop-loss-tick-size.md) | [BUG] Arrondir le prix stop-loss au tick_size avant pose Kraken | 2026-08-13 |
 | [#377](pr-377-pinner-versions-mcp.md) | [BUG] Pinner versions mcp/tradingview-mcp-server dans .mcp.json | 2026-07-29 |
 | [#375](pr-375-tests-integration-phases-6-7-8-routing.md) | [M5] Tests d'intégration : phases 6/7/8 + routing webhook_server.py | 2026-07-26 |
