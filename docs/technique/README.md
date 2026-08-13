@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#379](pr-379-arrondir-stop-loss-tick-size.md) | [BUG] Arrondir le prix stop-loss au tick_size avant pose Kraken | 2026-08-13 |
 | [#377](pr-377-pinner-versions-mcp.md) | [BUG] Pinner versions mcp/tradingview-mcp-server dans .mcp.json | 2026-07-29 |
 | [#375](pr-375-tests-integration-phases-6-7-8-routing.md) | [M5] Tests d'intégration : phases 6/7/8 + routing webhook_server.py | 2026-07-26 |
 | [#374](pr-374-tests-integration-phases-4-5.md) | [M4] Tests d'intégration : phases 4 et 5 (sizing + exécution) | 2026-07-26 |

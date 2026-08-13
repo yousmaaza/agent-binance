@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-07-29 (PR #377)
+> **Dernière mise à jour** : 2026-08-13 (PR #379)
 > **Commit** : <current>
 
 ---
@@ -320,6 +320,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#379](pr-379-arrondir-stop-loss-tick-size.md) | 2026-08-13 | [BUG] Arrondir le prix stop-loss au `tick_size` de la paire avant pose Kraken (Phase 5 + Phase 0 retry) : appels `kraken order --type stop-loss --price` rejetaient les prix non alignés au `tick_size` (ex. SOL 0.01). Fixes ligne 167 `phase5_execution.py`, ligne 152 `phase0_oco_retry.py` ; pattern réutilisé depuis `phase0_trailing_stop.py` ; tests ajoutés (2 TDD) |
 | [#377](pr-377-pinner-versions-mcp.md) | 2026-07-29 | [BUG] Pin versions `mcp==1.29.0` et `tradingview-mcp-server==0.7.1` dans `.mcp.json` pour éviter breaking change mcp 2.0.0 qui a supprimé `mcp.server.fastmcp` — élimine `ModuleNotFoundError` au démarrage du serveur TradingView MCP en production |
 | [#375](pr-375-tests-integration-phases-6-7-8-routing.md) | 2026-07-26 | [M5] Tests d'intégration phases 6/7/8 + routing webhook : 19 tests nouveaux (phase 6: slot 4h, transitions jour/nuit, limite; phase 7 mongo: skip sans URI, upsert succès, erreur notif; phase 7 heartbeats: détection phases manquantes, recovery; phase 8 cycle_log: append JSONL, rotation 90 lignes; webhook routing: /status/trade/perf/reset, commande inconnue) — réutilisation harness, isolation production state, suite 58 → 77 tests, clôture spec #368 |
 | [#374](pr-374-tests-integration-phases-4-5.md) | 2026-07-26 | [M4] Tests d'intégration phases 4 et 5 : 11 tests unitaires (6 phase 4, 5 phase 5) validant dimensionnement ordres (ATR stop, reward/risk TP, filtres min_order/ordermin/costmin, arrondi lot_decimals), exécution BUY MARKET (drift prix < 2%, solde USDC suffisant, clôture immédiate au TP recalculé), protection_failed alert sur échec SL — réutilisation complète harness partagé, zéro duplication code test, suite augmentée 47 → 58 tests |
