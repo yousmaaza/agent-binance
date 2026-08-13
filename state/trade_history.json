@@ -1302,11 +1302,13 @@
     "entry_order_id": "OA2HAK-F7P5C-BOPRLI",
     "sl_order_txid": null,
     "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 8.723728771532114,
+    "exit_date": "2026-08-13T08:13:53.446003+00:00",
+    "pnl_usdc": -0.1738,
+    "pnl_pct": -0.1381,
+    "oco_retry_count": 1,
+    "close_reason": "signal_sell_score3"
   },
   {
     "trade_id": "fc74ff78",
@@ -1316,16 +1318,18 @@
     "signal_score": 6,
     "entry_price": 76.15956665324552,
     "stop_price": 70.82839698751833,
-    "tp_price": 86.8219059846999,
+    "tp_price": 79.598834,
     "quantity": 1.64983444,
     "risk_usdc": 8.7619613694,
     "entry_order_id": "O7NCYU-OLDX4-CW5CZQ",
     "sl_order_txid": null,
     "protection_failed": true,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 76.2799999495707,
+    "exit_date": "2026-08-13T08:13:53.818946+00:00",
+    "pnl_usdc": 0.1987,
+    "pnl_pct": 0.1581,
+    "oco_retry_count": 1,
+    "close_reason": "signal_sell_score3"
   }
 ]
