@@ -43,6 +43,8 @@ cfg = inp.get("config") or _load_config()
 min_signal_score = cfg.get("min_signal_score", 6)
 max_open_positions = cfg.get("max_open_positions", 5)
 max_correlated_positions = cfg.get("max_correlated_positions", 2)
+rsi_zone_min = cfg.get("rsi_zone_min", 30)
+rsi_zone_max = cfg.get("rsi_zone_max", 65)
 
 # Mode dégradé : rate limit TradingView 1D
 buy_4h = [c for c in analysis_results if analysis_results[c].get("signal_4h") in ("BUY", "STRONG_BUY")]
@@ -82,7 +84,7 @@ for coin, data in analysis_results.items():
         reasons.append(f"1D {signal_1d}")
     elif signal_1d not in (None, "BUY", "STRONG_BUY"):
         reasons.append(f"1D {signal_1d}")
-    if rsi_4h is not None and 30 <= rsi_4h <= 55:
+    if rsi_4h is not None and rsi_zone_min <= rsi_4h <= rsi_zone_max:
         score += 1
     elif rsi_4h is not None:
         reasons.append(f"RSI {rsi_4h:.0f} hors zone")
