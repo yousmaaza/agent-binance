@@ -121,6 +121,31 @@ class TestOcoRetryNormalRetry(unittest.TestCase):
         self.assertEqual(pos["oco_retry_count"], 0)
 
 
+class TestOcoRetryStopPriceRoundedToTickSize(unittest.TestCase):
+    """stop_calc est arrondi au tick_size de la paire avant l'appel kraken order --price (#378)."""
+
+    def test_retry_sl_price_rounded_to_tick_size(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "protection_failed": True,
+             "quantity": 1, "entry_price": 1000, "tp_price": 1200, "stop_price": 900.826,
+             "oco_retry_count": 1},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1050.0", "0.01"]}},  # < tp_price 1200
+            "pairs": {"ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"}},
+            "order_sell_ETHUSDC": {"txid": ["NEWSLTX"]},
+        }
+        output, _, _, saved_history = _run_phase0_oco_retry(
+            history_data, config={"max_oco_retry": 3}, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["retried"], 1)
+        pos = saved_history[0]
+        self.assertFalse(pos["protection_failed"])
+        self.assertEqual(pos["sl_order_txid"], "NEWSLTX")
+        self.assertEqual(pos["stop_price"], 900.83)
+
+
 class TestOcoRetryExhaustedFallback(unittest.TestCase):
     """Cas limite : retry count >= max_oco_retry -> fermeture forcée au marché (fallback)."""
 
