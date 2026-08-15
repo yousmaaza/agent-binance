@@ -1331,5 +1331,25 @@
     "pnl_pct": 0.1581,
     "oco_retry_count": 1,
     "close_reason": "signal_sell_score3"
+  },
+  {
+    "trade_id": "add32310",
+    "date": "2026-08-15T16:09:35.502159+00:00",
+    "coin": "LINK",
+    "side": "BUY",
+    "signal_score": 4,
+    "entry_price": 9.501289517807379,
+    "stop_price": 8.8362,
+    "tp_price": 10.831470050300414,
+    "quantity": 13.09983073,
+    "risk_usdc": 8.702,
+    "entry_order_id": "O7XBPG-QZ5KQ-HYC3DY",
+    "sl_order_txid": "O7G2V4-EARFI-MCUJ5V",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null
   }
 ]
