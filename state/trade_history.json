@@ -1346,10 +1346,11 @@
     "entry_order_id": "O7XBPG-QZ5KQ-HYC3DY",
     "sl_order_txid": "O7G2V4-EARFI-MCUJ5V",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 9.461542973693065,
+    "exit_date": "2026-08-16T20:10:59.902709+00:00",
+    "pnl_usdc": -0.5206729999999868,
+    "pnl_pct": -0.41832789159640305,
+    "close_reason": "signal_sell_score3"
   }
 ]
