@@ -1434,5 +1434,25 @@
     "exit_date": null,
     "pnl_usdc": null,
     "pnl_pct": null
+  },
+  {
+    "trade_id": "3504a82f",
+    "date": "2026-08-18T20:13:20.826956+00:00",
+    "coin": "SOL",
+    "side": "BUY",
+    "signal_score": 6,
+    "entry_price": 77.13000017562317,
+    "stop_price": 71.73,
+    "tp_price": 87.92820020021043,
+    "quantity": 1.12912209,
+    "risk_usdc": 6.0641890182,
+    "entry_order_id": "OT4RI3-DFFXU-IQDUG7",
+    "sl_order_txid": "OALU7R-HLJ7C-IDSZZN",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null
   }
 ]
