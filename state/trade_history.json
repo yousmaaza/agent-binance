@@ -1387,11 +1387,12 @@
     "entry_order_id": "O7ZD4M-FN566-VK2TEA",
     "sl_order_txid": "OJS37U-3YSQU-O7SBUV",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 1.0026004081800186,
+    "exit_date": "2026-08-18T00:12:59.867926+00:00",
+    "pnl_usdc": -0.1522,
+    "pnl_pct": -0.1225,
+    "close_reason": "signal_sell_score2"
   },
   {
     "trade_id": "f78ada59",
@@ -1401,7 +1402,7 @@
     "signal_score": 5,
     "entry_price": 1904.8299910729631,
     "stop_price": 1771.49,
-    "tp_price": 2171.5061898231784,
+    "tp_price": 1925.713,
     "quantity": 0.02757914,
     "risk_usdc": 3.661,
     "entry_order_id": "OOOX4P-FLJVE-5JNJIA",
