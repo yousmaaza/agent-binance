@@ -1409,11 +1409,12 @@
     "entry_order_id": "OOOX4P-FLJVE-5JNJIA",
     "sl_order_txid": "OBCV4O-RUX2Q-TY4OUV",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 1909.7400063961386,
+    "exit_date": "2026-08-19T04:12:24+00:00",
+    "pnl_usdc": 0.1354,
+    "pnl_pct": 0.2578,
+    "close_reason": "signal_sell_score3"
   },
   {
     "trade_id": "3ea7c5ca",
@@ -1429,11 +1430,12 @@
     "entry_order_id": "OSDLEX-KJOSH-H57XJH",
     "sl_order_txid": "OBAWSU-EJCQ5-NG7A5Q",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 64257.77089183693,
+    "exit_date": "2026-08-19T04:12:26+00:00",
+    "pnl_usdc": 0.1966,
+    "pnl_pct": 0.27,
+    "close_reason": "signal_sell_score3"
   },
   {
     "trade_id": "3504a82f",
