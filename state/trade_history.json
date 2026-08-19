@@ -1456,5 +1456,25 @@
     "exit_date": null,
     "pnl_usdc": null,
     "pnl_pct": null
+  },
+  {
+    "trade_id": "f7b1a0ae",
+    "date": "2026-08-19T08:12:28.680057+00:00",
+    "coin": "ETH",
+    "side": "BUY",
+    "signal_score": 7,
+    "entry_price": 1915.210000356887,
+    "stop_price": 1781.15,
+    "tp_price": 2183.3394004068514,
+    "quantity": 0.05099658,
+    "risk_usdc": 6.8101526382,
+    "entry_order_id": "OMOFIQ-5VHEL-JUOI6D",
+    "sl_order_txid": "OQIIE7-OT2TJ-ZY6DFN",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "pnl_usdc": null,
+    "pnl_pct": null
   }
 ]
