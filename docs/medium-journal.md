@@ -10,6 +10,68 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-08-19
+
+### PRs mergées (0)
+
+Aucune PR mergée ce jour.
+
+---
+
+### Issues fermées (0)
+
+Aucune issue fermée ce jour.
+
+---
+
+### Nouveaux tickets créés (1)
+
+#### #383 — [CONFIG] Drawdown 48% en 7 jours + TYPE_A massifs — réduire risk_per_trade et atr_stop_multiplier
+
+- **Label** : `enhancement`
+- **Créé** : 20:11 UTC
+- **Statut** : open
+- **Généré par** : agent analyse-config (cron automatique)
+
+**Contexte** : Sur les 7 derniers jours (12→19 août), ~45 cycles analysés. Deux critères d'alerte déclenchés simultanément : ≈40 cycles TYPE_A (rejets Phase 3, score < 6/10) et un drawdown de **-47,8%** du portfolio (438 USDC → 130 USDC plancher le 18/08, remontée partielle à 228 USDC au moment du ticket). À noter : les TYPE_A sont presque exclusivement des scores insuffisants, **pas** des blocages max_open_positions — la recommandation habituelle d'augmenter les positions s'inverserait ici et aggraverait le risque.
+
+Pattern observé dans les données de cycle : chaque exécution réelle (executed ≥ 1) est systématiquement suivie d'un effondrement du portfolio. Le paramètre `max_single_position_pct = 0.65` autorisait jusqu'à 65% du budget USDC sur un seul trade — concentration structurellement excessive.
+
+**Changements recommandés** :
+
+| Paramètre | Actuel | Recommandé | Effet |
+|---|---|---|---|
+| `risk_per_trade_pct` | 0.02 (2%) | 0.01 (1%) | Taille de position divisée par 2 |
+| `atr_stop_multiplier` | 3.5 | 2.5 | Stops plus serrés, pertes coupées plus tôt |
+| `max_single_position_pct` | 0.65 | 0.30 | Plafonne la concentration par trade |
+
+**Conditions pour appliquer** : BTC sentiment redevenu Neutral/Bullish (top_score ≥ 6 sur 2 cycles consécutifs) + portfolio > 250 USDC (seuil pour éviter TYPE_B avec risk = 1%).
+
+---
+
+### Commits directs notables sur `main`
+
+Commits automatiques de cycle log — 6 cycles réguliers (slots 4h) :
+
+| Timestamp UTC | Hash | Type |
+|---|---|---|
+| 00:05 | `a73fd98` | chore: cycle log 20260819_000502 |
+| 04:05 | `5b80860` | chore: cycle log 20260819_040509 |
+| 08:05 | `cce09f9` | chore: cycle log 20260819_080502 |
+| 12:05 | `c237690` | chore: cycle log 20260819_120500 |
+| 16:05 | `cf910c8` | chore: cycle log 20260819_160509 |
+| 20:05 | `967dfba` | chore: cycle log 20260819_200509 |
+
+---
+
+### Angle Medium
+
+**Titre possible** : « Quand le bot se tire une balle dans le pied : anatomie d'un drawdown de 48% »
+
+**Angle narratif** : Montrer comment un bot peut générer des pertes structurelles même avec de bons signaux, simplement parce que le sizing est trop agressif. Le `max_single_position_pct = 0.65` (65% du budget sur un seul trade) transforme chaque signal fort en pari à haute variance. L'article peut suivre le fil de l'analyse automatique : les données brutes des cycles → la détection d'anomalie → la recommandation chirurgicale sur trois paramètres. Bonne entrée pour vulgariser le concept de position sizing en trading algo, sans jargon.
+
+---
+
 ## 2026-08-13
 
 ### PRs mergées (2)
