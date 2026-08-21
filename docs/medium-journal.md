@@ -10,6 +10,58 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-08-21
+
+### PRs mergées (0)
+
+Aucune PR mergée ce jour.
+
+---
+
+### Issues fermées (0)
+
+Aucune issue fermée ce jour.
+
+---
+
+### Nouveaux tickets créés (1)
+
+#### #384 — [CONFIG] Drawdown 36% + violation max_open_positions (5>4) — ajustement requis
+
+- **Labels** : `bug`, `enhancement`
+- **Créé** : 20:12 UTC
+- **Statut** : open
+- **Généré par** : agent analyse-config (cron automatique)
+
+**Contexte** : Deuxième alerte de configuration consécutive en trois jours (après le ticket #383 du 19/08 qui signalait un drawdown de 48%). Le drawdown a légèrement reculé à **36%**, ce qui témoigne d'une stabilisation partielle — mais une nouvelle violation est venue s'y greffer : **5 positions simultanées ouvertes** alors que le paramètre `max_open_positions = 4`. Le bot a donc franchi sa propre limite de concentration sans que le garde-fou ne l'en empêche, ce qui aggrave mécaniquement l'exposition au risque en cas de mouvement défavorable corrélé.
+
+Le schéma est cohérent avec celui observé le 19/08 : les cycles tournent normalement (6 exécutions régulières sur les slots 4h du 21/08), les signaux Phase 1 passent, mais le sizing cumulé dépasse les contraintes de portfolio configurées. La recommandation attendue portera sur le renforcement du contrôle `max_open_positions` en Phase 3 (gate en amont du scoring) plutôt qu'en Phase 4 (après calcul du sizing), pour éviter qu'un cinquième signal soit évalué et exécuté avant que la limite ne soit détectée.
+
+---
+
+### Commits directs notables sur `main`
+
+Commits automatiques de cycle log — 6 cycles réguliers (slots 4h) :
+
+| Timestamp UTC | Hash | Type |
+|---|---|---|
+| 00:05 | `9df010e` | chore: cycle log 20260821_000503 |
+| 04:05 | `cba0148` | chore: cycle log 20260821_040505 |
+| 08:05 | `a63a75f` | chore: cycle log 20260821_080501 |
+| 12:05 | `96c70be` | chore: cycle log 20260821_120501 |
+| 16:05 | `9a32f67` | chore: cycle log 20260821_160501 |
+| 20:05 | `fb61045` | chore: cycle log 20260821_200503 |
+
+---
+
+### Angle Medium
+
+**Titre possible** : « Le bot qui oublie ses propres règles : deux alertes en trois jours »
+
+**Angle narratif** : Le 19/08, l'alerte portait sur le sizing agressif (drawdown 48%). Le 21/08, une nouvelle alarme : le bot a ouvert 5 positions simultanées alors qu'il s'était lui-même fixé un plafond de 4. Deux tickets auto-générés, deux symptômes différents, une même cause racine — le contrôle de portfolio intervient trop tard dans le pipeline. L'article peut explorer le concept de « gate sequencing » dans un bot de trading : à quel moment du cycle la contrainte doit-elle être évaluée pour être effective ? L'enjeu est pédagogique : montrer que définir une règle ne suffit pas, il faut aussi l'imposer au bon endroit dans le flux.
+
+---
+
 ## 2026-08-19
 
 ### PRs mergées (0)
