@@ -38,7 +38,7 @@ from core.trade_helpers import (
     save_maker_pending_orders,
 )
 
-_MAKER_FILL_LABEL = maker_or_taker_from_ordertype("limit", post_only=True)  # "maker" (#388)
+_MAKER_FILL_LABEL: str = maker_or_taker_from_ordertype("limit", post_only=True)  # "maker" (#388)
 
 _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "maker_watcher_state.json")
 
