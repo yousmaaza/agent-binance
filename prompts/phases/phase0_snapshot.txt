@@ -36,10 +36,14 @@ Pour chaque trade open dans trade_history.json avec un champ sl_order_txid :
   kraken query-orders {sl_order_txid} -o json
   Si status == "closed" :
     → Stop-loss déclenché. exit_price = float(cost) / float(vol_exec)
-    → pnl_usdc = (exit_price - entry_price) × quantity
+    → exit_fee_usdc = float(fee) (champ "fee" présent dans la même réponse query-orders, en USDC)
+    → entry_fee_usdc = trade.get("entry_fee_usdc", 0) ou 0 (déjà stocké à l'entrée par phase5_execution.py)
+    → fees_usdc = entry_fee_usdc + exit_fee_usdc
+    → pnl_gross_usdc = (exit_price - entry_price) × quantity
+    → pnl_usdc = pnl_gross_usdc - fees_usdc   # PnL NET, frais Kraken déduits (#382)
     → pnl_pct = (exit_price - entry_price) / entry_price × 100
-    → Met à jour trade_history.json : status="closed", exit_price, pnl_usdc, pnl_pct,
-       exit_date (UTC), close_reason="sl_hit"
+    → Met à jour trade_history.json : status="closed", exit_price, entry_fee_usdc, exit_fee_usdc,
+       fees_usdc, pnl_gross_usdc, pnl_usdc, pnl_pct, exit_date (UTC), close_reason="sl_hit"
     → Si pnl_usdc > 0 : tg("✅ SL déclenché (profit) : {COIN} +{pnl_usdc:.2f} USDC (+{pnl_pct:.1f}%)")
     → Sinon : tg("🛑 Stop touché : {COIN} {pnl_usdc:.2f} USDC ({pnl_pct:.1f}%)")
 # Note : le TP est géré par phase0_profit.py (exécuté plus bas dans Phase 0)

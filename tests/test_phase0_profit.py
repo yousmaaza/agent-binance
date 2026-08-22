@@ -77,6 +77,33 @@ class TestProfitTargetClosesPosition(unittest.TestCase):
         mock_tg.assert_called()
 
 
+class TestProfitTargetNetOfFees(unittest.TestCase):
+    """pnl_usdc devient le PnL net des frais entrée+sortie (#382)."""
+
+    def test_pnl_usdc_net_of_entry_and_exit_fees(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": "1000",
+             "quantity": "1", "entry_fee_usdc": 0.6},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},  # +10% > seuil 5%
+            "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
+            "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0", "fee": "0.7"}},
+        }
+        output, _mock_tg, mock_save = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0}, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        pos = mock_save.call_args[0][0][0]
+        # pnl_gross = 100.0 ; fees = 0.6+0.7 = 1.3 ; pnl net = 98.7
+        self.assertAlmostEqual(pos["pnl_gross_usdc"], 100.0)
+        self.assertAlmostEqual(pos["fees_usdc"], 1.3)
+        self.assertAlmostEqual(pos["pnl_usdc"], 98.7)
+        self.assertAlmostEqual(pos["entry_fee_usdc"], 0.6)
+        self.assertAlmostEqual(pos["exit_fee_usdc"], 0.7)
+
+
 class TestProfitBelowThresholdNoAction(unittest.TestCase):
     def test_position_untouched_when_profit_below_threshold(self):
         history_data = [

@@ -95,6 +95,54 @@ class TestOcoRetryForceCloseAboveTp(unittest.TestCase):
         self.assertAlmostEqual(pos["exit_price"], 1300.0)
 
 
+class TestOcoRetryForceCloseNetOfFees(unittest.TestCase):
+    """force_close_above_tp : pnl_usdc net des frais entrée+sortie (#382)."""
+
+    def test_pnl_usdc_net_of_entry_and_exit_fees(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "protection_failed": True,
+             "quantity": 1, "entry_price": 1000, "tp_price": 1200, "stop_price": 900,
+             "oco_retry_count": 0, "entry_fee_usdc": 0.4},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1300.0", "0.01"]}},  # > tp_price 1200
+            "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
+            "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "1300.0", "vol_exec": "1.0", "fee": "0.9"}},
+        }
+        _output, _, _, saved_history = _run_phase0_oco_retry(history_data, kraken_scenario=kraken_scenario)
+
+        pos = saved_history[0]
+        # pnl_gross = 300.0 ; fees = 0.4+0.9 = 1.3 ; pnl net = 298.7
+        self.assertAlmostEqual(pos["pnl_gross_usdc"], 300.0)
+        self.assertAlmostEqual(pos["fees_usdc"], 1.3)
+        self.assertAlmostEqual(pos["pnl_usdc"], 298.7)
+
+
+class TestOcoRetryExhaustedFallbackNetOfFees(unittest.TestCase):
+    """retry_exhausted_fallback : pnl_usdc net des frais entrée+sortie (#382)."""
+
+    def test_pnl_usdc_net_of_entry_and_exit_fees(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "protection_failed": True,
+             "quantity": 1, "entry_price": 1000, "tp_price": 1200, "stop_price": 900,
+             "oco_retry_count": 3, "entry_fee_usdc": 0.4},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1050.0", "0.01"]}},  # < tp_price 1200
+            "order_sell_ETHUSDC": {"txid": ["SELLTX2"]},
+            "query-orders_SELLTX2": {"SELLTX2": {"status": "closed", "cost": "1050.0", "vol_exec": "1.0", "fee": "0.6"}},
+        }
+        _output, _, _, saved_history = _run_phase0_oco_retry(
+            history_data, config={"max_oco_retry": 3}, kraken_scenario=kraken_scenario,
+        )
+
+        pos = saved_history[0]
+        # pnl_gross = 50.0 ; fees = 0.4+0.6 = 1.0 ; pnl net = 49.0
+        self.assertAlmostEqual(pos["pnl_gross_usdc"], 50.0)
+        self.assertAlmostEqual(pos["fees_usdc"], 1.0)
+        self.assertAlmostEqual(pos["pnl_usdc"], 49.0)
+
+
 class TestOcoRetryNormalRetry(unittest.TestCase):
     """Prix sous le TP, retry count < max -> nouveau SL posé, oco_retry_count remis à 0."""
 

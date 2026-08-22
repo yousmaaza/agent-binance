@@ -80,6 +80,17 @@ def _save_config_atomic(data: dict, project_dir: str = "") -> None:
     _save_json_atomic(data, cfg_path)
 
 
+def compute_net_pnl(entry_price: float, exit_price: float, qty: float, entry_fee_usdc: float, exit_fee_usdc: float) -> dict:
+    """PnL net = PnL brut (diff de prix) moins les frais Kraken entrée+sortie (#382)."""
+    pnl_gross_usdc = (exit_price - entry_price) * qty
+    fees_usdc = entry_fee_usdc + exit_fee_usdc
+    return {
+        "pnl_gross_usdc": pnl_gross_usdc,
+        "fees_usdc": fees_usdc,
+        "pnl_usdc": pnl_gross_usdc - fees_usdc,
+    }
+
+
 def log_phase0_event(cycle_id: str, phase: str, coin: str, action: str, details: dict = None) -> None:
     """Écrit un événement structuré (JSON) dans logs/phase0_events.jsonl pour traçabilité."""
     event = {

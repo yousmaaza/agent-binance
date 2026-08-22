@@ -10,7 +10,7 @@ from core.env import PROJECT_DIR
 from core.lock import acquire_lock, is_locked, release_lock
 from core.state_manager import load_trade_history, save_trade_history
 from core.telegram import send_telegram
-from core.trade_helpers import binance as _cli
+from core.trade_helpers import binance as _cli, compute_net_pnl
 
 _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "tp_watcher_state.json")
 
@@ -104,6 +104,7 @@ def _tp_watcher_tick():
             sell_txid = (sell_resp.get("txid") or [None])[0]
 
             exit_price = current_price
+            exit_fee_usdc = 0.0
             if sell_txid:
                 time.sleep(1)
                 try:
@@ -114,15 +115,22 @@ def _tp_watcher_tick():
                     cost = float(fill.get("cost", current_price * qty))
                     if vol_exec > 0:
                         exit_price = cost / vol_exec
+                    exit_fee_usdc = float(fill.get("fee", 0) or 0)
                 except Exception as e:
                     logger.debug(f"[TP Watcher] Fill query {sell_txid} indisponible, exit_price = current_price : {e}")
 
-            pnl_usdc = (exit_price - entry_price) * qty
+            entry_fee_usdc = float(pos.get("entry_fee_usdc", 0) or 0)
+            net = compute_net_pnl(entry_price, exit_price, qty, entry_fee_usdc, exit_fee_usdc)
+            pnl_usdc = net["pnl_usdc"]
             pnl_pct = (exit_price - entry_price) / entry_price * 100
 
             pos.update({
                 "status": "closed",
                 "exit_price": exit_price,
+                "entry_fee_usdc": entry_fee_usdc,
+                "exit_fee_usdc": exit_fee_usdc,
+                "fees_usdc": net["fees_usdc"],
+                "pnl_gross_usdc": net["pnl_gross_usdc"],
                 "pnl_usdc": pnl_usdc,
                 "pnl_pct": pnl_pct,
                 "close_reason": "tp_watcher",
