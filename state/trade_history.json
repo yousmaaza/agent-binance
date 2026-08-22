@@ -2270,5 +2270,32 @@
     "exit_date": null,
     "pnl_usdc": null,
     "pnl_pct": null
+  },
+  {
+    "trade_id": "e253323e",
+    "date": "2026-08-22T20:14:23.907242+00:00",
+    "coin": "TRUMP",
+    "side": "BUY",
+    "signal_score": 4,
+    "entry_price": 2.495999936503929,
+    "stop_price": 2.321,
+    "tp_price": 2.8454399276144793,
+    "quantity": 52.91666,
+    "risk_usdc": 9.2178,
+    "entry_order_id": "OWRDKP-4J6IS-XM3UH5",
+    "sl_order_txid": "OIO2II-VKORR-UIEG26",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.39624,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 109.619204,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
