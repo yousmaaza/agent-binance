@@ -41,9 +41,10 @@ Pour chaque trade open dans trade_history.json avec un champ sl_order_txid :
     → fees_usdc = entry_fee_usdc + exit_fee_usdc
     → pnl_gross_usdc = (exit_price - entry_price) × quantity
     → pnl_usdc = pnl_gross_usdc - fees_usdc   # PnL NET, frais Kraken déduits (#382)
-    → pnl_pct = (exit_price - entry_price) / entry_price × 100
+    → pnl_gross_pct = (exit_price - entry_price) / entry_price × 100   # ancien calcul brut, conservé
+    → pnl_pct = pnl_usdc / (entry_price × quantity) × 100   # PnL NET en %, même signe que pnl_usdc (#382)
     → Met à jour trade_history.json : status="closed", exit_price, entry_fee_usdc, exit_fee_usdc,
-       fees_usdc, pnl_gross_usdc, pnl_usdc, pnl_pct, exit_date (UTC), close_reason="sl_hit"
+       fees_usdc, pnl_gross_usdc, pnl_usdc, pnl_gross_pct, pnl_pct, exit_date (UTC), close_reason="sl_hit"
     → Si pnl_usdc > 0 : tg("✅ SL déclenché (profit) : {COIN} +{pnl_usdc:.2f} USDC (+{pnl_pct:.1f}%)")
     → Sinon : tg("🛑 Stop touché : {COIN} {pnl_usdc:.2f} USDC ({pnl_pct:.1f}%)")
 # Note : le TP est géré par phase0_profit.py (exécuté plus bas dans Phase 0)

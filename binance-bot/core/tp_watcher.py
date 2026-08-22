@@ -122,7 +122,7 @@ def _tp_watcher_tick():
             entry_fee_usdc = float(pos.get("entry_fee_usdc", 0) or 0)
             net = compute_net_pnl(entry_price, exit_price, qty, entry_fee_usdc, exit_fee_usdc)
             pnl_usdc = net["pnl_usdc"]
-            pnl_pct = (exit_price - entry_price) / entry_price * 100
+            pnl_pct = net["pnl_pct"]
 
             pos.update({
                 "status": "closed",
@@ -132,6 +132,7 @@ def _tp_watcher_tick():
                 "fees_usdc": net["fees_usdc"],
                 "pnl_gross_usdc": net["pnl_gross_usdc"],
                 "pnl_usdc": pnl_usdc,
+                "pnl_gross_pct": net["pnl_gross_pct"],
                 "pnl_pct": pnl_pct,
                 "close_reason": "tp_watcher",
                 "exit_date": datetime.now(timezone.utc).isoformat() + "Z",

@@ -81,14 +81,38 @@ def _save_config_atomic(data: dict, project_dir: str = "") -> None:
 
 
 def compute_net_pnl(entry_price: float, exit_price: float, qty: float, entry_fee_usdc: float, exit_fee_usdc: float) -> dict:
-    """PnL net = PnL brut (diff de prix) moins les frais Kraken entrée+sortie (#382)."""
+    """PnL net = PnL brut (diff de prix) moins les frais Kraken entrée+sortie (#382).
+
+    pnl_pct est le pourcentage NET (pnl_usdc rapporté au notionnel d'entrée), en miroir de
+    pnl_usdc — jamais un pourcentage brut à côté d'un montant net (signes qui se contredisent).
+    pnl_gross_pct conserve l'ancien calcul brut, en miroir de pnl_gross_usdc.
+    """
     pnl_gross_usdc = (exit_price - entry_price) * qty
     fees_usdc = entry_fee_usdc + exit_fee_usdc
+    pnl_usdc = pnl_gross_usdc - fees_usdc
+    pnl_gross_pct = (exit_price - entry_price) / entry_price * 100 if entry_price else 0.0
+    notional = entry_price * qty
+    pnl_pct = pnl_usdc / notional * 100 if notional else 0.0
     return {
         "pnl_gross_usdc": pnl_gross_usdc,
         "fees_usdc": fees_usdc,
-        "pnl_usdc": pnl_gross_usdc - fees_usdc,
+        "pnl_usdc": pnl_usdc,
+        "pnl_gross_pct": pnl_gross_pct,
+        "pnl_pct": pnl_pct,
     }
+
+
+def maker_or_taker_from_ordertype(ordertype: str) -> str | None:
+    """Dérive maker/taker depuis descr.ordertype de la réponse query-orders de l'ordre d'entrée.
+
+    market et stop-loss (une fois déclenché) sont toujours exécutés en taker chez Kraken. Les
+    ordres limit post-only prévus par #388 ne sont pas déductibles depuis ordertype seul (le champ
+    "maker" n'existe que côté query-trades, pas query-orders) — retourne None plutôt qu'une valeur
+    affirmative fausse ; #389 (commande /maker) doit gérer ce None.
+    """
+    if ordertype in ("market", "stop-loss"):
+        return "taker"
+    return None
 
 
 def log_phase0_event(cycle_id: str, phase: str, coin: str, action: str, details: dict = None) -> None:

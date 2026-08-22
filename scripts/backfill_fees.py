@@ -178,6 +178,8 @@ def backfill(history: list, fills: list, force: bool) -> tuple:
         trade["fees_usdc"] = net["fees_usdc"]
         trade["pnl_gross_usdc"] = net["pnl_gross_usdc"]
         trade["pnl_usdc"] = net["pnl_usdc"]
+        trade["pnl_gross_pct"] = net["pnl_gross_pct"]
+        trade["pnl_pct"] = net["pnl_pct"]
         trade["fees_estimated"] = estimated
         stats["trades_updated"] += 1
 

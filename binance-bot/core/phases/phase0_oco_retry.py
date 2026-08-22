@@ -78,14 +78,14 @@ try:
                 entry_fee_usdc = float(t.get("entry_fee_usdc", 0) or 0)
                 net = compute_net_pnl(entry, fill_exit, qty, entry_fee_usdc, exit_fee_usdc)
                 pnl_usdc = net["pnl_usdc"]
-                pnl_pct = (fill_exit - entry) / entry * 100
+                pnl_pct = net["pnl_pct"]
                 for item in history:
                     if item.get("trade_id") == t.get("trade_id"):
                         item.update({
                             "status": "closed", "exit_price": fill_exit,
                             "entry_fee_usdc": entry_fee_usdc, "exit_fee_usdc": exit_fee_usdc,
                             "fees_usdc": net["fees_usdc"], "pnl_gross_usdc": net["pnl_gross_usdc"],
-                            "pnl_usdc": pnl_usdc, "pnl_pct": pnl_pct,
+                            "pnl_usdc": pnl_usdc, "pnl_gross_pct": net["pnl_gross_pct"], "pnl_pct": pnl_pct,
                             "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                             "protection_failed": False, "close_reason": "market_above_tp",
                         })
@@ -123,14 +123,14 @@ try:
                     entry_fee_usdc = float(t.get("entry_fee_usdc", 0) or 0)
                     net = compute_net_pnl(entry, fill_exit, qty, entry_fee_usdc, exit_fee_usdc)
                     pnl_usdc = net["pnl_usdc"]
-                    pnl_pct = (fill_exit - entry) / entry * 100
+                    pnl_pct = net["pnl_pct"]
                     for item in history:
                         if item.get("trade_id") == t.get("trade_id"):
                             item.update({
                                 "status": "closed", "exit_price": fill_exit,
                                 "entry_fee_usdc": entry_fee_usdc, "exit_fee_usdc": exit_fee_usdc,
                                 "fees_usdc": net["fees_usdc"], "pnl_gross_usdc": net["pnl_gross_usdc"],
-                                "pnl_usdc": pnl_usdc, "pnl_pct": pnl_pct,
+                                "pnl_usdc": pnl_usdc, "pnl_gross_pct": net["pnl_gross_pct"], "pnl_pct": pnl_pct,
                                 "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                                 "protection_failed": False, "close_reason": "protection_exhausted",
                                 "oco_retry_count": 0,

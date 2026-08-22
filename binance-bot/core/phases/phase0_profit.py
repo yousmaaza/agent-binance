@@ -69,7 +69,7 @@ for pos in history:
                 entry_fee_usdc = float(pos.get("entry_fee_usdc", 0) or 0)
                 net = compute_net_pnl(entry_price, exit_price, qty, entry_fee_usdc, exit_fee_usdc)
                 actual_pnl_usdc = net["pnl_usdc"]
-                actual_pnl_pct = (exit_price - entry_price) / entry_price * 100
+                actual_pnl_pct = net["pnl_pct"]
                 pos.update({
                     "status": "closed",
                     "exit_price": exit_price,
@@ -78,6 +78,7 @@ for pos in history:
                     "fees_usdc": net["fees_usdc"],
                     "pnl_gross_usdc": net["pnl_gross_usdc"],
                     "pnl_usdc": actual_pnl_usdc,
+                    "pnl_gross_pct": net["pnl_gross_pct"],
                     "pnl_pct": actual_pnl_pct,
                     "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "close_reason": "profit_target_phase0",

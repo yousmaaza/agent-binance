@@ -32,7 +32,7 @@ import datetime
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl  # noqa: E402
+from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl, maker_or_taker_from_ordertype  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -101,9 +101,9 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
         actual_qty = float(fill["vol_exec"])
         entry_order_id = entry_txid
         entry_fee_usdc = float(fill.get("fee", 0) or 0)
-        # Le bot ne pose jamais d'ordre limit (cf. prompts/shared/api_reference.txt) : market/stop-loss
-        # sont toujours exécutés en taker côté Kraken.
-        maker_or_taker = "taker"
+        # Dérivé depuis descr.ordertype de la réponse Kraken plutôt qu'une constante figée : suit
+        # automatiquement le jour où #388 introduit des ordres limit post-only pour l'entrée.
+        maker_or_taker = maker_or_taker_from_ordertype(fill.get("descr", {}).get("ordertype", "market"))
 
         # 4. Re-fetch prix post-fill, recalcule TP/SL
         ticker_raw2 = binance("ticker", f"{coin}USDC", "-o", "json")
@@ -127,7 +127,6 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
 
             avg_exit = float(exit_fill["cost"]) / float(exit_fill["vol_exec"])
             exit_fee_usdc = float(exit_fill.get("fee", 0) or 0)
-            pnl_pct = (avg_exit - actual_entry) / actual_entry * 100
             net = compute_net_pnl(actual_entry, avg_exit, actual_qty, entry_fee_usdc, exit_fee_usdc)
 
             trade_id = str(uuid.uuid4())[:8]
@@ -155,7 +154,8 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
                 "maker_or_taker": maker_or_taker,
                 "pnl_gross_usdc": net["pnl_gross_usdc"],
                 "pnl_usdc": net["pnl_usdc"],
-                "pnl_pct": pnl_pct,
+                "pnl_gross_pct": net["pnl_gross_pct"],
+                "pnl_pct": net["pnl_pct"],
                 "close_reason": "market_above_tp_at_fill",
             })
             _save_trade_history_atomic(history)
@@ -217,6 +217,7 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
             "maker_or_taker": maker_or_taker,
             "pnl_gross_usdc": None,
             "pnl_usdc": None,
+            "pnl_gross_pct": None,
             "pnl_pct": None,
         })
         _save_trade_history_atomic(history)
