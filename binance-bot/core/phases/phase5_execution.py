@@ -126,6 +126,7 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
                     "scan_price": prix_entry,
                     "initial_limit_price": maker_limit_price,
                     "current_limit_price": maker_limit_price,
+                    "adjustments": 0,
                     "placed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "cycle_id": CYCLE_ID,
                 })

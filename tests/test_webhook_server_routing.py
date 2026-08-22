@@ -64,6 +64,7 @@ def _run_one_command(text):
         "run_trade_workflow": MagicMock(),
         "run_status": MagicMock(return_value="status-text"),
         "run_perf": MagicMock(return_value="perf-text"),
+        "run_maker": MagicMock(return_value="maker-text"),
     }
 
     with contextlib.ExitStack() as stack:
@@ -113,6 +114,16 @@ class TestPerfCommandRouting(unittest.TestCase):
         mocks["send_telegram"].assert_any_call("perf-text", parse_mode="HTML")
 
 
+class TestMakerCommandRouting(unittest.TestCase):
+    """`/maker` -> run_maker() appelé, résultat envoyé en HTML."""
+
+    def test_maker_dispatches_run_maker_and_sends_html_result(self):
+        mocks = _run_one_command("/maker")
+
+        mocks["run_maker"].assert_called_once()
+        mocks["send_telegram"].assert_any_call("maker-text", parse_mode="HTML")
+
+
 class TestResetCommandRouting(unittest.TestCase):
     """`/reset` -> release_lock() appelé, notification de confirmation envoyée."""
 
@@ -135,6 +146,7 @@ class TestUnknownCommandRouting(unittest.TestCase):
         mocks["run_trade_workflow"].assert_not_called()
         mocks["run_status"].assert_not_called()
         mocks["run_perf"].assert_not_called()
+        mocks["run_maker"].assert_not_called()
         mocks["release_lock"].assert_not_called()
 
 

@@ -107,7 +107,8 @@ def _run_tick(pending_orders, fake_cli, config=None, history=None):
 
 class TestOrderFilledRegistersPositionAndPlacesStopLoss(unittest.TestCase):
     def test_full_fill_registers_open_position_with_maker_label_and_sl(self):
-        pending = _pending()
+        placed_at = (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat()
+        pending = _pending(placed_at=placed_at)
         fake_cli = _FakeCli(**{
             "query-orders_TX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
             "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
@@ -127,6 +128,10 @@ class TestOrderFilledRegistersPositionAndPlacesStopLoss(unittest.TestCase):
         self.assertAlmostEqual(pos["quantity"], 0.1)
         self.assertAlmostEqual(pos["entry_fee_usdc"], 0.3)
         self.assertEqual(saved_pending, [])
+        # #389 : délai de remplissage maker persisté pour le calcul du délai médian.
+        self.assertIsNotNone(pos["maker_fill_seconds"])
+        self.assertGreaterEqual(pos["maker_fill_seconds"], 45)
+        self.assertLess(pos["maker_fill_seconds"], 60)
 
 
 class TestBudgetExhaustedTriggersMarketFallback(unittest.TestCase):
@@ -151,6 +156,8 @@ class TestBudgetExhaustedTriggersMarketFallback(unittest.TestCase):
         self.assertAlmostEqual(pos["entry_price"], 2010.0)
         self.assertEqual(saved_pending, [])
         self.assertTrue(fake_cli.calls_with("order", "cancel"))
+        # #389 : un repli marché n'est pas un "remplissage maker" -> pas de délai à mesurer.
+        self.assertIsNone(pos["maker_fill_seconds"])
 
 
 class TestTimeoutTriggersMarketFallback(unittest.TestCase):
@@ -212,10 +219,23 @@ class TestBidMovedTriggersAmend(unittest.TestCase):
         self.assertAlmostEqual(saved_pending[0]["current_limit_price"], 2000.5)
         self.assertTrue(fake_cli.calls_with("order", "amend"))
 
+    def test_successful_amend_increments_adjustments_counter(self):
+        """#389 : compteur d'ajustements consommé par /maker, incrémenté à chaque amend réussi."""
+        pending = _pending(adjustments=2)
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"b": ["2000.5", "0.01"], "c": ["2000.0", "0.01"]},
+            "order_amend_TX1": {},
+        })
+
+        _history, saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
+
+        self.assertEqual(saved_pending[0]["adjustments"], 3)
+
 
 class TestAmendRejectedIsNonFatal(unittest.TestCase):
     def test_post_only_amend_rejection_keeps_order_pending_unchanged(self):
-        pending = _pending()
+        pending = _pending(adjustments=1)
         fake_cli = _FakeCli(**{
             "query-orders_TX1": {"status": "open", "vol_exec": "0"},
             "ticker_ETHUSDC": {"b": ["2000.5", "0.01"], "c": ["2000.0", "0.01"]},
@@ -228,6 +248,8 @@ class TestAmendRejectedIsNonFatal(unittest.TestCase):
         self.assertEqual(len(saved_pending), 1)
         # Le prix n'est pas mis à jour puisque l'amend a été rejeté -> réessai au tick suivant.
         self.assertAlmostEqual(saved_pending[0]["current_limit_price"], 1999.5)
+        # Le compteur d'ajustements n'est pas incrémenté sur un amend rejeté (#389).
+        self.assertEqual(saved_pending[0]["adjustments"], 1)
 
 
 class TestPartialFillOnRepliRegistersPartialPositionWithoutMarketBuy(unittest.TestCase):
@@ -250,6 +272,7 @@ class TestPartialFillOnRepliRegistersPartialPositionWithoutMarketBuy(unittest.Te
         self.assertAlmostEqual(pos["entry_price"], 2000.0)
         self.assertEqual(saved_pending, [])
         self.assertFalse(fake_cli.calls_with("order", "buy"))  # pas de repli marché sur le reliquat
+        self.assertIsNotNone(pos["maker_fill_seconds"])  # #389
 
 
 class TestExternallyCanceledOrderWithZeroFillIsAbandoned(unittest.TestCase):
