@@ -37,7 +37,7 @@ for pos in history:
         ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
         ticker_data = json.loads(ticker_raw)
         current_price = float(ticker_data.get(f"{coin}USDC", {}).get("c", [entry_price])[0])
-    except Exception:
+    except (ValueError, KeyError, json.JSONDecodeError):
         continue
 
     pnl_pct = ((current_price - entry_price) / entry_price) * 100
@@ -51,7 +51,7 @@ for pos in history:
                      if o.get("descr", {}).get("pair") == pair]
             if txids:
                 binance("order", "cancel", *txids, "-o", "json", "--yes")
-        except Exception:
+        except (ValueError, KeyError, json.JSONDecodeError):
             pass
         try:
             sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
@@ -97,5 +97,6 @@ if profit_summary:
 
 closed = len(profit_summary)
 print(f"PHASE0_PROFIT_DONE|closed={closed}")
-with open(f"/tmp/cycle_{CYCLE_ID}_phase0_profit_output.json", "w") as f:
+out_path = os.path.join(PROJECT_DIR, "state", f"cycle_{CYCLE_ID}_phase0_profit_output.json")
+with open(out_path, "w") as f:
     json.dump({"closed": closed}, f)

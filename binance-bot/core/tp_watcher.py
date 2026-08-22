@@ -21,7 +21,7 @@ def _write_watcher_state(status: str, last_error: str | None, positions_checked:
             prev = json.load(f)
         total_ticks = prev.get("total_ticks", 0) + 1
         total_sales = prev.get("total_sales", 0) + sales_delta
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
         total_ticks = 1
         total_sales = sales_delta
     state = {

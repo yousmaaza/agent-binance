@@ -27,7 +27,7 @@ def _run_phase0_profit(history_data, config=None, kraken_scenario=None):
     """Exécute phase0_profit.py. Retourne (output_json, mock_tg, mock_save)."""
     cycle_id = harness.new_cycle_id()
     scenario_path = harness.write_kraken_scenario(kraken_scenario)
-    out_path = f"/tmp/cycle_{cycle_id}_phase0_profit_output.json"
+    out_path = os.path.join(PROJECT_DIR, "state", f"cycle_{cycle_id}_phase0_profit_output.json")
     text = json.dumps(history_data)
     cfg = config if config is not None else {"min_profit_pct_take": 5.0}
 

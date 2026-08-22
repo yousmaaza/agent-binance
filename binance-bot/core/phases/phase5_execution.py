@@ -1,6 +1,6 @@
 """Exécution des ordres (drift check, BUY MARKET, fill retry, TP/SL, pose stop-loss) — phase 5.
 
-Lit les ordres préparés par la Phase 4 depuis /tmp/cycle_{CYCLE_ID}_phase5_input.json :
+Lit les ordres préparés par la Phase 4 depuis state/cycle_{CYCLE_ID}_phase5_input.json :
 {
   "ordres_prepares": [{coin, quantite, prix_entry, prix_stop, prix_tp,
                        montant_ordre, risk_usdc, stop_distance_pct, score}],
@@ -19,7 +19,7 @@ Exécuté par Claude en Phase 5 :
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase5_execution.py __CYCLE_ID__
 
 Stdout : PHASE5_DONE|executed=N|skipped=M
-Output : /tmp/cycle_{CYCLE_ID}_phase5_output.json
+Output : state/cycle_{CYCLE_ID}_phase5_output.json
 """
 import sys
 import os
@@ -36,7 +36,7 @@ from core.trade_helpers import tg, binance, _load_config, _save_trade_history_at
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
-in_path = f"/tmp/cycle_{CYCLE_ID}_phase5_input.json"
+in_path = os.path.join(PROJECT_DIR, "state", f"cycle_{CYCLE_ID}_phase5_input.json")
 with open(in_path) as f:
     inp = json.load(f)
 
@@ -249,7 +249,8 @@ out = {
     "orders_executed": orders_executed,
     "orders_skipped_detail": orders_skipped_detail,
 }
-with open(f"/tmp/cycle_{CYCLE_ID}_phase5_output.json", "w") as f:
+out_path = os.path.join(PROJECT_DIR, "state", f"cycle_{CYCLE_ID}_phase5_output.json")
+with open(out_path, "w") as f:
     json.dump(out, f)
 
 print(f"PHASE5_DONE|executed={executed}|skipped={skipped}")

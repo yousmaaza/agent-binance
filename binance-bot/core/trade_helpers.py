@@ -47,7 +47,7 @@ def _load_config(project_dir: str = "") -> dict:
     try:
         with open(path) as f:
             return json.load(f)
-    except Exception:
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
         return {}
 
 
@@ -115,7 +115,7 @@ def maker_or_taker_from_ordertype(ordertype: str) -> str | None:
     return None
 
 
-def log_phase0_event(cycle_id: str, phase: str, coin: str, action: str, details: dict = None) -> None:
+def log_phase0_event(cycle_id: str, phase: str, coin: str, action: str, details: dict | None = None) -> None:
     """Écrit un événement structuré (JSON) dans logs/phase0_events.jsonl pour traçabilité."""
     event = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -131,5 +131,5 @@ def log_phase0_event(cycle_id: str, phase: str, coin: str, action: str, details:
     try:
         with open(log_file, "a") as f:
             f.write(json.dumps(event) + "\n")
-    except Exception:
+    except (IOError, OSError):
         pass

@@ -26,7 +26,7 @@ def _run_phase0_oco_retry(history_data, config=None, kraken_scenario=None):
     """Exécute phase0_oco_retry.py. Retourne (output_json, mock_tg, mock_save, saved_history)."""
     cycle_id = harness.new_cycle_id()
     scenario_path = harness.write_kraken_scenario(kraken_scenario)
-    out_path = f"/tmp/cycle_{cycle_id}_phase0_oco_retry_output.json"
+    out_path = os.path.join(PROJECT_DIR, "state", f"cycle_{cycle_id}_phase0_oco_retry_output.json")
     text = json.dumps(history_data)
     cfg = config if config is not None else {"max_oco_retry": 3}
 

@@ -41,8 +41,8 @@ BASE_ORDER = {
 def _run_phase5_execution(ordres_prepares, config=None, kraken_scenario=None, history_data=None):
     """Exécute phase5_execution.py. Retourne (output_json, mock_tg, mock_save, saved_history)."""
     cycle_id = harness.new_cycle_id()
-    in_path = f"/tmp/cycle_{cycle_id}_phase5_input.json"
-    out_path = f"/tmp/cycle_{cycle_id}_phase5_output.json"
+    in_path = os.path.join(PROJECT_DIR, "state", f"cycle_{cycle_id}_phase5_input.json")
+    out_path = os.path.join(PROJECT_DIR, "state", f"cycle_{cycle_id}_phase5_output.json")
     scenario_path = harness.write_kraken_scenario(kraken_scenario)
     text = json.dumps(history_data if history_data is not None else [])
 

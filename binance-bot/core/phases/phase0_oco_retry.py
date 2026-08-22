@@ -191,7 +191,8 @@ try:
     _save_trade_history_atomic(history)
     retried = len(unprotected)
     print(f"PHASE0_OCO_DONE|retried={retried}")
-    with open(f"/tmp/cycle_{CYCLE_ID}_phase0_oco_retry_output.json", "w") as f:
+    out_path = os.path.join(PROJECT_DIR, "state", f"cycle_{CYCLE_ID}_phase0_oco_retry_output.json")
+    with open(out_path, "w") as f:
         json.dump({"retried": retried}, f)
 
 except Exception as e:
