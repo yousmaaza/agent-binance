@@ -128,7 +128,15 @@ def _register_open_position(pending: dict, entry_txid: str, actual_qty: float, a
         send_telegram(f"⚠️ {coin} : entrée maker OK mais SL échoué — position NON protégée !{sl_err_msg}")
 
     trade_id = str(uuid.uuid4())[:8]
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    maker_fill_seconds = None
+    if maker_or_taker == _MAKER_FILL_LABEL and pending.get("placed_at"):
+        try:
+            placed_at_dt = datetime.fromisoformat(pending["placed_at"])
+            maker_fill_seconds = (now - placed_at_dt).total_seconds()
+        except ValueError:
+            maker_fill_seconds = None
     history.append({
         "trade_id": trade_id,
         "date": now_iso,
@@ -150,6 +158,7 @@ def _register_open_position(pending: dict, entry_txid: str, actual_qty: float, a
         "exit_fee_usdc": None,
         "fees_usdc": None,
         "maker_or_taker": maker_or_taker,
+        "maker_fill_seconds": maker_fill_seconds,
         "pnl_gross_usdc": None,
         "pnl_usdc": None,
         "pnl_gross_pct": None,
@@ -317,6 +326,7 @@ def _handle_amend_order(pending: dict, current_bid: float) -> None:
             logger.debug(f"[Maker Watcher] Amend {coin} rejeté ({amend_resp['error']}), réessai au tick suivant")
         else:
             pending["current_limit_price"] = current_bid
+            pending["adjustments"] = pending.get("adjustments", 0) + 1
     except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
         logger.debug(f"[Maker Watcher] Amend {coin} erreur, réessai au tick suivant : {e}")
 

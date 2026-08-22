@@ -161,6 +161,7 @@ systemctl stop webhook-bot   # VPS (root)
 | `/raisonnement` | Explication vulgarisée du dernier cycle (depuis MongoDB) |
 | `/cout` | Coût API Claude cumulé : total, moyenne, top 5 cycles (MongoDB requis) |
 | `/eval` | Rapport ROI hebdomadaire : fiabilité, performance, coût abonnement vs API |
+| `/maker` | Santé du watcher maker, ordres en cours de poursuite, efficacité cumulée (#389) |
 | `/reset` | Débloque le bot si un cycle est coincé |
 
 > Le bot tourne aussi **automatiquement** toutes les 4h (00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC). Chaque notification Telegram affiche un `cycle_id` au format `YYYYMMDD_HHMMSS` pour retrouver les logs.
@@ -215,6 +216,7 @@ agent-binance/
 │   ├── commands/
 │   │   ├── cout.py               ← /cout — coût API par cycle
 │   │   ├── eval.py               ← /eval — rapport ROI hebdomadaire
+│   │   ├── maker.py              ← /maker — santé watcher, ordres en cours, efficacité maker (#389)
 │   │   ├── perf.py               ← /perf — statistiques de performance
 │   │   ├── raisonnement.py       ← /raisonnement — explication du dernier cycle
 │   │   └── status.py             ← /status — état du portfolio (+ santé TP Watcher)

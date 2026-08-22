@@ -14,6 +14,7 @@ from loguru import logger
 
 from commands.cout import run_cout
 from commands.eval import run_eval
+from commands.maker import run_maker
 from commands.perf import run_perf
 from commands.raisonnement import run_raisonnement
 from commands.status import run_status
@@ -68,7 +69,7 @@ def main_loop():
 
     send_telegram(
         f"🤖 Bot v2 démarré (workflow test 2026-05-28)\n"
-        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /reset\n"
+        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /maker /reset\n"
         f"⏰ Prochain cycle auto : {fmt_next()}",
         parse_mode=None,
     )
@@ -142,6 +143,11 @@ def main_loop():
                         target=lambda: send_telegram(run_eval(), parse_mode="HTML"),
                         daemon=True,
                     ).start()
+                elif text.startswith("/maker"):
+                    threading.Thread(
+                        target=lambda: send_telegram(run_maker(), parse_mode="HTML"),
+                        daemon=True,
+                    ).start()
                 elif text.startswith("/calibrage"):
                     send_telegram("⚙️ Calibrage des positions en cours...")
                     threading.Thread(
@@ -154,7 +160,7 @@ def main_loop():
                     send_telegram(f"🔓 Lock réinitialisé.\n⏰ Prochain cycle auto : {fmt_next()}")
                 elif text:
                     send_telegram(
-                        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /reset\n"
+                        f"Commandes : /trade /calibrage /status /perf /raisonnement /cout /eval /maker /reset\n"
                         f"⏰ Prochain cycle : {fmt_next()}"
                     )
 
