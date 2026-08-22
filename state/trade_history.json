@@ -77,10 +77,16 @@
     "status": "closed",
     "exit_price": 74502.078,
     "exit_date": "2026-05-27T21:40:41+00:00",
-    "pnl_usdc": -0.7384,
-    "pnl_pct": -3.81,
+    "pnl_usdc": -0.8903575779999999,
+    "pnl_pct": -4.598034112490397,
     "protection_failed": false,
-    "close_reason": "stop_hit"
+    "close_reason": "stop_hit",
+    "entry_fee_usdc": 0.0774555,
+    "exit_fee_usdc": 0.074502078,
+    "fees_usdc": 0.15195757799999998,
+    "pnl_gross_usdc": -0.7384,
+    "pnl_gross_pct": -3.81,
+    "fees_estimated": true
   },
   {
     "trade_id": "aeb3eabc",
@@ -100,10 +106,16 @@
     "status": "closed",
     "exit_price": 0.243,
     "exit_date": "2026-05-22T23:31:01+00:00",
-    "pnl_usdc": 0.0373,
-    "pnl_pct": 0.16,
+    "pnl_usdc": -0.14392591999999998,
+    "pnl_pct": -0.6358674205573949,
     "protection_failed": false,
-    "close_reason": "manual_sell_ios"
+    "close_reason": "manual_sell_ios",
+    "entry_fee_usdc": 0.09053832,
+    "exit_fee_usdc": 0.0906876,
+    "fees_usdc": 0.18122591999999998,
+    "pnl_gross_usdc": 0.0373,
+    "pnl_gross_pct": 0.16,
+    "fees_estimated": true
   },
   {
     "trade_id": "ae4776a6",
@@ -123,10 +135,16 @@
     "status": "closed",
     "exit_price": 82.86,
     "exit_date": "2026-05-27T04:30:28.740000+00:00",
-    "pnl_usdc": -0.7381,
-    "pnl_pct": -3.84,
+    "pnl_usdc": -0.88887476,
+    "pnl_pct": -4.625722955613343,
     "protection_failed": false,
-    "close_reason": "stop_hit"
+    "close_reason": "stop_hit",
+    "entry_fee_usdc": 0.07686364000000001,
+    "exit_fee_usdc": 0.07391112,
+    "fees_usdc": 0.15077476,
+    "pnl_gross_usdc": -0.7381,
+    "pnl_gross_pct": -3.84,
+    "fees_estimated": true
   },
   {
     "trade_id": "80d7ce5b",
@@ -146,10 +164,16 @@
     "status": "closed",
     "exit_price": 2.16,
     "exit_date": "2026-05-22T18:33:53+00:00",
-    "pnl_usdc": -0.1548,
-    "pnl_pct": -1.37,
+    "pnl_usdc": -0.244758,
+    "pnl_pct": -2.1617339233194666,
     "protection_failed": false,
-    "close_reason": "manual_sell_ios"
+    "close_reason": "manual_sell_ios",
+    "entry_fee_usdc": 0.0452892,
+    "exit_fee_usdc": 0.04466880000000001,
+    "fees_usdc": 0.08995800000000001,
+    "pnl_gross_usdc": -0.1548,
+    "pnl_gross_pct": -1.37,
+    "fees_estimated": true
   },
   {
     "trade_id": "e05ac2cd",
@@ -193,9 +217,15 @@
     "status": "closed",
     "exit_price": 5.520609,
     "exit_date": "2026-05-27T21:29:14+00:00",
-    "pnl_usdc": -1.01,
-    "pnl_pct": -3.28,
-    "close_reason": "stop_hit"
+    "pnl_usdc": -1.25208881004,
+    "pnl_pct": -4.069700079308018,
+    "close_reason": "stop_hit",
+    "entry_fee_usdc": 0.12306448,
+    "exit_fee_usdc": 0.11902433004,
+    "fees_usdc": 0.24208881004,
+    "pnl_gross_usdc": -1.01,
+    "pnl_gross_pct": -3.28,
+    "fees_estimated": true
   },
   {
     "trade_id": "d9fbd844",
@@ -216,9 +246,15 @@
     "status": "closed",
     "exit_price": 0.2035,
     "exit_date": "2026-05-28T23:32:09.549000+00:00",
-    "pnl_usdc": 1.4976,
-    "pnl_pct": 3.67,
-    "close_reason": "stop_hit"
+    "pnl_usdc": 1.1649664,
+    "pnl_pct": 2.853183902190525,
+    "close_reason": "stop_hit",
+    "entry_fee_usdc": 0.16332159999999998,
+    "exit_fee_usdc": 0.169312,
+    "fees_usdc": 0.3326336,
+    "pnl_gross_usdc": 1.4976,
+    "pnl_gross_pct": 3.67,
+    "fees_estimated": true
   },
   {
     "trade_id": "65c6fef3",
@@ -239,8 +275,14 @@
     "status": "closed",
     "exit_price": 0.10062,
     "exit_date": "2026-05-30T04:06:38.848218+00:00",
-    "pnl_usdc": 2.7312500000000024,
-    "pnl_pct": 6.622867436685394
+    "pnl_usdc": 2.3904074800000026,
+    "pnl_pct": 5.796375966938653,
+    "entry_fee_usdc": 0.16495875999999998,
+    "exit_fee_usdc": 0.17588376,
+    "fees_usdc": 0.34084252,
+    "pnl_gross_usdc": 2.7312500000000024,
+    "pnl_gross_pct": 6.622867436685394,
+    "fees_estimated": true
   },
   {
     "trade_id": "95eaaba8",
@@ -261,8 +303,14 @@
     "status": "closed",
     "exit_price": 0.2805,
     "exit_date": "2026-06-02T20:06:34.825073+00:00",
-    "pnl_usdc": 0.0,
-    "pnl_pct": 0.0
+    "pnl_usdc": -0.1310496,
+    "pnl_pct": -0.8,
+    "entry_fee_usdc": 0.0655248,
+    "exit_fee_usdc": 0.0655248,
+    "fees_usdc": 0.1310496,
+    "pnl_gross_usdc": 0.0,
+    "pnl_gross_pct": 0.0,
+    "fees_estimated": true
   },
   {
     "trade_id": "eaaf3e45",
@@ -283,8 +331,14 @@
     "status": "closed",
     "exit_price": 7.117,
     "exit_date": "2026-06-02T08:08:10.679954+00:00",
-    "pnl_usdc": 0.4906200000000022,
-    "pnl_pct": 3.2047563805104553
+    "pnl_usdc": 0.3661845600000022,
+    "pnl_pct": 2.3919373549884138,
+    "entry_fee_usdc": 0.061236479999999996,
+    "exit_fee_usdc": 0.06319896000000001,
+    "fees_usdc": 0.12443544000000001,
+    "pnl_gross_usdc": 0.4906200000000022,
+    "pnl_gross_pct": 3.2047563805104553,
+    "fees_estimated": true
   },
   {
     "trade_id": "06a48700",
@@ -305,8 +359,14 @@
     "status": "closed",
     "exit_price": 1913.93,
     "exit_date": "2026-06-02T16:06:58.330459+00:00",
-    "pnl_usdc": -0.7080319999999992,
-    "pnl_pct": -3.434896897593853
+    "pnl_usdc": -0.8701031039999992,
+    "pnl_pct": -4.221157310003478,
+    "entry_fee_usdc": 0.082451616,
+    "exit_fee_usdc": 0.079619488,
+    "fees_usdc": 0.16207110400000002,
+    "pnl_gross_usdc": -0.7080319999999992,
+    "pnl_gross_pct": -3.434896897593853,
+    "fees_estimated": true
   },
   {
     "trade_id": "a9809748",
@@ -327,8 +387,14 @@
     "status": "closed",
     "exit_price": 68093.16,
     "exit_date": "2026-06-02T16:07:03.426128+00:00",
-    "pnl_usdc": -0.5400611999999997,
-    "pnl_pct": -2.662094613371024
+    "pnl_usdc": -0.7001975759999997,
+    "pnl_pct": -3.45144623491754,
+    "entry_fee_usdc": 0.0811483104,
+    "exit_fee_usdc": 0.0789880656,
+    "fees_usdc": 0.16013637600000002,
+    "pnl_gross_usdc": -0.5400611999999997,
+    "pnl_gross_pct": -2.662094613371024,
+    "fees_estimated": true
   },
   {
     "trade_id": "0464fd1e",
@@ -349,8 +415,14 @@
     "status": "closed",
     "exit_price": 2.693,
     "exit_date": "2026-06-04T16:07:55.460944+00:00",
-    "pnl_usdc": -1.7244000000000004,
-    "pnl_pct": -15.100882723833545
+    "pnl_usdc": -1.8088560000000005,
+    "pnl_pct": -15.840479192938215,
+    "entry_fee_usdc": 0.045676800000000004,
+    "exit_fee_usdc": 0.03877920000000001,
+    "fees_usdc": 0.084456,
+    "pnl_gross_usdc": -1.7244000000000004,
+    "pnl_gross_pct": -15.100882723833545,
+    "fees_estimated": true
   },
   {
     "trade_id": "fdbac21c",
@@ -371,8 +443,14 @@
     "status": "closed",
     "exit_price": 0.4915,
     "exit_date": "2026-06-04T16:07:59.568786+00:00",
-    "pnl_usdc": -1.0195900000000018,
-    "pnl_pct": -4.895510835913321
+    "pnl_usdc": -1.1821279600000019,
+    "pnl_pct": -5.675928792569668,
+    "entry_fee_usdc": 0.08330816,
+    "exit_fee_usdc": 0.0792298,
+    "fees_usdc": 0.16253796,
+    "pnl_gross_usdc": -1.0195900000000018,
+    "pnl_gross_pct": -4.895510835913321,
+    "fees_estimated": true
   },
   {
     "trade_id": "86652062",
@@ -393,9 +471,15 @@
     "status": "closed",
     "exit_price": 0.5553000000000001,
     "exit_date": "2026-06-11T18:27:46.820580+00:00",
-    "pnl_usdc": -1.1251799999999956,
-    "pnl_pct": -4.832904884318747,
-    "close_reason": "sl"
+    "pnl_usdc": -1.3069324799999957,
+    "pnl_pct": -5.613573264781473,
+    "close_reason": "sl",
+    "entry_fee_usdc": 0.0931266,
+    "exit_fee_usdc": 0.08862588000000003,
+    "fees_usdc": 0.18175248000000005,
+    "pnl_gross_usdc": -1.1251799999999956,
+    "pnl_gross_pct": -4.832904884318747,
+    "fees_estimated": true
   },
   {
     "trade_id": "e22bccf8",
@@ -416,8 +500,14 @@
     "status": "closed",
     "exit_price": 1950.57,
     "exit_date": "2026-06-15T17:22:17.428395+00:00",
-    "pnl_usdc": 3.2566,
-    "pnl_pct": 16.01
+    "pnl_usdc": 3.0808112000000003,
+    "pnl_pct": 15.14261645550327,
+    "entry_fee_usdc": 0.08138121200000001,
+    "exit_fee_usdc": 0.09440758799999999,
+    "fees_usdc": 0.1757888,
+    "pnl_gross_usdc": 3.2566,
+    "pnl_gross_pct": 16.01,
+    "fees_estimated": true
   },
   {
     "trade_id": "e99895c3",
@@ -438,8 +528,14 @@
     "status": "closed",
     "exit_price": 78.56,
     "exit_date": "2026-06-15T17:22:20.707392+00:00",
-    "pnl_usdc": 3.2579,
-    "pnl_pct": 17.83
+    "pnl_usdc": 3.09872792,
+    "pnl_pct": 16.96299082856076,
+    "entry_fee_usdc": 0.07307032000000001,
+    "exit_fee_usdc": 0.08610176000000001,
+    "fees_usdc": 0.15917208000000002,
+    "pnl_gross_usdc": 3.2579,
+    "pnl_gross_pct": 17.83,
+    "fees_estimated": true
   },
   {
     "trade_id": "54fafcba",
@@ -460,8 +556,14 @@
     "status": "closed",
     "exit_price": 0.08747,
     "exit_date": "2026-06-12T20:06:26.187940+00:00",
-    "pnl_usdc": 0.2482399999999988,
-    "pnl_pct": 1.3439925848684906
+    "pnl_usdc": 0.09948431999999877,
+    "pnl_pct": 0.5386166145290164,
+    "entry_fee_usdc": 0.07388136000000002,
+    "exit_fee_usdc": 0.07487432000000001,
+    "fees_usdc": 0.14875568000000003,
+    "pnl_gross_usdc": 0.2482399999999988,
+    "pnl_gross_pct": 1.3439925848684906,
+    "fees_estimated": true
   },
   {
     "trade_id": "1b7ae6ff",
@@ -482,9 +584,15 @@
     "status": "closed",
     "exit_price": 2.545,
     "exit_date": "2026-06-15T17:22:23.943591+00:00",
-    "pnl_usdc": 4.004,
-    "pnl_pct": 20.9,
-    "close_reason": null
+    "pnl_usdc": 3.8347399999999996,
+    "pnl_pct": 20.01900237529691,
+    "close_reason": null,
+    "entry_fee_usdc": 0.076622,
+    "exit_fee_usdc": 0.092638,
+    "fees_usdc": 0.16926,
+    "pnl_gross_usdc": 4.004,
+    "pnl_gross_pct": 20.9,
+    "fees_estimated": true
   },
   {
     "trade_id": "d315e0f6",
@@ -505,8 +613,14 @@
     "status": "closed",
     "exit_price": 0.5982000000000001,
     "exit_date": "2026-06-19T12:06:28.828680+00:00",
-    "pnl_usdc": 0.38320000000000565,
-    "pnl_pct": 1.3554727211115079
+    "pnl_usdc": 0.15550256000000567,
+    "pnl_pct": 0.5500508302270618,
+    "entry_fee_usdc": 0.11308231999999999,
+    "exit_fee_usdc": 0.11461512,
+    "fees_usdc": 0.22769743999999997,
+    "pnl_gross_usdc": 0.38320000000000565,
+    "pnl_gross_pct": 1.3554727211115079,
+    "fees_estimated": true
   },
   {
     "trade_id": "a402e129",
@@ -527,8 +641,14 @@
     "status": "closed",
     "exit_price": 0.2317,
     "exit_date": "2026-06-18T08:06:22.806537+00:00",
-    "pnl_usdc": 0.0,
-    "pnl_pct": 0.0
+    "pnl_usdc": -0.2335536,
+    "pnl_pct": -0.8,
+    "entry_fee_usdc": 0.1167768,
+    "exit_fee_usdc": 0.1167768,
+    "fees_usdc": 0.2335536,
+    "pnl_gross_usdc": 0.0,
+    "pnl_gross_pct": 0.0,
+    "fees_estimated": true
   },
   {
     "trade_id": "7ab29622",
@@ -549,8 +669,14 @@
     "status": "closed",
     "exit_price": 0.2223,
     "exit_date": "2026-06-19T04:06:41.830200+00:00",
-    "pnl_usdc": -0.910000000000001,
-    "pnl_pct": -7.567567567567576
+    "pnl_usdc": -1.002560000000001,
+    "pnl_pct": -8.337297297297305,
+    "entry_fee_usdc": 0.048100000000000004,
+    "exit_fee_usdc": 0.04446,
+    "fees_usdc": 0.09256,
+    "pnl_gross_usdc": -0.910000000000001,
+    "pnl_gross_pct": -7.567567567567576,
+    "fees_estimated": true
   },
   {
     "trade_id": "83d5ce04",
@@ -571,8 +697,14 @@
     "status": "closed",
     "exit_price": 73.17,
     "exit_date": "2026-06-21T12:06:57.310570+00:00",
-    "pnl_usdc": 0.4935,
-    "pnl_pct": 2.45
+    "pnl_usdc": 0.33040248,
+    "pnl_pct": 1.640492859143097,
+    "entry_fee_usdc": 0.08056176000000001,
+    "exit_fee_usdc": 0.08253576,
+    "fees_usdc": 0.16309752,
+    "pnl_gross_usdc": 0.4935,
+    "pnl_gross_pct": 2.45,
+    "fees_estimated": true
   },
   {
     "trade_id": "97b74784",
@@ -593,8 +725,14 @@
     "status": "closed",
     "exit_price": 64127.93,
     "exit_date": "2026-06-21T16:06:32.715659+00:00",
-    "pnl_usdc": -0.01626020000000077,
-    "pnl_pct": -0.11512131116491908
+    "pnl_usdc": -0.12919039760000078,
+    "pnl_pct": -0.9146608259202595,
+    "entry_fee_usdc": 0.0564976192,
+    "exit_fee_usdc": 0.0564325784,
+    "fees_usdc": 0.1129301976,
+    "pnl_gross_usdc": -0.01626020000000077,
+    "pnl_gross_pct": -0.11512131116491908,
+    "fees_estimated": true
   },
   {
     "trade_id": "16efcf4a",
@@ -615,9 +753,15 @@
     "status": "closed",
     "exit_price": 60743.78,
     "exit_date": "2026-06-24T20:06:53.443660+00:00",
-    "pnl_usdc": -0.7068095999999989,
-    "pnl_pct": -5.2500142724468075,
-    "close_reason": "stop_hit"
+    "pnl_usdc": -0.811686388799999,
+    "pnl_pct": -6.02901421535702,
+    "close_reason": "stop_hit",
+    "entry_fee_usdc": 0.0538520136,
+    "exit_fee_usdc": 0.051024775200000004,
+    "fees_usdc": 0.10487678880000001,
+    "pnl_gross_usdc": -0.7068095999999989,
+    "pnl_gross_pct": -5.2500142724468075,
+    "fees_estimated": true
   },
   {
     "trade_id": "5cf06dfe",
@@ -638,9 +782,15 @@
     "status": "closed",
     "exit_price": 90.96,
     "exit_date": "2026-06-28T08:06:43.973786+00:00",
-    "pnl_usdc": 4.996529999999989,
-    "pnl_pct": 8.222365390738954,
-    "close_reason": "oco_not_found"
+    "pnl_usdc": 4.490403479999989,
+    "pnl_pct": 7.389475929175997,
+    "close_reason": "oco_not_found",
+    "entry_fee_usdc": 0.24307020000000004,
+    "exit_fee_usdc": 0.26305631999999995,
+    "fees_usdc": 0.50612652,
+    "pnl_gross_usdc": 4.996529999999989,
+    "pnl_gross_pct": 8.222365390738954,
+    "fees_estimated": true
   },
   {
     "trade_id": "38515bab",
@@ -684,9 +834,15 @@
     "status": "closed",
     "exit_price": 81.94999999999999,
     "exit_date": "2026-07-04T09:08:16.106042+00:00Z",
-    "pnl_usdc": 3.6656,
-    "pnl_pct": 12.7701,
-    "close_reason": "tp_watcher_cycle"
+    "pnl_usdc": 3.4213004,
+    "pnl_pct": 11.918976193752579,
+    "close_reason": "tp_watcher_cycle",
+    "entry_fee_usdc": 0.1148186,
+    "exit_fee_usdc": 0.129481,
+    "fees_usdc": 0.2442996,
+    "pnl_gross_usdc": 3.6656,
+    "pnl_gross_pct": 12.7701,
+    "fees_estimated": true
   },
   {
     "trade_id": "fb16efa3",
@@ -707,9 +863,15 @@
     "status": "closed",
     "exit_price": 0.32464,
     "exit_date": "2026-06-27T00:06:35.117482+00:00",
-    "pnl_usdc": -1.6016280000000005,
-    "pnl_pct": -5.616932201418771,
-    "close_reason": "oco_filled_detected"
+    "pnl_usdc": -1.8233357600000004,
+    "pnl_pct": -6.3944644726130955,
+    "close_reason": "oco_filled_detected",
+    "entry_fee_usdc": 0.114057136,
+    "exit_fee_usdc": 0.10765062400000001,
+    "fees_usdc": 0.22170776000000003,
+    "pnl_gross_usdc": -1.6016280000000005,
+    "pnl_gross_pct": -5.616932201418771,
+    "fees_estimated": true
   },
   {
     "trade_id": "92a658b0",
@@ -730,9 +892,15 @@
     "status": "closed",
     "exit_price": 62484.397058823524,
     "exit_date": "2026-07-04T09:08:16.106042+00:00Z",
-    "pnl_usdc": 1.396419,
-    "pnl_pct": 3.3982,
-    "close_reason": "tp_watcher_cycle"
+    "pnl_usdc": 1.0620895552,
+    "pnl_pct": 2.5846015125817914,
+    "close_reason": "tp_watcher_cycle",
+    "entry_fee_usdc": 0.1643718848,
+    "exit_fee_usdc": 0.16995756,
+    "fees_usdc": 0.33432944480000004,
+    "pnl_gross_usdc": 1.396419,
+    "pnl_gross_pct": 3.3982,
+    "fees_estimated": true
   },
   {
     "trade_id": "f00a5ca3",
@@ -750,10 +918,16 @@
     "sl_order_txid": "OMDTGH-LT7I3-UOGXNP",
     "status": "closed",
     "exit_price": 1.1663534092224084,
-    "pnl_usdc": 2.8061207475731895,
-    "pnl_pct": 3.0556923422964415,
+    "pnl_usdc": 2.0602357256434822,
+    "pnl_pct": 2.243469578284832,
     "exit_date": "2026-07-04T16:06:11.281687+00:00",
-    "close_reason": "profit_target_phase0"
+    "close_reason": "profit_target_phase0",
+    "entry_fee_usdc": 0.3673302719297072,
+    "exit_fee_usdc": 0.37855475,
+    "fees_usdc": 0.7458850219297072,
+    "pnl_gross_usdc": 2.8061207475731895,
+    "pnl_gross_pct": 3.0556923422964415,
+    "fees_estimated": true
   },
   {
     "trade_id": "5d8986d6",
@@ -772,9 +946,15 @@
     "status": "closed",
     "exit_price": 1734.7699890382648,
     "exit_date": "2026-07-06T16:06:52.884772+00:00",
-    "pnl_usdc": -0.9803,
-    "pnl_pct": -1.4962,
-    "close_reason": "sl_hit"
+    "pnl_usdc": -1.5005187311872,
+    "pnl_pct": -2.290258740511103,
+    "close_reason": "sl_hit",
+    "entry_fee_usdc": 0.2620697311872,
+    "exit_fee_usdc": 0.258149,
+    "fees_usdc": 0.5202187311872,
+    "pnl_gross_usdc": -0.9803,
+    "pnl_gross_pct": -1.4962,
+    "fees_estimated": true
   },
   {
     "trade_id": "606a7ac8",
@@ -792,10 +972,16 @@
     "sl_order_txid": "O3BYDQ-6DDDX-PGLOVE",
     "status": "closed",
     "exit_price": 0.1941259999926828,
-    "pnl_usdc": 5.270319673085606,
-    "pnl_pct": 8.05187576126172,
+    "pnl_usdc": 4.725601931937948,
+    "pnl_pct": 7.21966825797223,
     "exit_date": "2026-07-04T16:06:13.214751+00:00",
-    "close_reason": "profit_target_phase0"
+    "close_reason": "profit_target_phase0",
+    "entry_fee_usdc": 0.26181823114765757,
+    "exit_fee_usdc": 0.28289951,
+    "fees_usdc": 0.5447177411476576,
+    "pnl_gross_usdc": 5.270319673085606,
+    "pnl_gross_pct": 8.05187576126172,
+    "fees_estimated": true
   },
   {
     "trade_id": "sol-deposit-20260703",
@@ -813,10 +999,16 @@
     "sl_order_txid": "OCR6PY-R2RK7-AEENCI",
     "status": "closed",
     "exit_price": 82.44000071073559,
-    "pnl_usdc": 0.6532052599999972,
-    "pnl_pct": 1.7777786552291224,
+    "pnl_usdc": 0.35665014903999726,
+    "pnl_pct": 0.9706673555378212,
     "close_reason": "tp_watcher",
-    "exit_date": "2026-07-07T00:32:36.957170+00:00Z"
+    "exit_date": "2026-07-07T00:32:36.957170+00:00Z",
+    "entry_fee_usdc": 0.14697111096,
+    "exit_fee_usdc": 0.149584,
+    "fees_usdc": 0.29655511096,
+    "pnl_gross_usdc": 0.6532052599999972,
+    "pnl_gross_pct": 1.7777786552291224,
+    "fees_estimated": true
   },
   {
     "trade_id": "xbt-deposit-20260703",
@@ -834,10 +1026,16 @@
     "sl_order_txid": "OPEN6G-HBLMQ-4NY7DE",
     "status": "closed",
     "exit_price": 63315.99852207649,
-    "pnl_usdc": 0.3932000000000009,
-    "pnl_pct": 2.9528431253276204,
+    "pnl_usdc": 0.28509608000000086,
+    "pnl_pct": 2.1410071207676857,
     "close_reason": "tp_watcher",
-    "exit_date": "2026-07-04T20:14:05.487710+00:00Z"
+    "exit_date": "2026-07-04T20:14:05.487710+00:00Z",
+    "entry_fee_usdc": 0.05326392,
+    "exit_fee_usdc": 0.05484,
+    "fees_usdc": 0.10810391999999999,
+    "pnl_gross_usdc": 0.3932000000000009,
+    "pnl_gross_pct": 2.9528431253276204,
+    "fees_estimated": true
   },
   {
     "trade_id": "12078d6e",
@@ -856,9 +1054,15 @@
     "status": "closed",
     "exit_price": 1.096420875302944,
     "exit_date": "2026-07-08T04:06:03+00:00",
-    "pnl_usdc": -6.806,
-    "pnl_pct": -7.0625,
-    "close_reason": "sl_hit"
+    "pnl_usdc": -7.54972065,
+    "pnl_pct": -7.834254763156484,
+    "close_reason": "sl_hit",
+    "entry_fee_usdc": 0.38547231,
+    "exit_fee_usdc": 0.35824834,
+    "fees_usdc": 0.74372065,
+    "pnl_gross_usdc": -6.806,
+    "pnl_gross_pct": -7.0625,
+    "fees_estimated": false
   },
   {
     "trade_id": "c1b17bc3",
@@ -877,9 +1081,15 @@
     "status": "closed",
     "exit_price": 62065.94454899444,
     "exit_date": "2026-07-08T12:06:35.534944+00:00",
-    "pnl_usdc": -1.0643,
-    "pnl_pct": -1.4654,
-    "close_reason": "sl_hit"
+    "pnl_usdc": -1.6411,
+    "pnl_pct": -2.259473342110919,
+    "close_reason": "sl_hit",
+    "entry_fee_usdc": 0.29053,
+    "exit_fee_usdc": 0.28627,
+    "fees_usdc": 0.5768,
+    "pnl_gross_usdc": -1.0643,
+    "pnl_gross_pct": -1.4654,
+    "fees_estimated": false
   },
   {
     "trade_id": "45988557",
@@ -898,9 +1108,15 @@
     "status": "closed",
     "exit_price": 1834.5299934970262,
     "exit_date": "2026-07-13T00:13:21.343598+00:00Z",
-    "pnl_usdc": 4.094848000000016,
-    "pnl_pct": 3.226440986956331,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": 2.0314440000000156,
+    "pnl_pct": 1.6006294212401881,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 1.015323,
+    "exit_fee_usdc": 1.048081,
+    "fees_usdc": 2.0634040000000002,
+    "pnl_gross_usdc": 4.094848000000016,
+    "pnl_gross_pct": 3.226440986956331,
+    "fees_estimated": false
   },
   {
     "trade_id": "00e523d2",
@@ -919,9 +1135,15 @@
     "status": "closed",
     "exit_price": 65344.16740158743,
     "exit_date": "2026-07-15T13:03:28.916009+00:00Z",
-    "pnl_usdc": 2.6873700000000067,
-    "pnl_pct": 2.2475605992558285,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": 0.7527700000000066,
+    "pnl_pct": 0.6295732230030925,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.95655,
+    "exit_fee_usdc": 0.97805,
+    "fees_usdc": 1.9346,
+    "pnl_gross_usdc": 2.6873700000000067,
+    "pnl_gross_pct": 2.2475605992558285,
+    "fees_estimated": false
   },
   {
     "trade_id": "c1daa2cd",
@@ -940,9 +1162,15 @@
     "status": "closed",
     "exit_price": 1938.0899914427837,
     "exit_date": "2026-07-21T09:00:06Z",
-    "pnl_usdc": 3.2366429999999986,
-    "pnl_pct": 3.4829080007981967,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": 1.7238809999999987,
+    "pnl_pct": 1.8550451586177388,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.743434,
+    "exit_fee_usdc": 0.769328,
+    "fees_usdc": 1.512762,
+    "pnl_gross_usdc": 3.2366429999999986,
+    "pnl_gross_pct": 3.4829080007981967,
+    "fees_estimated": false
   },
   {
     "trade_id": "e402f460",
@@ -961,9 +1189,15 @@
     "status": "closed",
     "exit_price": 64736.98161277455,
     "exit_date": "2026-07-20T04:12:00.054575+00:00",
-    "pnl_usdc": -0.21297000000000896,
-    "pnl_pct": -0.21120380815431847,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -1.824650000000009,
+    "pnl_pct": -1.8095179065068454,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.80669,
+    "exit_fee_usdc": 0.80499,
+    "fees_usdc": 1.61168,
+    "pnl_gross_usdc": -0.21297000000000896,
+    "pnl_gross_pct": -0.21120380815431847,
+    "fees_estimated": false
   },
   {
     "trade_id": "7c57bb42",
@@ -982,9 +1216,15 @@
     "status": "closed",
     "exit_price": 66199.99870885276,
     "exit_date": "2026-07-21T09:00:08Z",
-    "pnl_usdc": 2.319220000000011,
-    "pnl_pct": 2.3140079285417636,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": 0.6970600000000111,
+    "pnl_pct": 0.695493470507041,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.8018,
+    "exit_fee_usdc": 0.82036,
+    "fees_usdc": 1.62216,
+    "pnl_gross_usdc": 2.319220000000011,
+    "pnl_gross_pct": 2.3140079285417636,
+    "fees_estimated": false
   },
   {
     "trade_id": "sol-recovery-20260720",
@@ -1003,9 +1243,15 @@
     "status": "closed",
     "exit_price": 72.21999947586085,
     "exit_date": "2026-08-02T12:06:06.996383+00:00",
-    "pnl_usdc": -5.0056,
-    "pnl_pct": -7.02,
-    "close_reason": "sl_hit"
+    "pnl_usdc": -5.974354,
+    "pnl_pct": -8.374871862767225,
+    "close_reason": "sl_hit",
+    "entry_fee_usdc": 0.570767,
+    "exit_fee_usdc": 0.397987,
+    "fees_usdc": 0.968754,
+    "pnl_gross_usdc": -5.0056,
+    "pnl_gross_pct": -7.02,
+    "fees_estimated": false
   },
   {
     "trade_id": "246f2bd5",
@@ -1024,9 +1270,15 @@
     "status": "closed",
     "exit_price": 1919.6499947536724,
     "exit_date": "2026-07-22T08:13:18+00:00",
-    "pnl_usdc": -0.8226,
-    "pnl_pct": -0.7353,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -2.383905,
+    "pnl_pct": -2.1308769914419137,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.894995,
+    "exit_fee_usdc": 0.66631,
+    "fees_usdc": 1.561305,
+    "pnl_gross_usdc": -0.8226,
+    "pnl_gross_pct": -0.7353,
+    "fees_estimated": false
   },
   {
     "trade_id": "6c9d26d2",
@@ -1045,9 +1297,15 @@
     "status": "closed",
     "exit_price": 1.1460200000180087,
     "exit_date": "2026-07-22T00:22:51.773809+00:00Z",
-    "pnl_usdc": -0.5083376800000011,
-    "pnl_pct": -0.640490433219464,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": -1.6164248600000013,
+    "pnl_pct": -2.036647487646617,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.63493555,
+    "exit_fee_usdc": 0.47315163,
+    "fees_usdc": 1.10808718,
+    "pnl_gross_usdc": -0.5083376800000011,
+    "pnl_gross_pct": -0.640490433219464,
+    "fees_estimated": false
   },
   {
     "trade_id": "a4c0706a",
@@ -1066,9 +1324,15 @@
     "status": "closed",
     "exit_price": 65991.81982364815,
     "exit_date": "2026-07-22T08:13:22+00:00",
-    "pnl_usdc": -0.5308,
-    "pnl_pct": -0.9406,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -1.3177400000000001,
+    "pnl_pct": -2.3348808958072653,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.4515,
+    "exit_fee_usdc": 0.33544,
+    "fees_usdc": 0.78694,
+    "pnl_gross_usdc": -0.5308,
+    "pnl_gross_pct": -0.9406,
+    "fees_estimated": false
   },
   {
     "trade_id": "b8ec19cd",
@@ -1087,10 +1351,16 @@
     "status": "closed",
     "exit_price": 1928.8700068366052,
     "exit_date": "2026-07-27T16:12:56.492373+00:00",
-    "pnl_usdc": -1.9009969999999865,
-    "pnl_pct": -1.7261492492378363,
+    "pnl_usdc": -3.2111429999999865,
+    "pnl_pct": -2.915792123104534,
     "oco_retry_count": 2,
-    "close_reason": "signal_sell_score3"
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.660776,
+    "exit_fee_usdc": 0.64937,
+    "fees_usdc": 1.310146,
+    "pnl_gross_usdc": -1.9009969999999865,
+    "pnl_gross_pct": -1.7261492492378363,
+    "fees_estimated": false
   },
   {
     "trade_id": "544e7a44",
@@ -1109,10 +1379,16 @@
     "status": "closed",
     "exit_price": 8.578939995814727,
     "exit_date": "2026-07-27T16:12:56.995096+00:00",
-    "pnl_usdc": -0.3851174999999976,
-    "pnl_pct": -2.089361041446893,
+    "pnl_usdc": -0.6039945999999976,
+    "pnl_pct": -3.2768253493655886,
     "oco_retry_count": 1,
-    "close_reason": "signal_sell_score3"
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.1105939,
+    "exit_fee_usdc": 0.1082832,
+    "fees_usdc": 0.2188771,
+    "pnl_gross_usdc": -0.3851174999999976,
+    "pnl_gross_pct": -2.089361041446893,
+    "fees_estimated": false
   },
   {
     "trade_id": "0e541bf1",
@@ -1131,10 +1407,16 @@
     "status": "closed",
     "exit_price": 0.1685158095362708,
     "exit_date": "2026-07-31T16:06:28.697262+00:00",
-    "pnl_usdc": -0.42751182999999837,
-    "pnl_pct": -0.7846243979249169,
+    "pnl_usdc": -1.0787808799999983,
+    "pnl_pct": -1.9799166691198085,
     "oco_retry_count": 0,
-    "close_reason": "protection_exhausted"
+    "close_reason": "protection_exhausted",
+    "entry_fee_usdc": 0.32691706,
+    "exit_fee_usdc": 0.32435199,
+    "fees_usdc": 0.65126905,
+    "pnl_gross_usdc": -0.42751182999999837,
+    "pnl_gross_pct": -0.7846243979249169,
+    "fees_estimated": false
   },
   {
     "trade_id": "da71d226",
@@ -1153,10 +1435,16 @@
     "status": "closed",
     "exit_price": 1908.7399983974733,
     "exit_date": "2026-08-06T08:06:20.067245+00:00",
-    "pnl_usdc": 2.756429,
-    "pnl_pct": 1.6173681354075646,
+    "pnl_usdc": 0.35391499999999976,
+    "pnl_pct": 0.20766391720692529,
     "oco_retry_count": 0,
-    "close_reason": "protection_exhausted"
+    "close_reason": "protection_exhausted",
+    "entry_fee_usdc": 1.363415,
+    "exit_fee_usdc": 1.039099,
+    "fees_usdc": 2.402514,
+    "pnl_gross_usdc": 2.756429,
+    "pnl_gross_pct": 1.6173681354075646,
+    "fees_estimated": false
   },
   {
     "trade_id": "0ab4a34f",
@@ -1175,10 +1463,16 @@
     "status": "closed",
     "exit_price": 64770.788453252906,
     "exit_date": "2026-08-06T08:06:21.476107+00:00",
-    "pnl_usdc": 0.9092100000000023,
-    "pnl_pct": 0.44669038344449735,
+    "pnl_usdc": -1.538769999999998,
+    "pnl_pct": -0.7559901027627133,
     "oco_retry_count": 0,
-    "close_reason": "protection_exhausted"
+    "close_reason": "protection_exhausted",
+    "entry_fee_usdc": 1.22126,
+    "exit_fee_usdc": 1.22672,
+    "fees_usdc": 2.4479800000000003,
+    "pnl_gross_usdc": 0.9092100000000023,
+    "pnl_gross_pct": 0.44669038344449735,
+    "fees_estimated": false
   },
   {
     "trade_id": "ee59efff",
@@ -1197,9 +1491,15 @@
     "status": "closed",
     "exit_price": 1921.7900035753485,
     "exit_date": "2026-08-09T08:11:59.627728+00:00",
-    "pnl_usdc": -1.3962439999999943,
-    "pnl_pct": -0.6826873236914184,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -3.8421269999999943,
+    "pnl_pct": -1.8785909904805644,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 1.22713,
+    "exit_fee_usdc": 1.218753,
+    "fees_usdc": 2.4458830000000003,
+    "pnl_gross_usdc": -1.3962439999999943,
+    "pnl_gross_pct": -0.6826873236914184,
+    "fees_estimated": false
   },
   {
     "trade_id": "7c73f872",
@@ -1218,9 +1518,15 @@
     "status": "closed",
     "exit_price": 64868.79527005189,
     "exit_date": "2026-08-09T08:12:02.106678+00:00",
-    "pnl_usdc": -0.10229999999999959,
-    "pnl_pct": -0.14968051330905516,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -0.9218299999999996,
+    "pnl_pct": -1.3487779822452277,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.41007,
+    "exit_fee_usdc": 0.40946,
+    "fees_usdc": 0.81953,
+    "pnl_gross_usdc": -0.10229999999999959,
+    "pnl_gross_pct": -0.14968051330905516,
+    "fees_estimated": false
   },
   {
     "trade_id": "9e3abf0c",
@@ -1239,10 +1545,16 @@
     "status": "closed",
     "exit_price": 602.5510261337432,
     "exit_date": "2026-08-09T00:38:04.329567+00:00Z",
-    "pnl_usdc": -0.01035460000000277,
-    "pnl_pct": -0.033011010577648915,
+    "pnl_usdc": -0.38669779200000276,
+    "pnl_pct": -1.2328129432389618,
     "oco_retry_count": 1,
-    "close_reason": "tp_watcher"
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.18820266,
+    "exit_fee_usdc": 0.188140532,
+    "fees_usdc": 0.376343192,
+    "pnl_gross_usdc": -0.01035460000000277,
+    "pnl_gross_pct": -0.033011010577648915,
+    "fees_estimated": false
   },
   {
     "trade_id": "f0829035",
@@ -1261,10 +1573,16 @@
     "status": "closed",
     "exit_price": 76.01999866026028,
     "exit_date": "2026-08-10T16:05:56.492948+00:00",
-    "pnl_usdc": -0.036947999999997,
-    "pnl_pct": -0.23622382520713697,
+    "pnl_usdc": -0.224419999999997,
+    "pnl_pct": -1.4348097556833734,
     "oco_retry_count": 0,
-    "close_reason": "protection_exhausted"
+    "close_reason": "protection_exhausted",
+    "entry_fee_usdc": 0.093847,
+    "exit_fee_usdc": 0.093625,
+    "fees_usdc": 0.187472,
+    "pnl_gross_usdc": -0.036947999999997,
+    "pnl_gross_pct": -0.23622382520713697,
+    "fees_estimated": false
   },
   {
     "trade_id": "c05af599",
@@ -1283,10 +1601,16 @@
     "status": "closed",
     "exit_price": 603.7980606957809,
     "exit_date": "2026-08-09T10:13:22.392985+00:00Z",
-    "pnl_usdc": 0.20606139999999987,
-    "pnl_pct": 0.3621776272795775,
+    "pnl_usdc": -0.47791642300000015,
+    "pnl_pct": -0.8399954388356239,
     "oco_retry_count": 1,
-    "close_reason": "tp_watcher"
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.341370727,
+    "exit_fee_usdc": 0.342607096,
+    "fees_usdc": 0.683977823,
+    "pnl_gross_usdc": 0.20606139999999987,
+    "pnl_gross_pct": 0.3621776272795775,
+    "fees_estimated": false
   },
   {
     "trade_id": "3d66ac45",
@@ -1305,10 +1629,16 @@
     "status": "closed",
     "exit_price": 8.723728771532114,
     "exit_date": "2026-08-13T08:13:53.446003+00:00",
-    "pnl_usdc": -0.1738,
-    "pnl_pct": -0.1381,
+    "pnl_usdc": -1.6828384,
+    "pnl_pct": -1.3372833712356207,
     "oco_retry_count": 1,
-    "close_reason": "signal_sell_score3"
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.7550405,
+    "exit_fee_usdc": 0.7539979,
+    "fees_usdc": 1.5090384000000001,
+    "pnl_gross_usdc": -0.1738,
+    "pnl_gross_pct": -0.1381,
+    "fees_estimated": false
   },
   {
     "trade_id": "fc74ff78",
@@ -1327,10 +1657,16 @@
     "status": "closed",
     "exit_price": 76.2799999495707,
     "exit_date": "2026-08-13T08:13:53.818946+00:00",
-    "pnl_usdc": 0.1987,
-    "pnl_pct": 0.1581,
+    "pnl_usdc": -1.3102999999999998,
+    "pnl_pct": -1.0428117394290817,
     "oco_retry_count": 1,
-    "close_reason": "signal_sell_score3"
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.753904,
+    "exit_fee_usdc": 0.755096,
+    "fees_usdc": 1.509,
+    "pnl_gross_usdc": 0.1987,
+    "pnl_gross_pct": 0.1581,
+    "fees_estimated": false
   },
   {
     "trade_id": "add32310",
@@ -1349,9 +1685,15 @@
     "status": "closed",
     "exit_price": 9.461542973693065,
     "exit_date": "2026-08-16T20:10:59.902709+00:00",
-    "pnl_usdc": -0.5206729999999868,
-    "pnl_pct": -0.41832789159640305,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -2.011132399999987,
+    "pnl_pct": -1.6158179444934342,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.7467917,
+    "exit_fee_usdc": 0.7436677,
+    "fees_usdc": 1.4904594,
+    "pnl_gross_usdc": -0.5206729999999868,
+    "pnl_gross_pct": -0.41832789159640305,
+    "fees_estimated": false
   },
   {
     "trade_id": "9dcfa2f3",
@@ -1370,9 +1712,15 @@
     "status": "closed",
     "exit_price": 75.58999974763005,
     "exit_date": "2026-08-18T04:12:30.783370+00:00",
-    "pnl_usdc": -0.6706349999999933,
-    "pnl_pct": -0.5394740802829018,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -2.158363999999993,
+    "pnl_pct": -1.7362371987977556,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.745876,
+    "exit_fee_usdc": 0.741853,
+    "fees_usdc": 1.4877289999999999,
+    "pnl_gross_usdc": -0.6706349999999933,
+    "pnl_gross_pct": -0.5394740802829018,
+    "fees_estimated": false
   },
   {
     "trade_id": "eb9fd48b",
@@ -1391,9 +1739,15 @@
     "status": "closed",
     "exit_price": 1.0026004081800186,
     "exit_date": "2026-08-18T00:12:59.867926+00:00",
-    "pnl_usdc": -0.1522,
-    "pnl_pct": -0.1225,
-    "close_reason": "signal_sell_score2"
+    "pnl_usdc": -1.64214342,
+    "pnl_pct": -1.3217717808323715,
+    "close_reason": "signal_sell_score2",
+    "entry_fee_usdc": 0.74542827,
+    "exit_fee_usdc": 0.74451515,
+    "fees_usdc": 1.48994342,
+    "pnl_gross_usdc": -0.1522,
+    "pnl_gross_pct": -0.1225,
+    "fees_estimated": false
   },
   {
     "trade_id": "f78ada59",
@@ -1412,9 +1766,15 @@
     "status": "closed",
     "exit_price": 1909.7400063961386,
     "exit_date": "2026-08-19T04:12:24+00:00",
-    "pnl_usdc": 0.1354,
-    "pnl_pct": 0.2578,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -0.4958150000000001,
+    "pnl_pct": -0.9438059733724949,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.315201,
+    "exit_fee_usdc": 0.316014,
+    "fees_usdc": 0.6312150000000001,
+    "pnl_gross_usdc": 0.1354,
+    "pnl_gross_pct": 0.2578,
+    "fees_estimated": false
   },
   {
     "trade_id": "3ea7c5ca",
@@ -1433,9 +1793,15 @@
     "status": "closed",
     "exit_price": 64257.77089183693,
     "exit_date": "2026-08-19T04:12:26+00:00",
-    "pnl_usdc": 0.1966,
-    "pnl_pct": 0.27,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -0.67816,
+    "pnl_pct": -0.9315598311115102,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.43679,
+    "exit_fee_usdc": 0.43797,
+    "fees_usdc": 0.87476,
+    "pnl_gross_usdc": 0.1966,
+    "pnl_gross_pct": 0.27,
+    "fees_estimated": false
   },
   {
     "trade_id": "3504a82f",
@@ -1454,9 +1820,15 @@
     "status": "closed",
     "exit_price": 81.98000005473278,
     "exit_date": "2026-08-19T16:08:59.918028+00:00",
-    "pnl_usdc": 5.476241999999999,
-    "pnl_pct": 6.288084880158543,
-    "close_reason": "profit_target_phase0"
+    "pnl_usdc": 4.398313999999999,
+    "pnl_pct": 5.0503560218101455,
+    "close_reason": "profit_target_phase0",
+    "entry_fee_usdc": 0.522535,
+    "exit_fee_usdc": 0.555393,
+    "fees_usdc": 1.077928,
+    "pnl_gross_usdc": 5.476241999999999,
+    "pnl_gross_pct": 6.288084880158543,
+    "fees_estimated": false
   },
   {
     "trade_id": "f7b1a0ae",
@@ -1475,9 +1847,15 @@
     "status": "closed",
     "exit_price": 1926.4100063180708,
     "exit_date": "2026-08-19T12:37:27.376537+00:00Z",
-    "pnl_usdc": 0.5711619999999934,
-    "pnl_pct": 0.5847925793566703,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": -0.6042950000000066,
+    "pnl_pct": -0.6187162866968515,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.586015,
+    "exit_fee_usdc": 0.589442,
+    "fees_usdc": 1.175457,
+    "pnl_gross_usdc": 0.5711619999999934,
+    "pnl_gross_pct": 0.5847925793566703,
+    "fees_estimated": false
   },
   {
     "trade_id": "97e50612",
@@ -1496,9 +1874,15 @@
     "status": "closed",
     "exit_price": 1.065027723508143,
     "exit_date": "2026-08-19T16:09:01.725839+00:00",
-    "pnl_usdc": 6.572861139999993,
-    "pnl_pct": 5.932853597091469,
-    "close_reason": "profit_target_phase0"
+    "pnl_usdc": 5.203973779999993,
+    "pnl_pct": 4.697256476628179,
+    "close_reason": "profit_target_phase0",
+    "entry_fee_usdc": 0.6647251,
+    "exit_fee_usdc": 0.70416226,
+    "fees_usdc": 1.36888736,
+    "pnl_gross_usdc": 6.572861139999993,
+    "pnl_gross_pct": 5.932853597091469,
+    "fees_estimated": false
   },
   {
     "trade_id": "8175c3d0",
@@ -1517,9 +1901,15 @@
     "status": "closed",
     "exit_price": 0.19149600715457094,
     "exit_date": "2026-08-20T12:16:44.094533+00:00Z",
-    "pnl_usdc": 6.135937159999996,
-    "pnl_pct": 4.9074752445084595,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": 4.598731979999996,
+    "pnl_pct": 3.678030390386098,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.75019478,
+    "exit_fee_usdc": 0.7870104,
+    "fees_usdc": 1.53720518,
+    "pnl_gross_usdc": 6.135937159999996,
+    "pnl_gross_pct": 4.9074752445084595,
+    "fees_estimated": false
   },
   {
     "trade_id": "fd74d410",
@@ -1538,9 +1928,15 @@
     "status": "closed",
     "exit_price": 71742.59153942179,
     "exit_date": "2026-08-20T12:16:45.678633+00:00Z",
-    "pnl_usdc": 6.786170000000006,
-    "pnl_pct": 3.5017974256293076,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": 4.419960000000006,
+    "pnl_pct": 2.2807864449880455,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 1.16275,
+    "exit_fee_usdc": 1.20346,
+    "fees_usdc": 2.3662099999999997,
+    "pnl_gross_usdc": 6.786170000000006,
+    "pnl_gross_pct": 3.5017974256293076,
+    "fees_estimated": false
   },
   {
     "trade_id": "12490469",
@@ -1559,9 +1955,15 @@
     "status": "closed",
     "exit_price": 2375.9999918897656,
     "exit_date": "2026-08-21T01:48:14.820966+00:00Z",
-    "pnl_usdc": 1.5680929999999937,
-    "pnl_pct": 4.668681980623242,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": 1.1556349999999938,
+    "pnl_pct": 3.440671121341357,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.201525,
+    "exit_fee_usdc": 0.210933,
+    "fees_usdc": 0.412458,
+    "pnl_gross_usdc": 1.5680929999999937,
+    "pnl_gross_pct": 4.668681980623242,
+    "fees_estimated": false
   },
   {
     "trade_id": "cbd90365",
@@ -1580,9 +1982,15 @@
     "status": "closed",
     "exit_price": 10.661240003686412,
     "exit_date": "2026-08-20T16:13:44.423639+00:00",
-    "pnl_usdc": 0.1212,
-    "pnl_pct": 0.4962,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -0.1726717,
+    "pnl_pct": -0.7068394064685325,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.1465722,
+    "exit_fee_usdc": 0.1472995,
+    "fees_usdc": 0.2938717,
+    "pnl_gross_usdc": 0.1212,
+    "pnl_gross_pct": 0.4962,
+    "fees_estimated": false
   },
   {
     "trade_id": "f9047377",
@@ -1601,9 +2009,15 @@
     "status": "closed",
     "exit_price": 87.1400018453754,
     "exit_date": "2026-08-20T16:13:46.026645+00:00",
-    "pnl_usdc": 0.0589,
-    "pnl_pct": 0.2531,
-    "close_reason": "signal_sell_score3"
+    "pnl_usdc": -0.22055799999999998,
+    "pnl_pct": -0.9482803320249502,
+    "close_reason": "signal_sell_score3",
+    "entry_fee_usdc": 0.139552,
+    "exit_fee_usdc": 0.139906,
+    "fees_usdc": 0.279458,
+    "pnl_gross_usdc": 0.0589,
+    "pnl_gross_pct": 0.2531,
+    "fees_estimated": false
   },
   {
     "trade_id": "7bdd361b",
@@ -1622,9 +2036,15 @@
     "status": "closed",
     "exit_price": 76627.77793153074,
     "exit_date": "2026-08-21T08:07:53.482975+00:00",
-    "pnl_usdc": 6.183470000000006,
-    "pnl_pct": 5.913337507324174,
-    "close_reason": "profit_target_phase0"
+    "pnl_usdc": 4.891550000000006,
+    "pnl_pct": 4.677856621597836,
+    "close_reason": "profit_target_phase0",
+    "entry_fee_usdc": 0.62741,
+    "exit_fee_usdc": 0.66451,
+    "fees_usdc": 1.2919200000000002,
+    "pnl_gross_usdc": 6.183470000000006,
+    "pnl_gross_pct": 5.913337507324174,
+    "fees_estimated": false
   },
   {
     "trade_id": "5bc81136",
@@ -1643,9 +2063,15 @@
     "status": "closed",
     "exit_price": 0.20720164328260646,
     "exit_date": "2026-08-21T04:14:05.941472+00:00",
-    "pnl_usdc": 3.408,
-    "pnl_pct": 3.8589,
-    "close_reason": "signal_sell_score2"
+    "pnl_usdc": 2.32777191,
+    "pnl_pct": 2.635760249501381,
+    "close_reason": "signal_sell_score2",
+    "entry_fee_usdc": 0.52989006,
+    "exit_fee_usdc": 0.55033803,
+    "fees_usdc": 1.08022809,
+    "pnl_gross_usdc": 3.408,
+    "pnl_gross_pct": 3.8589,
+    "fees_estimated": false
   },
   {
     "trade_id": "0cc297b0",
@@ -1664,9 +2090,15 @@
     "status": "closed",
     "exit_price": 2452.1899896533882,
     "exit_date": "2026-08-21T21:13:37.580416+00:00Z",
-    "pnl_usdc": 3.355996999999984,
-    "pnl_pct": 4.629897895898506,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": 2.466036999999984,
+    "pnl_pct": 3.402118511282294,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.434912,
+    "exit_fee_usdc": 0.455048,
+    "fees_usdc": 0.8899600000000001,
+    "pnl_gross_usdc": 3.355996999999984,
+    "pnl_gross_pct": 4.629897895898506,
+    "fees_estimated": false
   },
   {
     "trade_id": "3af5937c",
@@ -1685,9 +2117,15 @@
     "status": "closed",
     "exit_price": 1.359979999989058,
     "exit_date": "2026-08-21T12:14:04.068038+00:00Z",
-    "pnl_usdc": 2.978551470000003,
-    "pnl_pct": 4.124461178472483,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": 2.0940792600000027,
+    "pnl_pct": 2.8997144079952344,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.43330045,
+    "exit_fee_usdc": 0.45117176,
+    "fees_usdc": 0.88447221,
+    "pnl_gross_usdc": 2.978551470000003,
+    "pnl_gross_pct": 4.124461178472483,
+    "fees_estimated": false
   },
   {
     "trade_id": "08ba1fe7",
@@ -1706,9 +2144,15 @@
     "status": "closed",
     "exit_price": 11.551089687384337,
     "exit_date": "2026-08-21T08:07:55.264698+00:00",
-    "pnl_usdc": 4.276206800000019,
-    "pnl_pct": 5.917036066065256,
-    "close_reason": "profit_target_phase0"
+    "pnl_usdc": 3.3833168000000193,
+    "pnl_pct": 4.6815340007701485,
+    "close_reason": "profit_target_phase0",
+    "entry_fee_usdc": 0.4336163,
+    "exit_fee_usdc": 0.4592737,
+    "fees_usdc": 0.89289,
+    "pnl_gross_usdc": 4.276206800000019,
+    "pnl_gross_pct": 5.917036066065256,
+    "fees_estimated": false
   },
   {
     "trade_id": "941a8208",
@@ -1727,9 +2171,15 @@
     "status": "closed",
     "exit_price": 92.11000026427597,
     "exit_date": "2026-08-21T21:13:39.081089+00:00Z",
-    "pnl_usdc": 2.473171999999985,
-    "pnl_pct": 3.413045566302576,
-    "close_reason": "tp_watcher"
+    "pnl_usdc": 1.5887849999999848,
+    "pnl_pct": 2.1925671162612304,
+    "close_reason": "tp_watcher",
+    "entry_fee_usdc": 0.434774,
+    "exit_fee_usdc": 0.449613,
+    "fees_usdc": 0.884387,
+    "pnl_gross_usdc": 2.473171999999985,
+    "pnl_gross_pct": 3.413045566302576,
+    "fees_estimated": false
   },
   {
     "trade_id": "616ab13c",
@@ -1758,12 +2208,12 @@
     "side": "BUY",
     "signal_score": 4,
     "entry_price": 11.532170019255332,
-    "stop_price": 10.97952,
-    "tp_price": 12.638,
+    "stop_price": 11.18569,
+    "tp_price": 12.225,
     "quantity": 1.31412433,
     "risk_usdc": 1.0572038534000001,
     "entry_order_id": "OETRGI-TXAYW-YOC7BO",
-    "sl_order_txid": "OT5FJJ-2KNJ5-REKW4S",
+    "sl_order_txid": "OCVEI5-6NY5V-27DRVC",
     "protection_failed": false,
     "status": "open",
     "exit_price": null,
