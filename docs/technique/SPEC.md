@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-08-13 (PR #381)
-> **Commit** : 1e05681
+> **Dernière mise à jour** : 2026-08-22 (PR #386)
+> **Commit** : 2a3be2f
 
 ---
 
@@ -166,6 +166,7 @@ webhook_server.py (process principal)
 | `_risk_section()` | commands/eval.py:112 | Comptabilise les positions ouvertes sans stop-loss (`protection_failed`) dans `trade_history.json` |
 | `_stat_note()` | commands/eval.py:124 | Génère avertissement si < 30 trades sur la période (échantillon trop petit) |
 | `_parse_dt()` | commands/eval.py:133 | Utilitaire : parse ISO datetime string avec fallback UTC timezone |
+| `main()` (Phase 0 snapshot) | `phase0_snapshot.py:20-72` | Lit `trade_history.json`, accumule positions_value au marché via boucle P&L (kraken ticker par position), expose via stdout + JSON output ; utilisée par Phase 0 pour affiner `portfolio_total` |
 | `_validate_trade_history(data)` | core/state_manager.py:12 | Valide la structure list + dicts de `trade_history.json` — lève `ValueError` si invalide |
 | `load_trade_history(path)` | core/state_manager.py:24 | Charge et valide `trade_history.json` — lève `ValueError`/`FileNotFoundError` |
 | `save_trade_history(data, path)` | core/state_manager.py:45 | Sauvegarde atomique via tempfile + os.replace() ; valide avant écriture |
@@ -320,6 +321,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#386](pr-386-inclure-valeur-positions.md) | 2026-08-22 | [BUG] Inclure la valeur des positions ouvertes dans `portfolio_total` : accumulation `positions_value` dans la boucle P&L existante de `phase0_snapshot.py` (kraken ticker par position) ; exposition via stdout (`PHASE0_SNAPSHOT_DONE\|open_positions=N\|positions_value=X`) et JSON output ; utilisation dans Phase 0 (`portfolio_total = cash + positions_value`) pour affiner `budget_disponible` et check `daily_loss_limit_pct` — tests ajoutés (cas positions ouvertes/fermées) |
 | [#381](pr-381-rsi-zone-config.md) | 2026-08-13 | [M1] Élargir et configurer la zone RSI bonus Phase 3 : borne haute passée de 55 à 65 (`rsi_zone_max`) pour capturer coins avec RSI 59–65 (ex. LINK 4h BUY + RSI 60 → score +1 bonus) ; rend zone RSI entièrement configurable via `config.json` (`rsi_zone_min`: 30, `rsi_zone_max`: 65, défauts) — suit pattern `cfg.get()` existant pour autres seuils ; tests ajoutés (`TestRsiZoneBonus` : RSI in/out-zone) |
 | [#379](pr-379-arrondir-stop-loss-tick-size.md) | 2026-08-13 | [BUG] Arrondir le prix stop-loss au `tick_size` de la paire avant pose Kraken (Phase 5 + Phase 0 retry) : appels `kraken order --type stop-loss --price` rejetaient les prix non alignés au `tick_size` (ex. SOL 0.01). Fixes ligne 167 `phase5_execution.py`, ligne 152 `phase0_oco_retry.py` ; pattern réutilisé depuis `phase0_trailing_stop.py` ; tests ajoutés (2 TDD) |
 | [#377](pr-377-pinner-versions-mcp.md) | 2026-07-29 | [BUG] Pin versions `mcp==1.29.0` et `tradingview-mcp-server==0.7.1` dans `.mcp.json` pour éviter breaking change mcp 2.0.0 qui a supprimé `mcp.server.fastmcp` — élimine `ModuleNotFoundError` au démarrage du serveur TradingView MCP en production |
