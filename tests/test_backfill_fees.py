@@ -114,12 +114,13 @@ class TestBackfillIntegration(unittest.TestCase):
             "entry_order_id": "OABC-1", "entry_price": 1000.0, "exit_price": 1100.0,
             "quantity": 0.1, "date": "2026-07-05T00:00:00+00:00",
             "exit_date": exit_dt.isoformat(),
+            "pnl_usdc": 10.0, "pnl_pct": 1.0,  # ancien calcul déjà stocké (pré-#382)
         }]
         fills = [
             _fill("T_ENTRY", ordertxid="OABC-1", fee="0.5"),
             _fill("T_EXIT", pair="ETHUSDC", type_="sell", vol="0.1", fee="0.6", time=exit_dt.timestamp()),
         ]
-        updated, stats = backfill_fees.backfill(history, fills, force=False)
+        updated, stats, incoherent = backfill_fees.backfill(history, fills, force=False)
 
         pos = updated[0]
         self.assertFalse(pos["fees_estimated"])
@@ -127,10 +128,12 @@ class TestBackfillIntegration(unittest.TestCase):
         self.assertAlmostEqual(pos["exit_fee_usdc"], 0.6)
         self.assertAlmostEqual(pos["fees_usdc"], 1.1)
         self.assertAlmostEqual(pos["pnl_gross_usdc"], 10.0)
+        self.assertAlmostEqual(pos["pnl_gross_pct"], 1.0)
         self.assertAlmostEqual(pos["pnl_usdc"], 8.9)
         self.assertEqual(stats["entries_measured"], 1)
         self.assertEqual(stats["exits_measured"], 1)
         self.assertEqual(stats["trades_updated"], 1)
+        self.assertEqual(incoherent, [])
 
     def test_unmatched_trade_falls_back_to_estimated_rate(self):
         history = [{
@@ -138,8 +141,9 @@ class TestBackfillIntegration(unittest.TestCase):
             "entry_order_id": "UNKNOWN", "entry_price": 1000.0, "exit_price": 1100.0,
             "quantity": 0.1, "date": "2026-06-01T00:00:00+00:00",
             "exit_date": "2026-06-02T00:00:00+00:00",
+            "pnl_usdc": 10.0, "pnl_pct": 1.0,
         }]
-        updated, stats = backfill_fees.backfill(history, fills=[], force=False)
+        updated, stats, _incoherent = backfill_fees.backfill(history, fills=[], force=False)
 
         pos = updated[0]
         self.assertTrue(pos["fees_estimated"])
@@ -155,15 +159,75 @@ class TestBackfillIntegration(unittest.TestCase):
             "date": "2026-07-05T00:00:00+00:00", "exit_date": "2026-07-05T01:00:00+00:00",
             "fees_usdc": 1.0,
         }]
-        _updated, stats = backfill_fees.backfill(history, fills=[], force=False)
+        _updated, stats, _incoherent = backfill_fees.backfill(history, fills=[], force=False)
         self.assertEqual(stats["trades_skipped_already_done"], 1)
         self.assertEqual(stats["trades_updated"], 0)
 
     def test_open_trade_skipped(self):
         history = [{"trade_id": "T1", "status": "open", "coin": "ETH"}]
-        _updated, stats = backfill_fees.backfill(history, fills=[], force=False)
+        _updated, stats, _incoherent = backfill_fees.backfill(history, fills=[], force=False)
         self.assertEqual(stats["trades_skipped_not_closed"], 1)
         self.assertEqual(stats["trades_updated"], 0)
+
+
+class TestBackfillCoherenceGuard(unittest.TestCase):
+    """Reproduit le bug de prod #382 (trade SYN 38515bab) : pnl_usdc stocké incohérent avec
+    (exit_price - entry_price) * quantity -> ne pas écraser, seulement signaler."""
+
+    def test_incoherent_legacy_trade_preserved_and_flagged(self):
+        history = [{
+            "trade_id": "38515bab", "status": "closed", "coin": "SYN",
+            "entry_order_id": 50609180,  # entier legacy Binance, pas un txid Kraken
+            "entry_price": 0.34397, "exit_price": 0.5543, "quantity": 40.0,
+            "date": "2026-06-26T00:00:00+00:00", "exit_date": "2026-06-26T01:00:00+00:00",
+            "pnl_usdc": -1.165, "pnl_pct": -3.5,
+            "close_reason": "sl_hit",
+        }]
+        updated, stats, incoherent = backfill_fees.backfill(history, fills=[], force=False)
+
+        pos = updated[0]
+        # Le trade n'est PAS modifié : ni pnl_usdc, ni pnl_gross_usdc, ni fees_usdc ajoutés.
+        self.assertEqual(pos["pnl_usdc"], -1.165)
+        self.assertNotIn("pnl_gross_usdc", pos)
+        self.assertNotIn("fees_usdc", pos)
+        self.assertNotIn("entry_fee_usdc", pos)
+
+        self.assertEqual(stats["trades_incoherents"], 1)
+        self.assertEqual(stats["trades_updated"], 0)
+        self.assertEqual(len(incoherent), 1)
+        self.assertEqual(incoherent[0]["trade_id"], "38515bab")
+        self.assertEqual(incoherent[0]["coin"], "SYN")
+        self.assertAlmostEqual(incoherent[0]["pnl_usdc_stored"], -1.165)
+        # (0.5543 - 0.34397) * 40 = 8.41320... loin de -1.165 -> écart largement > 1%
+        self.assertAlmostEqual(incoherent[0]["pnl_recomputed_from_prices"], 8.4132, places=3)
+        self.assertGreater(incoherent[0]["rel_diff_pct"], 100)
+
+    def test_closed_trade_without_stored_pnl_flagged_not_crashed(self):
+        """Trade closed sans pnl_usdc stocké -> signalé, pas de crash sur trade["pnl_usdc"]."""
+        history = [{
+            "trade_id": "T2", "status": "closed", "coin": "ETH",
+            "entry_price": 1000.0, "exit_price": 1100.0, "quantity": 0.1,
+            "date": "2026-07-05T00:00:00+00:00", "exit_date": "2026-07-05T01:00:00+00:00",
+        }]
+        updated, stats, incoherent = backfill_fees.backfill(history, fills=[], force=False)
+
+        self.assertEqual(stats["trades_incoherents"], 1)
+        self.assertEqual(stats["trades_updated"], 0)
+        self.assertEqual(len(incoherent), 1)
+        self.assertIsNone(incoherent[0]["pnl_usdc_stored"])
+        self.assertNotIn("fees_usdc", updated[0])
+
+    def test_coherent_trade_within_tolerance_is_updated_normally(self):
+        history = [{
+            "trade_id": "T1", "status": "closed", "coin": "ETH",
+            "entry_price": 1000.0, "exit_price": 1100.0, "quantity": 0.1,
+            "date": "2026-07-05T00:00:00+00:00", "exit_date": "2026-07-05T01:00:00+00:00",
+            "pnl_usdc": 10.0, "pnl_pct": 1.0,
+        }]
+        _updated, stats, incoherent = backfill_fees.backfill(history, fills=[], force=False)
+        self.assertEqual(stats["trades_incoherents"], 0)
+        self.assertEqual(stats["trades_updated"], 1)
+        self.assertEqual(incoherent, [])
 
 
 if __name__ == "__main__":
