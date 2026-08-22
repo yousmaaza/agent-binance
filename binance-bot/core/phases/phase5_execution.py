@@ -1,4 +1,4 @@
-"""Exécution des ordres (drift check, BUY MARKET, fill retry, TP/SL, pose stop-loss) — phase 5.
+"""Exécution des ordres (drift check, entrée BUY, fill retry, TP/SL, pose stop-loss) — phase 5.
 
 Lit les ordres préparés par la Phase 4 depuis /tmp/cycle_{CYCLE_ID}_phase5_input.json :
 {
@@ -10,7 +10,11 @@ Lit les ordres préparés par la Phase 4 depuis /tmp/cycle_{CYCLE_ID}_phase5_inp
 Pour chaque ordre, dans l'ordre de score décroissant :
 1. Re-fetch prix, skip TYPE_C si drift > price_deviation_max_pct
 2. Re-fetch solde USDC, skip TYPE_C si insuffisant
-3. BUY MARKET puis query du fill (3 tentatives, 1s d'intervalle), skip TYPE_C si non rempli
+3. Si maker_entry_enabled (config, défaut True) : pose un ordre LIMIT post-only au bid (#388) et
+   l'enregistre dans state/maker_pending_orders.json — le core/maker_watcher.py prend le relais
+   (ajustement via amend, repli au marché, pose du SL au fill). Sinon (ou si la pose échoue après
+   3 tentatives) : BUY MARKET puis query du fill (3 tentatives, 1s d'intervalle), skip TYPE_C si
+   non rempli.
 4. Recalcule TP/SL sur actual_entry ; clôture immédiate au marché si prix post-fill >= actual_tp
 5. Récupère lot_decimals/tick_size pour arrondir la quantité et le prix de l'ordre SL
 6. Pose l'ordre SELL STOP-LOSS ; protection_failed=True + alerte Telegram si échec
@@ -32,7 +36,10 @@ import datetime
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl, maker_or_taker_from_ordertype  # noqa: E402
+from core.trade_helpers import (  # noqa: E402
+    tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl,
+    maker_or_taker_from_ordertype, load_maker_pending_orders, save_maker_pending_orders,
+)
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -45,12 +52,32 @@ cfg = inp.get("config") or _load_config()
 
 price_deviation_max_pct = cfg.get("price_deviation_max_pct", 0.02)
 reward_risk_ratio = cfg.get("reward_risk_ratio", 2)
+maker_entry_enabled = cfg.get("maker_entry_enabled", True)
 
 with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
     history = json.load(f)
 
+
+def _place_maker_entry_order(pair, quantite, _retries=3):
+    """Pose un BUY LIMIT post-only au bid courant (#388). Retry si Kraken rejette (bid a bougé
+    entre lecture et envoi). Retourne (txid, limit_price) ou (None, None) si épuisé."""
+    for attempt in range(_retries):
+        ticker_raw = binance("ticker", pair, "-o", "json")
+        bid = float(json.loads(ticker_raw).get(pair, {}).get("b", [0])[0])
+        buy_raw = binance("order", "buy", pair, str(quantite), "--type", "limit",
+                           "--price", str(bid), "--oflags", "post", "-o", "json", "--yes")
+        buy_resp = json.loads(buy_raw) if buy_raw.strip() else {}
+        txid = (buy_resp.get("txid") or [None])[0]
+        if txid:
+            return txid, bid
+        if attempt < _retries - 1:
+            time.sleep(1)
+    return None, None
+
+
 orders_executed = []
 orders_skipped_detail = {}
+maker_pending_orders = load_maker_pending_orders(PROJECT_DIR)
 
 for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=True):
     coin = order["coin"]
@@ -79,7 +106,39 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
             orders_skipped_detail[coin] = {"skip_type": "TYPE_C", "skip_detail": skip_detail_str}
             continue
 
-        # 3. BUY MARKET + query du fill (3 tentatives, 1s entre chaque)
+        # 3. Entrée maker (#388) : ordre LIMIT post-only au bid, suivi async par maker_watcher.py
+        if maker_entry_enabled:
+            maker_txid, maker_limit_price = _place_maker_entry_order(f"{coin}USDC", quantite)
+            if maker_txid:
+                maker_pending_orders.append({
+                    "coin": coin,
+                    "pair": f"{coin}USDC",
+                    "txid": maker_txid,
+                    "quantity": quantite,
+                    "montant_ordre": montant_ordre,
+                    "risk_usdc": risk_usdc,
+                    "stop_distance_pct": stop_distance_pct,
+                    "reward_risk_ratio": reward_risk_ratio,
+                    "score": score,
+                    "scan_price": prix_entry,
+                    "initial_limit_price": maker_limit_price,
+                    "current_limit_price": maker_limit_price,
+                    "placed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "cycle_id": CYCLE_ID,
+                })
+                save_maker_pending_orders(maker_pending_orders, PROJECT_DIR)
+                tg(
+                    f"🧊 LIMIT post-only {coin}\n{quantite} @ {maker_limit_price:.4g} USDC (bid)\n"
+                    f"Suivi par le maker watcher (concession max {cfg.get('maker_max_concession_pct', 0.003) * 100:.2f}%)"
+                )
+                orders_executed.append({
+                    "coin": coin, "entry_order_id": maker_txid, "maker_limit_price": maker_limit_price,
+                    "maker_pending": True,
+                })
+                continue
+            # Pose post-only impossible après retries (bid instable) -> repli BUY MARKET immédiat
+
+        # BUY MARKET + query du fill (3 tentatives, 1s entre chaque)
         buy_raw = binance("order", "buy", f"{coin}USDC", str(quantite), "--type", "market", "-o", "json", "--yes")
         entry_txid = json.loads(buy_raw)["txid"][0]
 
@@ -101,8 +160,10 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
         actual_qty = float(fill["vol_exec"])
         entry_order_id = entry_txid
         entry_fee_usdc = float(fill.get("fee", 0) or 0)
-        # Dérivé depuis descr.ordertype de la réponse Kraken plutôt qu'une constante figée : suit
-        # automatiquement le jour où #388 introduit des ordres limit post-only pour l'entrée.
+        # Dérivé depuis descr.ordertype de la réponse Kraken plutôt qu'une constante figée. Ce
+        # chemin (maker_entry_enabled=False, ou repli après échec de pose du LIMIT post-only) est
+        # toujours un market -> "taker" ; le fill maker (LIMIT post-only) est classé côté
+        # core/maker_watcher.py (#388), seul endroit qui connaît le post_only.
         maker_or_taker = maker_or_taker_from_ordertype(fill.get("descr", {}).get("ordertype", "market"))
 
         # 4. Re-fetch prix post-fill, recalcule TP/SL

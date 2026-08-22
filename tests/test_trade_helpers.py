@@ -46,10 +46,19 @@ class TestMakerOrTakerFromOrdertype(unittest.TestCase):
     def test_stop_loss_is_taker(self):
         self.assertEqual(maker_or_taker_from_ordertype("stop-loss"), "taker")
 
-    def test_limit_returns_none_not_a_false_taker(self):
-        """#388 introduira des ordres limit post-only — pas déductible sans query-trades,
+    def test_limit_without_post_only_returns_none_not_a_false_taker(self):
+        """Pas déductible sans query-trades (le bot n'utilise pas de limit sans post-only),
         donc None plutôt qu'une valeur affirmative fausse."""
         self.assertIsNone(maker_or_taker_from_ordertype("limit"))
+
+    def test_limit_with_post_only_is_maker(self):
+        """#388 : un LIMIT post-only rempli est garanti maker par construction — Kraken rejette
+        la pose s'il croiserait le carnet, donc tout fill constaté est un maker."""
+        self.assertEqual(maker_or_taker_from_ordertype("limit", post_only=True), "maker")
+
+    def test_market_with_post_only_flag_is_still_taker(self):
+        """post_only n'a de sens que pour un limit — un market reste taker quel que soit le flag."""
+        self.assertEqual(maker_or_taker_from_ordertype("market", post_only=True), "taker")
 
     def test_unknown_ordertype_returns_none(self):
         self.assertIsNone(maker_or_taker_from_ordertype("something-new"))

@@ -80,6 +80,26 @@ def _save_config_atomic(data: dict, project_dir: str = "") -> None:
     _save_json_atomic(data, cfg_path)
 
 
+def _maker_pending_orders_path(project_dir: str = "") -> str:
+    return os.path.join(project_dir or _PROJECT_DIR, "state", "maker_pending_orders.json")
+
+
+def load_maker_pending_orders(project_dir: str = "") -> list:
+    """Charge state/maker_pending_orders.json (#388) — ordres limite d'entrée en attente,
+    survit à un redémarrage du bot. Retourne [] si absent/corrompu."""
+    try:
+        with open(_maker_pending_orders_path(project_dir)) as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return []
+
+
+def save_maker_pending_orders(data: list, project_dir: str = "") -> None:
+    """Écriture atomique de state/maker_pending_orders.json (#388)."""
+    _save_json_atomic(data, _maker_pending_orders_path(project_dir))
+
+
 def compute_net_pnl(entry_price: float, exit_price: float, qty: float, entry_fee_usdc: float, exit_fee_usdc: float) -> dict:
     """PnL net = PnL brut (diff de prix) moins les frais Kraken entrée+sortie (#382).
 
@@ -102,16 +122,21 @@ def compute_net_pnl(entry_price: float, exit_price: float, qty: float, entry_fee
     }
 
 
-def maker_or_taker_from_ordertype(ordertype: str) -> str | None:
+def maker_or_taker_from_ordertype(ordertype: str, post_only: bool = False) -> str | None:
     """Dérive maker/taker depuis descr.ordertype de la réponse query-orders de l'ordre d'entrée.
 
-    market et stop-loss (une fois déclenché) sont toujours exécutés en taker chez Kraken. Les
-    ordres limit post-only prévus par #388 ne sont pas déductibles depuis ordertype seul (le champ
-    "maker" n'existe que côté query-trades, pas query-orders) — retourne None plutôt qu'une valeur
-    affirmative fausse ; #389 (commande /maker) doit gérer ce None.
+    market et stop-loss (une fois déclenché) sont toujours exécutés en taker chez Kraken. Un ordre
+    limit posé avec le drapeau post-only (#388) est garanti maker : Kraken rejette la pose s'il
+    croiserait le carnet au lieu de l'exécuter en taker, donc tout remplissage constaté est un
+    maker par construction — post_only=True sur un ordertype "limit" retourne "maker". Pour un
+    limit sans post_only (pas utilisé actuellement par le bot), le statut n'est pas déductible
+    depuis ordertype seul (le champ "maker" n'existe que côté query-trades, pas query-orders) —
+    retourne None plutôt qu'une valeur affirmative fausse ; #389 (commande /maker) doit gérer ce None.
     """
     if ordertype in ("market", "stop-loss"):
         return "taker"
+    if ordertype == "limit" and post_only:
+        return "maker"
     return None
 
 

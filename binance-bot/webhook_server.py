@@ -18,6 +18,7 @@ from commands.perf import run_perf
 from commands.raisonnement import run_raisonnement
 from commands.status import run_status
 from core.lock import release_lock
+from core.maker_watcher import maker_watcher_loop
 from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
 from core.timing import fmt_local, next_4h_slot
@@ -74,6 +75,9 @@ def main_loop():
 
     threading.Thread(target=tp_watcher_loop, daemon=True, name="tp-watcher").start()
     logger.info("TP Watcher démarré (interval=120s)")
+
+    threading.Thread(target=maker_watcher_loop, daemon=True, name="maker-watcher").start()
+    logger.info("Maker Watcher démarré (#388)")
 
     while True:
         try:

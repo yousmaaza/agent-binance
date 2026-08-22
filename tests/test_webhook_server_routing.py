@@ -59,6 +59,7 @@ def _run_one_command(text):
         "send_telegram": MagicMock(),
         "validate_and_repair_boot": MagicMock(return_value=(True, None)),
         "tp_watcher_loop": MagicMock(),
+        "maker_watcher_loop": MagicMock(),
         "release_lock": MagicMock(),
         "run_trade_workflow": MagicMock(),
         "run_status": MagicMock(return_value="status-text"),

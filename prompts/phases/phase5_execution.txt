@@ -25,11 +25,16 @@ __PROJECT_DIR__/.venv/bin/python3 __PROJECT_DIR__/binance-bot/core/phases/phase5
 ```
 
 Le script traite chaque ordre (dans l'ordre de score décroissant) : re-fetch prix et check drift
-(skip TYPE_C), re-fetch solde USDC (skip TYPE_C), BUY MARKET + query du fill (3 tentatives, 1s
-d'intervalle, skip TYPE_C si non rempli), clôture immédiate au marché si le prix dépasse déjà le
-TP au fill (close_reason="market_above_tp_at_fill"), sinon pose du stop-loss (protection_failed +
-alerte Telegram si échec). Il enregistre chaque trade dans state/trade_history.json et notifie
-via tg() lui-même — pas de notification supplémentaire à envoyer côté orchestrateur.
+(skip TYPE_C), re-fetch solde USDC (skip TYPE_C). Si maker_entry_enabled (config.json, défaut
+True) : pose un ordre LIMIT post-only au bid et l'enregistre dans
+state/maker_pending_orders.json — le maker watcher (core/maker_watcher.py, thread daemon, #388)
+prend le relais pour l'ajuster jusqu'à exécution ou repli, et pose le stop-loss une fois rempli.
+Sinon (ou en repli si la pose post-only échoue après 3 tentatives) : BUY MARKET + query du fill
+(3 tentatives, 1s d'intervalle, skip TYPE_C si non rempli), clôture immédiate au marché si le prix
+dépasse déjà le TP au fill (close_reason="market_above_tp_at_fill"), sinon pose du stop-loss
+(protection_failed + alerte Telegram si échec). Il enregistre chaque trade dans
+state/trade_history.json et notifie via tg() lui-même — pas de notification supplémentaire à
+envoyer côté orchestrateur.
 
 Le script lit /tmp/cycle___CYCLE_ID___phase5_input.json et écrit /tmp/cycle___CYCLE_ID___phase5_output.json.
 Stdout attendu : PHASE5_DONE|executed=X|skipped=Y

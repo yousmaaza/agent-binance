@@ -3,7 +3,7 @@
 
 Chemin du scénario lu depuis la variable d'env FAKE_KRAKEN_SCENARIO. Format :
 {
-  "ticker": {"ETHUSDC": {"c": ["1900.0", "0.01"]}},
+  "ticker": {"ETHUSDC": {"c": ["1900.0", "0.01"], "b": ["1899.5", "0.01"]}},
   "balance": {"USDC": "500.0", "ETH": "0.0"},
   "pairs": {"ETHUSDC": {"lot_decimals": 8, "ordermin": "0.06"}},
   "order_buy_ETHUSDC": {"txid": ["TXID123"]},
@@ -11,7 +11,14 @@ Chemin du scénario lu depuis la variable d'env FAKE_KRAKEN_SCENARIO. Format :
   "query-orders_TXID123": {"TXID123": {"status": "closed", "cost": "190.0", "vol_exec": "0.1"}}
 }
 
-Sous-commandes supportées : ticker, balance, pairs, order buy, order sell, query-orders.
+Sous-commandes supportées : ticker, balance, pairs, order buy, order sell, order amend,
+order cancel, query-orders.
+
+Pour `order buy`/`order sell`, la clé cherchée est d'abord `order_<sub>_<pair>_<type>` (ex.
+order_buy_ETHUSDC_limit) puis, à défaut, `order_<sub>_<pair>` — permet de distinguer dans un même
+scénario la pose LIMIT post-only (#388) du repli BUY MARKET sur le même pair.
+Pour `order amend --txid <id> ...`, la clé est `order_amend_<id>`.
+Pour `order cancel <id> ...`, la clé est `order_cancel_<id>`.
 """
 import json
 import os
@@ -55,9 +62,21 @@ def main():
         print(json.dumps(data))
     elif cmd == "order":
         sub = argv[1] if len(argv) > 1 else ""
-        pair = argv[2] if len(argv) > 2 else ""
-        key = f"order_{sub}_{pair}"
-        print(json.dumps(scenario.get(key, {})))
+        if sub == "amend":
+            txid = argv[argv.index("--txid") + 1] if "--txid" in argv else ""
+            key = f"order_amend_{txid}"
+            print(json.dumps(scenario.get(key, {})))
+        elif sub == "cancel":
+            txid = argv[2] if len(argv) > 2 else ""
+            key = f"order_cancel_{txid}"
+            print(json.dumps(scenario.get(key, {})))
+        else:
+            pair = argv[2] if len(argv) > 2 else ""
+            order_type = argv[argv.index("--type") + 1] if "--type" in argv else ""
+            typed_key = f"order_{sub}_{pair}_{order_type}"
+            plain_key = f"order_{sub}_{pair}"
+            result = scenario[typed_key] if typed_key in scenario else scenario.get(plain_key, {})
+            print(json.dumps(result))
     elif cmd == "query-orders":
         txid = argv[1] if len(argv) > 1 else ""
         key = f"query-orders_{txid}"
