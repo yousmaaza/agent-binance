@@ -24,13 +24,14 @@ def tg(text: str) -> None:
          "-H", "Content-Type: application/json",
          "-d", payload, "--max-time", "20"],
         capture_output=True,
+        check=False,
     )
 
 
 def binance(*args, _retries: int = 3) -> str:
     """Appelle kraken avec retry exponentiel. Lève ValueError si symbole invalide."""
     for attempt in range(_retries):
-        r = subprocess.run([_EXCHANGE_CLI] + list(args), capture_output=True, text=True, timeout=30)
+        r = subprocess.run([_EXCHANGE_CLI] + list(args), capture_output=True, text=True, timeout=30, check=False)
         raw = r.stdout.strip()
         if raw.startswith("Invalid symbol"):
             raise ValueError("Invalid symbol")
