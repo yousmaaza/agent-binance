@@ -108,8 +108,8 @@ for coin, data in analysis_results.items():
     if score >= effective_min_score and signal_4h in ("BUY", "STRONG_BUY"):
         if data.get("in_portfolio"):
             scores_detail[coin] = {"score": score, "decision": "HOLD", "skip_type": None, "reasons": reasons}
-        elif open_positions >= max_open_positions:
-            skip_detail_str = f"Positions max atteintes ({open_positions}/{max_open_positions})"
+        elif open_positions + len(buy_candidates) >= max_open_positions:
+            skip_detail_str = f"Positions max atteintes ({open_positions + len(buy_candidates)}/{max_open_positions})"
             skip_coins_detail[coin] = {"skip_type": "TYPE_A", "skip_detail": skip_detail_str}
             scores_detail[coin] = {"score": score, "decision": "SKIP", "skip_type": "TYPE_A", "reasons": reasons + [skip_detail_str]}
         elif coin.upper() in CORRELATED_GROUP:
