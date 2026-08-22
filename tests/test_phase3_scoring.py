@@ -172,6 +172,25 @@ class TestMaxOpenPositions(unittest.TestCase):
         self.assertIn("NEWCOIN", out["skip_coins_detail"])
         self.assertIn("Positions max", out["skip_coins_detail"]["NEWCOIN"]["skip_detail"])
 
+    def test_candidates_accepted_this_cycle_count_toward_max(self):
+        """Régression issue #384 : open_positions=1, max=4, 4 candidats BUY valides
+        -> seuls 3 doivent être acceptés dans buy_candidates, pas les 4 (incident cycle
+        20260821_040505 : open_positions statique jamais incrémenté par la boucle)."""
+        analysis_results = {
+            coin: {"signal_4h": "STRONG_BUY", "signal_1d": "BUY", "rsi_4h": 45, "macd_bullish_4h": True}
+            for coin in ("COINA", "COINB", "COINC", "COIND")
+        }
+        cfg = {**DEFAULT_CONFIG, "max_open_positions": 4}
+        out = _run_phase3(analysis_results, open_positions=1, config=cfg)
+        buy_coins = [c["coin"] for c in out["buy_candidates"]]
+        self.assertEqual(len(buy_coins), 3)
+        skipped = [c for c in analysis_results if c not in buy_coins]
+        self.assertEqual(len(skipped), 1)
+        skipped_coin = skipped[0]
+        self.assertEqual(out["scores_detail"][skipped_coin]["decision"], "SKIP")
+        self.assertEqual(out["scores_detail"][skipped_coin]["skip_type"], "TYPE_A")
+        self.assertIn(skipped_coin, out["skip_coins_detail"])
+
 
 class TestMaxCorrelatedPositions(unittest.TestCase):
     def test_second_correlated_coin_skipped(self):
