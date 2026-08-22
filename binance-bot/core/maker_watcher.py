@@ -20,6 +20,7 @@ Arbre de décision par tick, pour chaque ordre dans state/maker_pending_orders.j
 import json
 import math
 import os
+import subprocess
 import time
 import uuid
 from datetime import datetime, timezone
@@ -85,7 +86,7 @@ def maker_watcher_loop():
         tick_seconds = cfg.get("maker_tick_seconds", 20)
         try:
             _maker_watcher_tick(cfg)
-        except Exception as e:
+        except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
             logger.error(f"[Maker Watcher] Erreur inattendue : {e}")
         time.sleep(tick_seconds)
 
@@ -109,7 +110,7 @@ def _place_stop_loss(pair: str, qty: float, stop_price: float):
         if not sl_txid:
             return None, True, "", stop_price_rounded
         return sl_txid, False, "", stop_price_rounded
-    except Exception as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, KeyError) as e:
         return None, True, f" {e}", stop_price
 
 
@@ -170,7 +171,7 @@ def _fallback_market_buy(pending: dict, history: list) -> None:
     try:
         buy_raw = _cli("order", "buy", pair, str(qty), "--type", "market", "-o", "json", "--yes")
         entry_txid = json.loads(buy_raw)["txid"][0]
-    except Exception as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, IndexError, KeyError) as e:
         send_telegram(f"⚠️ {coin} : repli BUY MARKET échoué — {e}")
         return
 
@@ -179,7 +180,7 @@ def _fallback_market_buy(pending: dict, history: list) -> None:
         try:
             query_raw = _cli("query-orders", entry_txid, "-o", "json")
             fill = json.loads(query_raw).get(entry_txid, {})
-        except Exception:
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError):
             fill = {}
         if fill.get("status") == "closed":
             break
@@ -203,7 +204,7 @@ def _cancel_and_resolve(pending: dict, allow_market_fallback: bool, history: lis
     txid = pending["txid"]
     try:
         _cli("order", "cancel", txid, "-o", "json", "--yes")
-    except Exception as e:
+    except (subprocess.CalledProcessError, OSError) as e:
         logger.warning(f"[Maker Watcher] Cancel {txid} ({coin}) : {e}")
     time.sleep(1)
     return _resolve_after_cancel(pending, allow_market_fallback, history)
@@ -215,7 +216,7 @@ def _resolve_after_cancel(pending: dict, allow_market_fallback: bool, history: l
     try:
         query_raw = _cli("query-orders", txid, "-o", "json")
         fill = json.loads(query_raw).get(txid, {})
-    except Exception as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
         logger.warning(f"[Maker Watcher] Query post-cancel {txid} ({coin}) : {e}")
         fill = {}
 
@@ -246,7 +247,7 @@ def _handle_closed_order(pending: dict, order_status: dict, history: list) -> tu
         entry_fee_usdc = float(order_status.get("fee", 0) or 0)
         _register_open_position(pending, txid, vol_exec, actual_entry, entry_fee_usdc, _MAKER_FILL_LABEL, history)
         return True, 1, 0
-    except Exception as e:
+    except (ValueError, TypeError, KeyError) as e:
         logger.error(f"[Maker Watcher] Enregistrement fill {coin} : {e}")
         return False, 0, 0
     finally:
@@ -261,7 +262,7 @@ def _handle_externally_canceled(pending: dict, status: str, history: list, tick_
         if outcome == "filled_partial":
             return True, 1, 0
         return False, 0, 0
-    except Exception as e:
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
         logger.error(f"[Maker Watcher] Résolution {status} {coin} : {e}")
         tick_state["status"] = "error"
         tick_state["last_error"] = f"Résolution {status} {coin} : {e}"
@@ -278,7 +279,7 @@ def _handle_invalidated_price(pending: dict, history: list, tick_state: dict) ->
         if outcome == "filled_partial":
             return True, 1, 0
         return False, 0, 0
-    except Exception as e:
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
         logger.error(f"[Maker Watcher] Invalidation prix {coin} : {e}")
         tick_state["status"] = "error"
         tick_state["last_error"] = f"Invalidation prix {coin} : {e}"
@@ -296,7 +297,7 @@ def _handle_timeout_or_concession(pending: dict, history: list, tick_state: dict
             fallbacks = 1 if outcome == "market_fallback" else 0
             return True, 1, fallbacks
         return False, 0, 0
-    except Exception as e:
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
         logger.error(f"[Maker Watcher] Repli marché {coin} : {e}")
         tick_state["status"] = "error"
         tick_state["last_error"] = f"Repli marché {coin} : {e}"
@@ -316,7 +317,7 @@ def _handle_amend_order(pending: dict, current_bid: float) -> None:
             logger.debug(f"[Maker Watcher] Amend {coin} rejeté ({amend_resp['error']}), réessai au tick suivant")
         else:
             pending["current_limit_price"] = current_bid
-    except Exception as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
         logger.debug(f"[Maker Watcher] Amend {coin} erreur, réessai au tick suivant : {e}")
 
 
@@ -354,7 +355,7 @@ def _maker_watcher_tick(cfg: dict) -> None:
         try:
             query_raw = _cli("query-orders", txid, "-o", "json")
             order_status = json.loads(query_raw).get(txid, {})
-        except Exception as e:
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
             logger.warning(f"[Maker Watcher] query-orders {txid} ({coin}) : {e}")
             tick_state["status"] = "warning"
             tick_state["last_error"] = f"query-orders {coin} : {e}"
@@ -383,7 +384,7 @@ def _maker_watcher_tick(cfg: dict) -> None:
             ticker_data = json.loads(ticker_raw).get(pair, {})
             current_bid = float(ticker_data.get("b", [0])[0])
             current_last = float(ticker_data.get("c", [0])[0])
-        except Exception as e:
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, IndexError) as e:
             logger.warning(f"[Maker Watcher] Ticker {coin} indisponible : {e}")
             tick_state["status"] = "warning"
             tick_state["last_error"] = f"Ticker {coin} indisponible : {e}"
