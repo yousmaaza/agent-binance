@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import unittest
+import tempfile
 from unittest.mock import patch
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,8 +44,10 @@ BASE_ORDER = {
 def _run_phase5_execution(ordres_prepares, config=None, kraken_scenario=None, history_data=None):
     """Exécute phase5_execution.py. Retourne (output_json, mock_tg, mock_save, saved_history)."""
     cycle_id = harness.new_cycle_id()
-    in_path = f"/tmp/cycle_{cycle_id}_phase5_input.json"
-    out_path = f"/tmp/cycle_{cycle_id}_phase5_output.json"
+    fd_in, in_path = tempfile.mkstemp(prefix=f"cycle_{cycle_id}_phase5_input_", suffix=".json")
+    os.close(fd_in)
+    fd_out, out_path = tempfile.mkstemp(prefix=f"cycle_{cycle_id}_phase5_output_", suffix=".json")
+    os.close(fd_out)
     scenario_path = harness.write_kraken_scenario(kraken_scenario)
     text = json.dumps(history_data if history_data is not None else [])
 
