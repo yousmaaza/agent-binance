@@ -1,4 +1,5 @@
 {
+  "display_timezone": "Europe/Paris",
   "usdc_allocation_pct": 0.70,
   "portfolio_coins": ["XBT", "XRP", "SOL"],
   "quote_asset": "USDC",
