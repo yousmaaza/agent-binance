@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-22 (PR #395) |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-22 (PR #404) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#404](pr-404-commande-maker.md) | [M1] Commande Telegram /maker — suivi du watcher d'ordres maker | 2026-08-22 |
 | [#397](pr-397-m1-watcher-ordres-limite-maker-entrees.md) | [M1] Watcher d'ordres limite maker sur les entrées (stratégie B) | 2026-08-22 |
 | [#395](pr-395-fuseau-affichage-paris.md) | [BUG] Fuseau d'affichage explicite (heure locale réellement Paris) | 2026-08-22 |
 | [#394](pr-394-backfill-pnl-gross-coherence.md) | fix(backfill): pnl_gross_usdc reprend la valeur stockée + garde-fou | 2026-08-22 |
