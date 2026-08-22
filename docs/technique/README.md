@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-22 |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-22 (PR #391) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#391](pr-391-kraken-frais-pnl-net.md) | [BUG] Traçabilité des frais Kraken et PnL net | 2026-08-22 |
 | [#387](pr-387-max-open-positions.md) | [BUG] Corriger l'enforcement de max_open_positions en Phase 3 | 2026-08-22 |
 | [#386](pr-386-inclure-valeur-positions.md) | [BUG] Inclure la valeur des positions dans portfolio_total | 2026-08-22 |
 | [#381](pr-381-rsi-zone-config.md) | [M1] Élargir la zone RSI bonus Phase 3 et la rendre configurable | 2026-08-13 |

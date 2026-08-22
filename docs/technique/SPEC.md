@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-08-22 (PR #386)
-> **Commit** : 2a3be2f
+> **Dernière mise à jour** : 2026-08-22 (PR #391)
+> **Commit** : 39621e0
 
 ---
 
@@ -182,7 +182,9 @@ webhook_server.py (process principal)
 | `_save_json_atomic(data, path)` | core/trade_helpers.py:53 | Écriture atomic générique via tempfile + os.replace() ; utilisée par les 3 fonctions *_atomic() |
 | `_save_trade_history_atomic(data, path_override="")` | core/trade_helpers.py:70 | Wrapper pour écriture atomique de `trade_history.json` |
 | `_save_config_atomic(data, project_dir="")` | core/trade_helpers.py:76 | Wrapper pour écriture atomique de `config.json` |
-| `log_phase0_event(cycle_id, phase, coin, action, details)` | core/trade_helpers.py:83 | Écrit un événement structuré (JSON) dans `logs/phase0_events.jsonl` pour traçabilité Phase 0 — chaque ligne inclut timestamp ISO (UTC), cycle_id, phase (phase0_oco_retry/phase0_trailing_stop), coin, action (protection_recovery_start, sl_retry_success, ts_update_success, etc.), et dict `details` libre ; silencieuse en cas d'erreur |
+| `compute_net_pnl(entry_price, exit_price, qty, entry_fee_usdc, exit_fee_usdc)` | core/trade_helpers.py:83 | Calcule PnL net après frais Kraken (#382) : retourne dict avec `pnl_gross_usdc` (brut), `fees_usdc` (somme frais), `pnl_usdc` (net = brut − frais), `pnl_gross_pct` (pourcentage brut), `pnl_pct` (pourcentage net rapporté au notionnel d'entrée) — utilisée par Phase 5 fill + Phase 0 closes (OCO retry, profit TP, watcher) |
+| `maker_or_taker_from_ordertype(ordertype)` | core/trade_helpers.py:105 | Dérive le statut maker/taker depuis `descr.ordertype` de la réponse Kraken `query-orders` : retourne `"taker"` pour `market` et `stop-loss` (déterministe, bot n'a que ces deux types), `None` pour autres types (fallback #389 si ordres limit introduits) |
+| `log_phase0_event(cycle_id, phase, coin, action, details)` | core/trade_helpers.py:118 | Écrit un événement structuré (JSON) dans `logs/phase0_events.jsonl` pour traçabilité Phase 0 — chaque ligne inclut timestamp ISO (UTC), cycle_id, phase (phase0_oco_retry/phase0_trailing_stop), coin, action (protection_recovery_start, sl_retry_success, ts_update_success, etc.), et dict `details` libre ; silencieuse en cas d'erreur |
 | Bloc trailing stop _(Phase 0)_ | phase0_trailing_stop.py | Exécuté en Phase 0 du sous-processus Claude, après `protection_failed` : pour chaque position `open` avec SL (`sl_order_txid`) actif, récupère le prix courant, remonte le stop-loss si progression ≥ 20% de la distance originale et marge ≥ 2% du prix, annule le SL existant et place un nouveau SL avec TP réévalué ; met à jour `trade_history.json` et notifie Telegram |
 | `_format_stream_event()` | :643 | Parse une ligne stream-json Claude CLI en log humain lisible (`init`, `assistant`, `tool_result`, `result`) |
 | `_RESOURCE_ERROR_PATTERNS` _(constante module)_ | :934 | Liste des 8 patterns de chaîne indiquant une erreur de ressource Claude (credit insuffisant, rate_limit_error, overloaded_error, session limit, etc.) — utilisée par `_is_resource_error()` |
@@ -321,6 +323,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#391](pr-391-kraken-frais-pnl-net.md) | 2026-08-22 | [BUG] Traçabilité des frais Kraken et PnL net (#382) : `pnl_usdc` devient le **PnL net** (frais déduits) au lieu du brut. Nouveaux champs `entry_fee_usdc`, `exit_fee_usdc`, `fees_usdc`, `pnl_gross_usdc`, `pnl_gross_pct`, `maker_or_taker`. Deux fonctions partagées `compute_net_pnl()` et `maker_or_taker_from_ordertype()` dans `trade_helpers.py` (#382). Modifications Phase 5 fill capture, Phase 0 OCO retry/profit, TP Watcher. Script `backfill_fees.py` rapproche historique avec `kraken trades-history` (fallback estimé par palier). Tous consommateurs (PnL/notifications/Mongo) reflètent net sans modification. Tests : 101/101 PASS, dry-run backfill validé. |
 | [#387](pr-387-max-open-positions.md) | 2026-08-22 | [BUG] Enforcement dynamique de `max_open_positions` en Phase 3 : la variable `open_positions` était statique (snapshot Phase 0), jamais incrémentée pendant la boucle de scoring du même cycle, permettant à plusieurs coins d'être acceptés au-delà du max. Correction ligne 111-112 `phase3_scoring.py` : comparaison change à `open_positions + len(buy_candidates) >= max_open_positions` ; skip_detail affiche le compte recalculé ; test de régression `test_candidates_accepted_this_cycle_count_toward_max` couvre l'incident cycle 20260821_040505 |
 | [#386](pr-386-inclure-valeur-positions.md) | 2026-08-22 | [BUG] Inclure la valeur des positions ouvertes dans `portfolio_total` : accumulation `positions_value` dans la boucle P&L existante de `phase0_snapshot.py` (kraken ticker par position) ; exposition via stdout (`PHASE0_SNAPSHOT_DONE\|open_positions=N\|positions_value=X`) et JSON output ; utilisation dans Phase 0 (`portfolio_total = cash + positions_value`) pour affiner `budget_disponible` et check `daily_loss_limit_pct` — tests ajoutés (cas positions ouvertes/fermées) |
 | [#381](pr-381-rsi-zone-config.md) | 2026-08-13 | [M1] Élargir et configurer la zone RSI bonus Phase 3 : borne haute passée de 55 à 65 (`rsi_zone_max`) pour capturer coins avec RSI 59–65 (ex. LINK 4h BUY + RSI 60 → score +1 bonus) ; rend zone RSI entièrement configurable via `config.json` (`rsi_zone_min`: 30, `rsi_zone_max`: 65, défauts) — suit pattern `cfg.get()` existant pour autres seuils ; tests ajoutés (`TestRsiZoneBonus` : RSI in/out-zone) |
