@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#397](pr-397-m1-watcher-ordres-limite-maker-entrees.md) | [M1] Watcher d'ordres limite maker sur les entrées (stratégie B) | 2026-08-22 |
 | [#395](pr-395-fuseau-affichage-paris.md) | [BUG] Fuseau d'affichage explicite (heure locale réellement Paris) | 2026-08-22 |
 | [#394](pr-394-backfill-pnl-gross-coherence.md) | fix(backfill): pnl_gross_usdc reprend la valeur stockée + garde-fou | 2026-08-22 |
 | [#391](pr-391-kraken-frais-pnl-net.md) | [BUG] Traçabilité des frais Kraken et PnL net | 2026-08-22 |
