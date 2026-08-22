@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-08-22 (PR #394)
-> **Commit** : 64ff229
+> **Dernière mise à jour** : 2026-08-22 (PR #395)
+> **Commit** : (HEAD)
 
 ---
 
@@ -138,7 +138,7 @@ webhook_server.py (process principal)
 | `_load_env()` | :26 | Charge le fichier `.env` dans `os.environ` au démarrage (parse manuel, sans dépendance python-dotenv) |
 | `get_mongo()` | :73 | Connexion lazy à MongoDB Atlas — retourne la DB ou `None` si `MONGODB_URI` absent/injoignable |
 | `next_4h_slot()` | :420 | Calcule le prochain slot 4h UTC aligné sur les clôtures TradingView (00:05, 04:05, ..., 20:05) |
-| `fmt_local()` | :430 | Convertit un datetime UTC en chaîne heure locale lisible pour les notifications Telegram |
+| `fmt_local()` | timing.py:30 | Convertit un datetime UTC en chaîne heure locale lisible pour les notifications Telegram, via `ZoneInfo(APP_CONFIG["display_timezone"])` depuis config.json (ex. "Europe/Paris") — gère automatiquement heure d'été/hiver, repli sur `astimezone()` si clé absente ou fuseau invalide (#395) |
 | `fmt_next()` | :489 | Retourne l'heure du prochain cycle auto en heure locale (via `NEXT_AUTO_TRADE` global) |
 | `tg_post()` | :439 | Appel bas niveau vers l'API Telegram via `curl` subprocess — retourne le JSON parsé |
 | `send_telegram()` | :454 | Envoie un message Telegram avec `chat_id` et `parse_mode` optionnel |
@@ -323,6 +323,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#395](pr-395-fuseau-affichage-paris.md) | 2026-08-22 | [BUG] Fuseau d'affichage explicite (#393) : `fmt_local()` utilise désormais `ZoneInfo(APP_CONFIG["display_timezone"])` au lieu de `astimezone()` sans argument — indépendance du fuseau de la machine hôte (VPS Etc/UTC). Clé `"display_timezone": "Europe/Paris"` ajoutée dans `config.json`. Transitions été/hiver gérées automatiquement (zoneinfo stdlib). Repli gracieux sur `astimezone()` si clé absente ou fuseau invalide. Tests couvrant CEST/CET et cas edge. |
 | [#394](pr-394-backfill-pnl-gross-coherence.md) | 2026-08-22 | [FIX] Backfill PnL brut et garde-fou de cohérence (#382 post-mortem) : correctif du calcul `pnl_gross_usdc` — reprend le `pnl_usdc` déjà stocké au lieu de recomputer via `(exit_price - entry_price) * quantity` (incohérent sur trades legacy Binance). Ajout fonction `_coherence_diagnostic()` : compare les deux valeurs, seuil tolérance 1% relatif, signale trades incohérents sans les modifier (évite injection fictive +44 USDC observée en prod trade SYN #38515bab). Tests couvrant cas SYN, case edge closed sans `pnl_usdc`, et cas nominal — suite 113/113 OK. |
 | [#391](pr-391-kraken-frais-pnl-net.md) | 2026-08-22 | [BUG] Traçabilité des frais Kraken et PnL net (#382) : `pnl_usdc` devient le **PnL net** (frais déduits) au lieu du brut. Nouveaux champs `entry_fee_usdc`, `exit_fee_usdc`, `fees_usdc`, `pnl_gross_usdc`, `pnl_gross_pct`, `maker_or_taker`. Deux fonctions partagées `compute_net_pnl()` et `maker_or_taker_from_ordertype()` dans `trade_helpers.py` (#382). Modifications Phase 5 fill capture, Phase 0 OCO retry/profit, TP Watcher. Script `backfill_fees.py` rapproche historique avec `kraken trades-history` (fallback estimé par palier). Tous consommateurs (PnL/notifications/Mongo) reflètent net sans modification. Tests : 101/101 PASS, dry-run backfill validé. |
 | [#387](pr-387-max-open-positions.md) | 2026-08-22 | [BUG] Enforcement dynamique de `max_open_positions` en Phase 3 : la variable `open_positions` était statique (snapshot Phase 0), jamais incrémentée pendant la boucle de scoring du même cycle, permettant à plusieurs coins d'être acceptés au-delà du max. Correction ligne 111-112 `phase3_scoring.py` : comparaison change à `open_positions + len(buy_candidates) >= max_open_positions` ; skip_detail affiche le compte recalculé ; test de régression `test_candidates_accepted_this_cycle_count_toward_max` couvre l'incident cycle 20260821_040505 |
