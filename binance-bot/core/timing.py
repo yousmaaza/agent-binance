@@ -1,6 +1,9 @@
 """Utilitaires de temps : calcul du prochain slot 4h UTC, formatage heure locale."""
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from config.app import APP_CONFIG
 
 
 def next_4h_slot() -> datetime:
@@ -25,8 +28,19 @@ def next_1h_slot() -> datetime:
 
 
 def fmt_local(dt_utc: datetime) -> str:
-    """Convertit un datetime UTC en heure locale lisible, ex: '22/05 14:05 (heure locale)'."""
-    local = dt_utc.astimezone()
+    """Convertit un datetime UTC en heure locale lisible, ex: '22/05 14:05 (heure locale)'.
+
+    Utilise `display_timezone` (config.json) via zoneinfo pour ne pas dépendre du fuseau
+    de la machine hôte (ex : VPS en Etc/UTC). Repli sur astimezone() sans argument si la
+    clé est absente ou le fuseau inconnu."""
+    tz_name = APP_CONFIG.get("display_timezone")
+    if tz_name:
+        try:
+            local = dt_utc.astimezone(ZoneInfo(tz_name))
+        except ZoneInfoNotFoundError:
+            local = dt_utc.astimezone()
+    else:
+        local = dt_utc.astimezone()
     return local.strftime("%d/%m %H:%M") + " (heure locale)"
 
 
