@@ -37,15 +37,23 @@ state/trade_history.json et notifie via tg() lui-même — pas de notification s
 envoyer côté orchestrateur.
 
 Le script lit /tmp/cycle___CYCLE_ID___phase5_input.json et écrit /tmp/cycle___CYCLE_ID___phase5_output.json.
-Stdout attendu : PHASE5_DONE|executed=X|skipped=Y
+Stdout attendu : PHASE5_DONE|executed=X|pending=P|skipped=Y
+
+IMPORTANT : executed ne compte QUE les ordres réellement remplis ce cycle (achat effectif). Un
+ordre LIMIT maker posé mais pas encore rempli (maker_pending=True dans orders_executed) est compté
+à part dans pending — ce n'est PAS un achat, il peut encore être abandonné si le signal s'invalide.
+Ne jamais additionner pending dans executed en aval (cycle_log, Mongo, rapports, Telegram) : un
+cycle qui pose 2 ordres maker sans remplissage doit se lire "0 exécuté, 2 en attente", pas
+"2 exécutés".
 
 Lis /tmp/cycle___CYCLE_ID___phase5_output.json pour récupérer :
-- executed, skipped, orders_executed, orders_skipped_detail
+- executed, pending, skipped, orders_executed, orders_skipped_detail
 
 Mets à jour les variables de synthèse pour la suite du cycle :
 executed = <valeur du output JSON>
+pending = <valeur du output JSON>
 skipped = <valeur du output JSON>
 orders_skipped_detail = <valeur du output JSON>
 
 ⏱️ HEARTBEAT END PHASE 5 — appel hb(5) immédiatement ci-dessous
-hb(5, summary=f"{executed} ordres exécutés, {skipped} skippés")
+hb(5, summary=f"{executed} ordres exécutés, {pending} en attente (maker), {skipped} skippés")

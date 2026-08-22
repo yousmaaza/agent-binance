@@ -2,10 +2,13 @@
 
 Lit les variables de synthèse depuis /tmp/cycle_{CYCLE_ID}_phase8_input.json :
 {
-  "top_score": 0, "executed": 0, "skipped": 0,
+  "top_score": 0, "executed": 0, "pending": 0, "skipped": 0,
   "skip_type": null, "skip_detail": null,
   "portfolio": 0.0, "sentiment": "Neutral", "open_positions": 0
 }
+
+"executed" ne compte que les ordres réellement remplis ce cycle ; "pending" compte les ordres
+LIMIT maker posés mais pas encore remplis (#388) — jamais additionnés l'un dans l'autre en amont.
 
 Exécuté par Claude en Phase 8 :
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase8_cycle_log.py __CYCLE_ID__
@@ -35,6 +38,7 @@ cl_entry = {
     "cycle_id": CYCLE_ID,
     "top_score": inp.get("top_score", 0),
     "executed": inp.get("executed", 0),
+    "pending": inp.get("pending", 0),
     "skipped": inp.get("skipped", 0),
     "skip_type": inp.get("skip_type"),
     "skip_detail": inp.get("skip_detail"),

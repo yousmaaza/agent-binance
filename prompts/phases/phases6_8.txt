@@ -9,7 +9,9 @@ top_score = top_score if 'top_score' in locals() and top_score else 0
 
 - Génère reports/YYYY-MM-DD_HH-MM_trade.md avec :
   * Univers scanné (N coins), filtres appliqués, scores top 10, meilleur score {top_score}/10
-  * Ordres exécutés ({executed} coins) avec IDs et paramètres
+  * Ordres exécutés ({executed} coins, achat réellement rempli) avec IDs et paramètres
+  * Ordres maker en attente ({pending} coins, LIMIT post-only posé mais pas encore rempli — pas
+    des achats, voir core/maker_watcher.py) avec IDs
   * Ordres skippés ({skipped} coins) avec skip_type et skip_detail
   * Budget utilisé / disponible
   * Positions ouvertes totales (depuis trade_history.json)
@@ -19,7 +21,7 @@ top_score = top_score if 'top_score' in locals() and top_score else 0
   Le script affiche sur stdout : PHASE6_NEXT_CYCLE_DONE|next=DD/MM HH:MM (heure locale)
   Utilise la valeur retournée comme _next_str pour les appels hb() et tg() qui suivent.
 ⏱️ HEARTBEAT END PHASE 6 — appel hb(6) immédiatement ci-dessous
-hb(6, summary=f"Rapport généré, top_score {top_score}/10, {executed} exec / {skipped} skip, prochain cycle {_next_str}")
+hb(6, summary=f"Rapport généré, top_score {top_score}/10, {executed} exec / {pending} en attente / {skipped} skip, prochain cycle {_next_str}")
 
 PHASE 7 — PERSISTANCE EN BASE (MongoDB)
 ⏱️ HEARTBEAT START PHASE 7
@@ -30,6 +32,7 @@ CYCLE_ID = "__CYCLE_ID__"   # déjà substitué par Python avant l'appel
 # Fallbacks pour toutes les variables critiques (évite UnboundLocalError)
 top_score = top_score if 'top_score' in locals() else 0
 executed = executed if 'executed' in locals() else 0
+pending = pending if 'pending' in locals() else 0
 skipped = skipped if 'skipped' in locals() else 0
 skip_type = skip_type if 'skip_type' in locals() else None
 skip_detail = skip_detail if 'skip_detail' in locals() else None
@@ -63,7 +66,8 @@ doc = {
     "coins_scanned": [<liste des coins analysés>]
   },
   "execution": {
-    "executed": executed,  # nombre d'ordres exécutés en Phase 5
+    "executed": executed,  # nombre d'ordres réellement remplis en Phase 5 (achat effectif)
+    "pending": pending,  # nombre d'ordres LIMIT maker posés mais pas encore remplis (Phase 5, #388)
     "skipped": skipped  # nombre d'ordres skippés en Phase 5
   },
   "decisions": [
@@ -80,7 +84,8 @@ doc = {
     },
     ... un objet par coin analysé
   ],
-  "executed": <nombre d'ordres exécutés>,
+  "executed": <nombre d'ordres réellement remplis>,
+  "pending": <nombre d'ordres LIMIT maker posés mais pas encore remplis>,
   "skipped": <nombre d'ordres skippés pendant Phase 5>,
   "top_score": <meilleur score trouvé en Phase 3>,
   "sentiment": "<Strongly Bullish | Bullish | Neutral | Bearish | Strongly Bearish>",
@@ -104,8 +109,9 @@ doc = {
 Puis exécute : python3 __PROJECT_DIR__/binance-bot/core/phases/phase7_mongo.py __CYCLE_ID__
 Le script affiche sur stdout : PHASE7_MONGO_DONE|status=ok (ou skipped si MONGODB_URI absent)
 
-- Notification de synthèse (DOIT inclure le cycle_id) :
-  tg(f"✅ Cycle {CYCLE_ID} terminé\nTop score : {top_score}/10\nExécutés : {executed} | Skippés : {skipped}\nBudget utilisé : {budget_disponible if 'budget_disponible' in locals() else '?':.2f} USDC\nPositions actives : {open_positions}\n⏰ Prochain cycle : {_next_str}\n📊 /raisonnement pour les détails")
+- Notification de synthèse (DOIT inclure le cycle_id). "Exécutés" = achats réellement remplis,
+  "En attente" = ordres LIMIT maker posés mais pas encore remplis (pas des achats — voir #388) :
+  tg(f"✅ Cycle {CYCLE_ID} terminé\nTop score : {top_score}/10\nExécutés : {executed} | En attente : {pending} | Skippés : {skipped}\nBudget utilisé : {budget_disponible if 'budget_disponible' in locals() else '?':.2f} USDC\nPositions actives : {open_positions}\n⏰ Prochain cycle : {_next_str}\n📊 /raisonnement pour les détails")
 
 - Écris state/agent_lock.json : {"running": false, "started_at": null}
 
@@ -115,7 +121,7 @@ Exécute : python3 __PROJECT_DIR__/binance-bot/core/phases/phase7_hb_check.py __
 Le script affiche sur stdout : PHASE7_HB_CHECK_DONE|missing=[...]
 
 ⏱️ HEARTBEAT END PHASE 7 — appel hb(7) immédiatement ci-dessous
-hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, top_score {top_score}/10, {executed} exec / {skipped} skip")
+hb(7, summary=f"Cycle {CYCLE_ID} persisté en Mongo, top_score {top_score}/10, {executed} exec / {pending} en attente / {skipped} skip")
 
 PHASE 8 — CYCLE LOG JSONL
 ⏱️ HEARTBEAT START PHASE 8
@@ -124,7 +130,8 @@ _hb_start(8)
 
 Les variables de synthèse suivantes ont été définies et mise à jour par les phases précédentes :
 - top_score : score maximum parmi tous les coins (défini en Phase 3, 0-10)
-- executed : nombre d'ordres BUY MARKET passés (défini en Phase 5)
+- executed : nombre d'ordres réellement remplis (achat effectif, défini en Phase 5)
+- pending : nombre d'ordres LIMIT maker posés mais pas encore remplis (défini en Phase 5, #388)
 - skipped : nombre de coins bloqués par les filtres (défini en Phase 3)
 - skip_type : raison principale du skip (TYPE_A/B/C/D ou None, défini en Phase 3)
 - skip_detail : phrase décrivant le skip principal (défini en Phase 3, ou None)
@@ -139,6 +146,7 @@ Utilise ces variables pour écrire un document JSON dans state/cycle_log.jsonl :
     "cycle_id": "__CYCLE_ID__",
     "top_score": <int 0-10>,
     "executed": <int>,
+    "pending": <int>,
     "skipped": <int>,
     "skip_type": "<TYPE_A|TYPE_B|TYPE_C|TYPE_D|None>",
     "skip_detail": "<str or None>",
@@ -149,7 +157,7 @@ Utilise ces variables pour écrire un document JSON dans state/cycle_log.jsonl :
 ```
 
 Écris les variables de synthèse dans /tmp/cycle___CYCLE_ID___phase8_input.json :
-{"top_score": top_score, "executed": executed, "skipped": skipped,
+{"top_score": top_score, "executed": executed, "pending": pending, "skipped": skipped,
  "skip_type": skip_type, "skip_detail": skip_detail,
  "portfolio": portfolio_total, "sentiment": sentiment, "open_positions": open_positions}
 Puis exécute :
@@ -158,4 +166,4 @@ Le script écrit state/cycle_log.jsonl et pousse sur git.
 Il affiche sur stdout : PHASE8_CYCLE_LOG_DONE|status=ok
 
 ⏱️ HEARTBEAT END PHASE 8 — appel hb(8) immédiatement ci-dessous
-hb(8, summary=f"Cycle log écrit, {executed} ordres exécutés")
+hb(8, summary=f"Cycle log écrit, {executed} ordres exécutés, {pending} en attente")

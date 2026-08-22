@@ -94,25 +94,28 @@ class TestMakerEntryPlacesPostOnlyLimitAndDefersToWatcher(unittest.TestCase):
             [order], kraken_scenario=kraken_scenario,
         )
 
-        self.assertEqual(output["executed"], 1)
+        # Un ordre POSÉ n'est pas un ordre EXÉCUTÉ (#397) : executed reste à 0 tant qu'aucun achat
+        # n'a eu lieu, l'ordre en attente est compté à part dans "pending".
+        self.assertEqual(output["executed"], 0)
+        self.assertEqual(output["pending"], 1)
         self.assertEqual(output["skipped"], 0)
-        executed = output["orders_executed"][0]
-        self.assertEqual(executed["coin"], "ETH")
-        self.assertEqual(executed["entry_order_id"], "MAKERTX1")
-        self.assertTrue(executed["maker_pending"])
-        self.assertAlmostEqual(executed["maker_limit_price"], 1999.5)
+        placed = output["orders_executed"][0]
+        self.assertEqual(placed["coin"], "ETH")
+        self.assertEqual(placed["entry_order_id"], "MAKERTX1")
+        self.assertTrue(placed["maker_pending"])
+        self.assertAlmostEqual(placed["maker_limit_price"], 1999.5)
 
         mock_save.assert_not_called()  # pas de position tant que l'ordre n'est pas rempli
         mock_save_pending.assert_called_once()
         self.assertEqual(len(saved_pending), 1)
-        pending = saved_pending[0]
-        self.assertEqual(pending["coin"], "ETH")
-        self.assertEqual(pending["pair"], "ETHUSDC")
-        self.assertEqual(pending["txid"], "MAKERTX1")
-        self.assertAlmostEqual(pending["quantity"], 0.1)
-        self.assertAlmostEqual(pending["scan_price"], 2000.0)
-        self.assertAlmostEqual(pending["initial_limit_price"], 1999.5)
-        self.assertAlmostEqual(pending["current_limit_price"], 1999.5)
+        pending_entry = saved_pending[0]
+        self.assertEqual(pending_entry["coin"], "ETH")
+        self.assertEqual(pending_entry["pair"], "ETHUSDC")
+        self.assertEqual(pending_entry["txid"], "MAKERTX1")
+        self.assertAlmostEqual(pending_entry["quantity"], 0.1)
+        self.assertAlmostEqual(pending_entry["scan_price"], 2000.0)
+        self.assertAlmostEqual(pending_entry["initial_limit_price"], 1999.5)
+        self.assertAlmostEqual(pending_entry["current_limit_price"], 1999.5)
 
 
 class TestMakerEntryFallsBackToMarketAfterRepeatedPostOnlyRejection(unittest.TestCase):
@@ -134,6 +137,7 @@ class TestMakerEntryFallsBackToMarketAfterRepeatedPostOnlyRejection(unittest.Tes
         )
 
         self.assertEqual(output["executed"], 1)
+        self.assertEqual(output["pending"], 0)
         executed = output["orders_executed"][0]
         self.assertNotIn("maker_pending", executed)
         self.assertEqual(executed["entry_order_id"], "MARKETTX1")
@@ -165,12 +169,60 @@ class TestMakerEntryDisabledKeepsLegacyBehaviorUnchanged(unittest.TestCase):
         )
 
         self.assertEqual(output["executed"], 1)
+        self.assertEqual(output["pending"], 0)
         executed = output["orders_executed"][0]
         self.assertNotIn("maker_pending", executed)
         self.assertEqual(executed["entry_order_id"], "BUYTX1")
         mock_save.assert_called_once()
         self.assertEqual(saved_history[0]["maker_or_taker"], "taker")
         mock_save_pending.assert_not_called()
+
+
+class TestMixedCycleCountsFilledAndPendingSeparately(unittest.TestCase):
+    """Un cycle qui remplit un ordre (repli marché) ET pose un ordre maker en attente doit
+    refléter les deux sans les confondre : executed=1, pending=1 (#397)."""
+
+    def test_one_filled_via_market_fallback_and_one_still_pending_maker(self):
+        eth_order = dict(BASE_ORDER, coin="ETH", score=9)
+        sol_order = dict(BASE_ORDER, coin="SOL", score=5, prix_entry=100.0, quantite=2.0,
+                          montant_ordre=200.0)
+        kraken_scenario = {
+            "ticker": {
+                "ETHUSDC": {"c": ["2000.0", "0.01"], "b": ["1999.5", "0.01"]},
+                "SOLUSDC": {"c": ["100.0", "0.01"], "b": ["99.9", "0.01"]},
+            },
+            "balance": {"USDC": "500.0"},
+            # ETH : pose post-only rejetée (pas de order_buy_ETHUSDC_limit) -> repli marché rempli
+            "order_buy_ETHUSDC_market": {"txid": ["MARKETTX1"]},
+            "query-orders_MARKETTX1": {"MARKETTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"}},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX1"]},
+            # SOL : pose post-only réussie -> reste en attente
+            "order_buy_SOLUSDC_limit": {"txid": ["MAKERTX2"]},
+        }
+        output, _mock_tg, mock_save, saved_history, mock_save_pending, saved_pending = _run_phase5_execution(
+            [eth_order, sol_order], kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["executed"], 1)
+        self.assertEqual(output["pending"], 1)
+        self.assertEqual(output["skipped"], 0)
+
+        filled = [o for o in output["orders_executed"] if not o.get("maker_pending")]
+        pending_placed = [o for o in output["orders_executed"] if o.get("maker_pending")]
+        self.assertEqual(len(filled), 1)
+        self.assertEqual(len(pending_placed), 1)
+        self.assertEqual(filled[0]["coin"], "ETH")
+        self.assertEqual(pending_placed[0]["coin"], "SOL")
+
+        mock_save.assert_called_once()
+        self.assertEqual(saved_history[0]["coin"], "ETH")
+        self.assertEqual(saved_history[0]["maker_or_taker"], "taker")
+
+        mock_save_pending.assert_called_once()
+        self.assertEqual(len(saved_pending), 1)
+        self.assertEqual(saved_pending[0]["coin"], "SOL")
+        self.assertEqual(saved_pending[0]["txid"], "MAKERTX2")
 
 
 if __name__ == "__main__":

@@ -22,7 +22,9 @@ Pour chaque ordre, dans l'ordre de score décroissant :
 Exécuté par Claude en Phase 5 :
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase5_execution.py __CYCLE_ID__
 
-Stdout : PHASE5_DONE|executed=N|skipped=M
+Stdout : PHASE5_DONE|executed=N|pending=P|skipped=M
+(executed = ordres réellement remplis ce cycle ; pending = ordres LIMIT maker posés, en attente
+de remplissage par core/maker_watcher.py — pas encore des achats, cf. #397)
 Output : /tmp/cycle_{CYCLE_ID}_phase5_output.json
 """
 import sys
@@ -299,13 +301,24 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
         orders_skipped_detail[coin] = {"skip_type": "TYPE_C", "skip_detail": skip_detail_str}
         tg(f"⚠️ {coin} : erreur pendant l'exécution — {e}")
 
-executed = len(orders_executed)
+# Un ordre maker_pending (#388) est POSÉ, pas exécuté : aucun achat n'a eu lieu tant que
+# maker_watcher.py ne l'a pas rempli (et il peut ne jamais l'être, si le signal s'invalide et
+# que l'ordre est abandonné). Le compter dans executed mentirait à tout l'aval (cycle_log.jsonl,
+# Mongo, rapports, Telegram) sur ce qui a réellement été acheté ce cycle.
+pending_maker = [o for o in orders_executed if o.get("maker_pending")]
+filled_orders = [o for o in orders_executed if not o.get("maker_pending")]
+executed = len(filled_orders)
+pending = len(pending_maker)
 skipped = len(orders_skipped_detail)
 
-tg(f"📊 Phase 5 résumé\nExécutés : {executed}\nSkippés : {skipped}\nDétails : {orders_skipped_detail}")
+tg(
+    f"📊 Phase 5 résumé\nExécutés : {executed}\nEn attente (maker) : {pending}\n"
+    f"Skippés : {skipped}\nDétails : {orders_skipped_detail}"
+)
 
 out = {
     "executed": executed,
+    "pending": pending,
     "skipped": skipped,
     "orders_executed": orders_executed,
     "orders_skipped_detail": orders_skipped_detail,
@@ -314,4 +327,4 @@ out_path = f"/tmp/cycle_{CYCLE_ID}_phase5_output.json"
 with open(out_path, "w") as f:
     json.dump(out, f)
 
-print(f"PHASE5_DONE|executed={executed}|skipped={skipped}")
+print(f"PHASE5_DONE|executed={executed}|pending={pending}|skipped={skipped}")
