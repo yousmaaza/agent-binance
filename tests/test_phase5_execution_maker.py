@@ -45,8 +45,7 @@ def _run_phase5_execution(ordres_prepares, config=None, kraken_scenario=None, hi
     """Exécute phase5_execution.py avec maker_entry_enabled. Retourne (output_json, mock_tg,
     mock_save_trade_history, saved_history, mock_save_pending, saved_pending)."""
     cycle_id = harness.new_cycle_id()
-    fd_in, in_path = tempfile.mkstemp(prefix=f"cycle_{cycle_id}_phase5_input_", suffix=".json")
-    os.close(fd_in)
+    in_path = f"/tmp/cycle_{cycle_id}_phase5_input.json"
     fd_out, out_path = tempfile.mkstemp(prefix=f"cycle_{cycle_id}_phase5_output_", suffix=".json")
     os.close(fd_out)
     scenario_path = harness.write_kraken_scenario(kraken_scenario)

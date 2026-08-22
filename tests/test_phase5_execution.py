@@ -44,8 +44,7 @@ BASE_ORDER = {
 def _run_phase5_execution(ordres_prepares, config=None, kraken_scenario=None, history_data=None):
     """Exécute phase5_execution.py. Retourne (output_json, mock_tg, mock_save, saved_history)."""
     cycle_id = harness.new_cycle_id()
-    fd_in, in_path = tempfile.mkstemp(prefix=f"cycle_{cycle_id}_phase5_input_", suffix=".json")
-    os.close(fd_in)
+    in_path = f"/tmp/cycle_{cycle_id}_phase5_input.json"
     fd_out, out_path = tempfile.mkstemp(prefix=f"cycle_{cycle_id}_phase5_output_", suffix=".json")
     os.close(fd_out)
     scenario_path = harness.write_kraken_scenario(kraken_scenario)

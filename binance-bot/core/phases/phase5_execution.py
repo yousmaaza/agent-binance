@@ -44,8 +44,7 @@ from core.trade_helpers import (  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
-fd, in_path = tempfile.mkstemp(prefix=f"cycle_{CYCLE_ID}_phase5_input_", suffix=".json")
-os.close(fd)
+in_path = f"/tmp/cycle_{CYCLE_ID}_phase5_input.json"
 with open(in_path) as f:
     inp = json.load(f)
 
