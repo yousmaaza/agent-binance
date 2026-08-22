@@ -97,6 +97,6 @@ if profit_summary:
 
 closed = len(profit_summary)
 print(f"PHASE0_PROFIT_DONE|closed={closed}")
-out_path = os.path.join(PROJECT_DIR, "state", f"cycle_{CYCLE_ID}_phase0_profit_output.json")
+out_path = f"/tmp/cycle_{CYCLE_ID}_phase0_profit_output.json"
 with open(out_path, "w") as f:
     json.dump({"closed": closed}, f)
