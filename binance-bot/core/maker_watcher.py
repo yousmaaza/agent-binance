@@ -20,6 +20,7 @@ Arbre de décision par tick, pour chaque ordre dans state/maker_pending_orders.j
 import json
 import math
 import os
+import subprocess
 import time
 import uuid
 from datetime import datetime, timezone
@@ -38,7 +39,7 @@ from core.trade_helpers import (
     save_maker_pending_orders,
 )
 
-_MAKER_FILL_LABEL = maker_or_taker_from_ordertype("limit", post_only=True)  # "maker" (#388)
+_MAKER_FILL_LABEL: str = maker_or_taker_from_ordertype("limit", post_only=True)  # "maker" (#388)
 
 _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "maker_watcher_state.json")
 
@@ -85,7 +86,7 @@ def maker_watcher_loop():
         tick_seconds = cfg.get("maker_tick_seconds", 20)
         try:
             _maker_watcher_tick(cfg)
-        except Exception as e:
+        except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
             logger.error(f"[Maker Watcher] Erreur inattendue : {e}")
         time.sleep(tick_seconds)
 
@@ -109,7 +110,7 @@ def _place_stop_loss(pair: str, qty: float, stop_price: float):
         if not sl_txid:
             return None, True, "", stop_price_rounded
         return sl_txid, False, "", stop_price_rounded
-    except Exception as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, KeyError) as e:
         return None, True, f" {e}", stop_price
 
 
@@ -170,7 +171,7 @@ def _fallback_market_buy(pending: dict, history: list) -> None:
     try:
         buy_raw = _cli("order", "buy", pair, str(qty), "--type", "market", "-o", "json", "--yes")
         entry_txid = json.loads(buy_raw)["txid"][0]
-    except Exception as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, IndexError, KeyError) as e:
         send_telegram(f"⚠️ {coin} : repli BUY MARKET échoué — {e}")
         return
 
@@ -179,7 +180,7 @@ def _fallback_market_buy(pending: dict, history: list) -> None:
         try:
             query_raw = _cli("query-orders", entry_txid, "-o", "json")
             fill = json.loads(query_raw).get(entry_txid, {})
-        except Exception:
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError):
             fill = {}
         if fill.get("status") == "closed":
             break
@@ -203,7 +204,7 @@ def _cancel_and_resolve(pending: dict, allow_market_fallback: bool, history: lis
     txid = pending["txid"]
     try:
         _cli("order", "cancel", txid, "-o", "json", "--yes")
-    except Exception as e:
+    except (subprocess.CalledProcessError, OSError) as e:
         logger.warning(f"[Maker Watcher] Cancel {txid} ({coin}) : {e}")
     time.sleep(1)
     return _resolve_after_cancel(pending, allow_market_fallback, history)
@@ -215,7 +216,7 @@ def _resolve_after_cancel(pending: dict, allow_market_fallback: bool, history: l
     try:
         query_raw = _cli("query-orders", txid, "-o", "json")
         fill = json.loads(query_raw).get(txid, {})
-    except Exception as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
         logger.warning(f"[Maker Watcher] Query post-cancel {txid} ({coin}) : {e}")
         fill = {}
 
@@ -233,6 +234,91 @@ def _resolve_after_cancel(pending: dict, allow_market_fallback: bool, history: l
 
     send_telegram(f"⏭️ {coin} : signal invalidé pendant la chasse maker — ordre annulé, pas d'achat")
     return "abandoned"
+
+
+def _handle_closed_order(pending: dict, order_status: dict, history: list) -> tuple[bool, int, int]:
+    coin = pending["coin"]
+    txid = pending["txid"]
+    acquire_lock()
+    try:
+        vol_exec = float(order_status.get("vol_exec", pending["quantity"]))
+        cost = float(order_status.get("cost", 0) or 0)
+        actual_entry = cost / vol_exec if vol_exec else pending["current_limit_price"]
+        entry_fee_usdc = float(order_status.get("fee", 0) or 0)
+        _register_open_position(pending, txid, vol_exec, actual_entry, entry_fee_usdc, _MAKER_FILL_LABEL, history)
+        return True, 1, 0
+    except (ValueError, TypeError, KeyError) as e:
+        logger.error(f"[Maker Watcher] Enregistrement fill {coin} : {e}")
+        return False, 0, 0
+    finally:
+        release_lock()
+
+
+def _handle_externally_canceled(pending: dict, status: str, history: list, tick_state: dict) -> tuple[bool, int, int]:
+    coin = pending["coin"]
+    acquire_lock()
+    try:
+        outcome = _resolve_after_cancel(pending, allow_market_fallback=False, history=history)
+        if outcome == "filled_partial":
+            return True, 1, 0
+        return False, 0, 0
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
+        logger.error(f"[Maker Watcher] Résolution {status} {coin} : {e}")
+        tick_state["status"] = "error"
+        tick_state["last_error"] = f"Résolution {status} {coin} : {e}"
+        return False, 0, 0
+    finally:
+        release_lock()
+
+
+def _handle_invalidated_price(pending: dict, history: list, tick_state: dict) -> tuple[bool, int, int]:
+    coin = pending["coin"]
+    acquire_lock()
+    try:
+        outcome = _cancel_and_resolve(pending, allow_market_fallback=False, history=history)
+        if outcome == "filled_partial":
+            return True, 1, 0
+        return False, 0, 0
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
+        logger.error(f"[Maker Watcher] Invalidation prix {coin} : {e}")
+        tick_state["status"] = "error"
+        tick_state["last_error"] = f"Invalidation prix {coin} : {e}"
+        return False, 0, 0
+    finally:
+        release_lock()
+
+
+def _handle_timeout_or_concession(pending: dict, history: list, tick_state: dict) -> tuple[bool, int, int]:
+    coin = pending["coin"]
+    acquire_lock()
+    try:
+        outcome = _cancel_and_resolve(pending, allow_market_fallback=True, history=history)
+        if outcome in ("filled_partial", "market_fallback"):
+            fallbacks = 1 if outcome == "market_fallback" else 0
+            return True, 1, fallbacks
+        return False, 0, 0
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
+        logger.error(f"[Maker Watcher] Repli marché {coin} : {e}")
+        tick_state["status"] = "error"
+        tick_state["last_error"] = f"Repli marché {coin} : {e}"
+        return False, 0, 0
+    finally:
+        release_lock()
+
+
+def _handle_amend_order(pending: dict, current_bid: float) -> None:
+    coin = pending["coin"]
+    txid = pending["txid"]
+    try:
+        amend_raw = _cli("order", "amend", "--txid", txid, "--limit-price", str(current_bid),
+                          "--post-only", "-o", "json")
+        amend_resp = json.loads(amend_raw) if amend_raw.strip() else {}
+        if amend_resp.get("error"):
+            logger.debug(f"[Maker Watcher] Amend {coin} rejeté ({amend_resp['error']}), réessai au tick suivant")
+        else:
+            pending["current_limit_price"] = current_bid
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
+        logger.debug(f"[Maker Watcher] Amend {coin} erreur, réessai au tick suivant : {e}")
 
 
 def _maker_watcher_tick(cfg: dict) -> None:
@@ -254,8 +340,7 @@ def _maker_watcher_tick(cfg: dict) -> None:
     orders_checked = 0
     fills_delta = 0
     fallbacks_delta = 0
-    tick_status = "ok"
-    tick_last_error = None
+    tick_state = {"status": "ok", "last_error": None}
 
     for pending in pending_orders:
         coin = pending["coin"]
@@ -270,48 +355,27 @@ def _maker_watcher_tick(cfg: dict) -> None:
         try:
             query_raw = _cli("query-orders", txid, "-o", "json")
             order_status = json.loads(query_raw).get(txid, {})
-        except Exception as e:
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
             logger.warning(f"[Maker Watcher] query-orders {txid} ({coin}) : {e}")
-            tick_status = "warning"
-            tick_last_error = f"query-orders {coin} : {e}"
+            tick_state["status"] = "warning"
+            tick_state["last_error"] = f"query-orders {coin} : {e}"
             remaining_pending.append(pending)
             continue
 
         status = order_status.get("status")
 
         if status == "closed":
-            acquire_lock()
-            try:
-                vol_exec = float(order_status.get("vol_exec", pending["quantity"]))
-                cost = float(order_status.get("cost", 0) or 0)
-                actual_entry = cost / vol_exec if vol_exec else pending["current_limit_price"]
-                entry_fee_usdc = float(order_status.get("fee", 0) or 0)
-                _register_open_position(pending, txid, vol_exec, actual_entry, entry_fee_usdc, _MAKER_FILL_LABEL, history)
-                history_changed = True
-                fills_delta += 1
-            except Exception as e:
-                logger.error(f"[Maker Watcher] Enregistrement fill {coin} : {e}")
-                tick_status = "error"
-                tick_last_error = f"Enregistrement fill {coin} : {e}"
-                remaining_pending.append(pending)
-            finally:
-                release_lock()
+            changed, fills, fallbacks = _handle_closed_order(pending, order_status, history)
+            history_changed = history_changed or changed
+            fills_delta += fills
+            fallbacks_delta += fallbacks
             continue
 
         if status in ("canceled", "expired"):
-            # Terminé sans notre fait (hors cycle de vie normal du watcher).
-            acquire_lock()
-            try:
-                outcome = _resolve_after_cancel(pending, allow_market_fallback=False, history=history)
-                if outcome == "filled_partial":
-                    history_changed = True
-                    fills_delta += 1
-            except Exception as e:
-                logger.error(f"[Maker Watcher] Résolution {status} {coin} : {e}")
-                tick_status = "error"
-                tick_last_error = f"Résolution {status} {coin} : {e}"
-            finally:
-                release_lock()
+            changed, fills, fallbacks = _handle_externally_canceled(pending, status, history, tick_state)
+            history_changed = history_changed or changed
+            fills_delta += fills
+            fallbacks_delta += fallbacks
             continue
 
         # Ordre toujours vivant ("open") -> évaluation des bornes d'arrêt.
@@ -320,10 +384,10 @@ def _maker_watcher_tick(cfg: dict) -> None:
             ticker_data = json.loads(ticker_raw).get(pair, {})
             current_bid = float(ticker_data.get("b", [0])[0])
             current_last = float(ticker_data.get("c", [0])[0])
-        except Exception as e:
+        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, IndexError) as e:
             logger.warning(f"[Maker Watcher] Ticker {coin} indisponible : {e}")
-            tick_status = "warning"
-            tick_last_error = f"Ticker {coin} indisponible : {e}"
+            tick_state["status"] = "warning"
+            tick_state["last_error"] = f"Ticker {coin} indisponible : {e}"
             remaining_pending.append(pending)
             continue
 
@@ -334,51 +398,21 @@ def _maker_watcher_tick(cfg: dict) -> None:
         concession_pct = max(0.0, (current_bid - initial_price) / initial_price) if initial_price else 0.0
 
         if price_drift > price_deviation_max_pct:
-            acquire_lock()
-            try:
-                outcome = _cancel_and_resolve(pending, allow_market_fallback=False, history=history)
-                if outcome == "filled_partial":
-                    history_changed = True
-                    fills_delta += 1
-            except Exception as e:
-                logger.error(f"[Maker Watcher] Invalidation prix {coin} : {e}")
-                tick_status = "error"
-                tick_last_error = f"Invalidation prix {coin} : {e}"
-            finally:
-                release_lock()
+            changed, fills, fallbacks = _handle_invalidated_price(pending, history, tick_state)
+            history_changed = history_changed or changed
+            fills_delta += fills
+            fallbacks_delta += fallbacks
             continue
 
         if concession_pct >= maker_max_concession_pct or elapsed_seconds >= maker_timeout_seconds:
-            acquire_lock()
-            try:
-                outcome = _cancel_and_resolve(pending, allow_market_fallback=True, history=history)
-                if outcome in ("filled_partial", "market_fallback"):
-                    history_changed = True
-                    fills_delta += 1
-                    if outcome == "market_fallback":
-                        fallbacks_delta += 1
-            except Exception as e:
-                logger.error(f"[Maker Watcher] Repli marché {coin} : {e}")
-                tick_status = "error"
-                tick_last_error = f"Repli marché {coin} : {e}"
-            finally:
-                release_lock()
+            changed, fills, fallbacks = _handle_timeout_or_concession(pending, history, tick_state)
+            history_changed = history_changed or changed
+            fills_delta += fills
+            fallbacks_delta += fallbacks
             continue
 
         if current_bid and current_bid != pending.get("current_limit_price"):
-            try:
-                amend_raw = _cli("order", "amend", "--txid", txid, "--limit-price", str(current_bid),
-                                  "--post-only", "-o", "json")
-                amend_resp = json.loads(amend_raw) if amend_raw.strip() else {}
-                if amend_resp.get("error"):
-                    # Rejet post-only (le bid a bougé entre lecture et envoi) — non fatal, la
-                    # requête réussit côté transport mais Kraken renvoie une erreur métier ; on
-                    # réessaie au tick suivant avec un bid frais (#388).
-                    logger.debug(f"[Maker Watcher] Amend {coin} rejeté ({amend_resp['error']}), réessai au tick suivant")
-                else:
-                    pending["current_limit_price"] = current_bid
-            except Exception as e:
-                logger.debug(f"[Maker Watcher] Amend {coin} erreur, réessai au tick suivant : {e}")
+            _handle_amend_order(pending, current_bid)
 
         remaining_pending.append(pending)
 
@@ -389,4 +423,4 @@ def _maker_watcher_tick(cfg: dict) -> None:
     if history_changed:
         save_trade_history(history)
 
-    _write_watcher_state(tick_status, tick_last_error, orders_checked, fills_delta, fallbacks_delta)
+    _write_watcher_state(tick_state["status"], tick_state["last_error"], orders_checked, fills_delta, fallbacks_delta)

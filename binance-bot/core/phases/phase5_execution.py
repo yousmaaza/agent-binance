@@ -34,6 +34,7 @@ import math
 import time
 import uuid
 import datetime
+import tempfile
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
@@ -323,7 +324,8 @@ out = {
     "orders_executed": orders_executed,
     "orders_skipped_detail": orders_skipped_detail,
 }
-out_path = f"/tmp/cycle_{CYCLE_ID}_phase5_output.json"
+fd, out_path = tempfile.mkstemp(prefix=f"cycle_{CYCLE_ID}_phase5_output_", suffix=".json")
+os.close(fd)
 with open(out_path, "w") as f:
     json.dump(out, f)
 
