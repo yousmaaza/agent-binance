@@ -324,9 +324,13 @@ out = {
     "orders_executed": orders_executed,
     "orders_skipped_detail": orders_skipped_detail,
 }
-fd, out_path = tempfile.mkstemp(prefix=f"cycle_{CYCLE_ID}_phase5_output_", suffix=".json")
-os.close(fd)
-with open(out_path, "w") as f:
+# Écriture atomique (bandit B108) : le contenu final atterrit bien sur le chemin fixe
+# /tmp/cycle_{CYCLE_ID}_phase5_output.json attendu par le prompt (phase5_execution.txt) et donc
+# par les phases 6-8 — seule l'écriture transite par un fichier temporaire non-prévisible.
+out_path = f"/tmp/cycle_{CYCLE_ID}_phase5_output.json"
+fd, tmp_out_path = tempfile.mkstemp(prefix=f"cycle_{CYCLE_ID}_phase5_output_", suffix=".json")
+with os.fdopen(fd, "w") as f:
     json.dump(out, f)
+os.replace(tmp_out_path, out_path)
 
 print(f"PHASE5_DONE|executed={executed}|pending={pending}|skipped={skipped}")
