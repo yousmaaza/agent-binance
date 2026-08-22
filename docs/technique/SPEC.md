@@ -1,8 +1,8 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-08-22 (PR #391)
-> **Commit** : 39621e0
+> **Dernière mise à jour** : 2026-08-22 (PR #394)
+> **Commit** : 64ff229
 
 ---
 
@@ -323,6 +323,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#394](pr-394-backfill-pnl-gross-coherence.md) | 2026-08-22 | [FIX] Backfill PnL brut et garde-fou de cohérence (#382 post-mortem) : correctif du calcul `pnl_gross_usdc` — reprend le `pnl_usdc` déjà stocké au lieu de recomputer via `(exit_price - entry_price) * quantity` (incohérent sur trades legacy Binance). Ajout fonction `_coherence_diagnostic()` : compare les deux valeurs, seuil tolérance 1% relatif, signale trades incohérents sans les modifier (évite injection fictive +44 USDC observée en prod trade SYN #38515bab). Tests couvrant cas SYN, case edge closed sans `pnl_usdc`, et cas nominal — suite 113/113 OK. |
 | [#391](pr-391-kraken-frais-pnl-net.md) | 2026-08-22 | [BUG] Traçabilité des frais Kraken et PnL net (#382) : `pnl_usdc` devient le **PnL net** (frais déduits) au lieu du brut. Nouveaux champs `entry_fee_usdc`, `exit_fee_usdc`, `fees_usdc`, `pnl_gross_usdc`, `pnl_gross_pct`, `maker_or_taker`. Deux fonctions partagées `compute_net_pnl()` et `maker_or_taker_from_ordertype()` dans `trade_helpers.py` (#382). Modifications Phase 5 fill capture, Phase 0 OCO retry/profit, TP Watcher. Script `backfill_fees.py` rapproche historique avec `kraken trades-history` (fallback estimé par palier). Tous consommateurs (PnL/notifications/Mongo) reflètent net sans modification. Tests : 101/101 PASS, dry-run backfill validé. |
 | [#387](pr-387-max-open-positions.md) | 2026-08-22 | [BUG] Enforcement dynamique de `max_open_positions` en Phase 3 : la variable `open_positions` était statique (snapshot Phase 0), jamais incrémentée pendant la boucle de scoring du même cycle, permettant à plusieurs coins d'être acceptés au-delà du max. Correction ligne 111-112 `phase3_scoring.py` : comparaison change à `open_positions + len(buy_candidates) >= max_open_positions` ; skip_detail affiche le compte recalculé ; test de régression `test_candidates_accepted_this_cycle_count_toward_max` couvre l'incident cycle 20260821_040505 |
 | [#386](pr-386-inclure-valeur-positions.md) | 2026-08-22 | [BUG] Inclure la valeur des positions ouvertes dans `portfolio_total` : accumulation `positions_value` dans la boucle P&L existante de `phase0_snapshot.py` (kraken ticker par position) ; exposition via stdout (`PHASE0_SNAPSHOT_DONE\|open_positions=N\|positions_value=X`) et JSON output ; utilisation dans Phase 0 (`portfolio_total = cash + positions_value`) pour affiner `budget_disponible` et check `daily_loss_limit_pct` — tests ajoutés (cas positions ouvertes/fermées) |
