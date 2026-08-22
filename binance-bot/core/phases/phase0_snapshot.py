@@ -3,7 +3,7 @@
 Exécuté par Claude en début de Phase 0 :
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_snapshot.py __CYCLE_ID__
 
-Stdout : PHASE0_SNAPSHOT_DONE|open_positions=N
+Stdout : PHASE0_SNAPSHOT_DONE|open_positions=N|positions_value=X
 Output : /tmp/cycle_{CYCLE_ID}_phase0_snapshot_output.json
 """
 import sys
@@ -21,6 +21,8 @@ try:
     with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
         history = json.load(f)
     open_positions_list = [t for t in history if t.get("status") == "open"]
+
+    positions_value = 0.0
 
     if open_positions_list:
         snapshot_lines = ["📊 SNAPSHOT POSITIONS OUVERTES"]
@@ -41,6 +43,7 @@ try:
                 current_price = entry_price
 
             current_usdc = current_price * qty
+            positions_value += current_usdc
             pnl_usdc = current_usdc - entry_usdc
             pnl_pct = (pnl_usdc / entry_usdc * 100) if entry_usdc > 0 else 0
 
@@ -58,9 +61,9 @@ try:
         tg("📊 Aucune position ouverte actuellement")
 
     open_positions = len(open_positions_list)
-    print(f"PHASE0_SNAPSHOT_DONE|open_positions={open_positions}")
+    print(f"PHASE0_SNAPSHOT_DONE|open_positions={open_positions}|positions_value={positions_value:.2f}")
     with open(f"/tmp/cycle_{CYCLE_ID}_phase0_snapshot_output.json", "w") as f:
-        json.dump({"open_positions": open_positions}, f)
+        json.dump({"open_positions": open_positions, "positions_value": positions_value}, f)
 
 except Exception as e:
     tg(f"⚠️ Snapshot positions échoué : {e}")

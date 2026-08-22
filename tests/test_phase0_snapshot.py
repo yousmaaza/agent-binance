@@ -70,6 +70,7 @@ class TestSnapshotOpenPositions(unittest.TestCase):
 
         self.assertIsNone(exit_code)
         self.assertEqual(output["open_positions"], 2)
+        self.assertAlmostEqual(output["positions_value"], 1130.0)  # ETH 0.5*1900 + SOL 2*90
         mock_tg.assert_called_once()
         message = mock_tg.call_args[0][0]
         self.assertIn("ETH", message)
@@ -92,6 +93,7 @@ class TestSnapshotNoOpenPositions(unittest.TestCase):
 
         self.assertIsNone(exit_code)
         self.assertEqual(output["open_positions"], 0)
+        self.assertEqual(output["positions_value"], 0.0)
         mock_tg.assert_called_once_with("📊 Aucune position ouverte actuellement")
 
 

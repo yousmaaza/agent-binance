@@ -13,14 +13,15 @@ _hb_start(0)
 # Exécute le script de snapshot (P&L boucle, kraken ticker) :
 #   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_snapshot.py __CYCLE_ID__
 # Le script envoie la notification Telegram et affiche sur stdout :
-#   PHASE0_SNAPSHOT_DONE|open_positions=N
-# Utilise la valeur open_positions pour la suite de Phase 0.
+#   PHASE0_SNAPSHOT_DONE|open_positions=N|positions_value=X
+# Utilise open_positions et positions_value (valeur au marché des positions ouvertes,
+# déjà sommée par le script via kraken ticker) pour la suite de Phase 0.
 # --- FIN SNAPSHOT ---
 
 Lis config.json pour récupérer TOUS les paramètres.
 Exécute : kraken balance -o json
 Retourne : {"USDC":"395.31","SOL":"1.24",...}
-portfolio_total = float(balance.get("USDC", 0))
+portfolio_total = float(balance.get("USDC", 0)) + positions_value
 budget_disponible = portfolio_total × usdc_allocation_pct
 
 Lis state/trade_history.json.
