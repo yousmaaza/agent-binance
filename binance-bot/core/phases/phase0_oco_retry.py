@@ -14,7 +14,7 @@ import datetime
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, log_phase0_event  # noqa: E402
+from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, log_phase0_event, compute_net_pnl  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -74,13 +74,18 @@ try:
                 fill_raw = binance("query-orders", sell_txid, "-o", "json")
                 fill = json.loads(fill_raw).get(sell_txid, {})
                 fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
-                pnl_usdc = (fill_exit - entry) * qty
-                pnl_pct = (fill_exit - entry) / entry * 100
+                exit_fee_usdc = float(fill.get("fee", 0) or 0)
+                entry_fee_usdc = float(t.get("entry_fee_usdc", 0) or 0)
+                net = compute_net_pnl(entry, fill_exit, qty, entry_fee_usdc, exit_fee_usdc)
+                pnl_usdc = net["pnl_usdc"]
+                pnl_pct = net["pnl_pct"]
                 for item in history:
                     if item.get("trade_id") == t.get("trade_id"):
                         item.update({
                             "status": "closed", "exit_price": fill_exit,
-                            "pnl_usdc": pnl_usdc, "pnl_pct": pnl_pct,
+                            "entry_fee_usdc": entry_fee_usdc, "exit_fee_usdc": exit_fee_usdc,
+                            "fees_usdc": net["fees_usdc"], "pnl_gross_usdc": net["pnl_gross_usdc"],
+                            "pnl_usdc": pnl_usdc, "pnl_gross_pct": net["pnl_gross_pct"], "pnl_pct": pnl_pct,
                             "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                             "protection_failed": False, "close_reason": "market_above_tp",
                         })
@@ -114,13 +119,18 @@ try:
                     fill_raw = binance("query-orders", sell_txid, "-o", "json")
                     fill = json.loads(fill_raw).get(sell_txid, {})
                     fill_exit = float(fill.get("cost", 0)) / float(fill.get("vol_exec", qty)) if fill.get("vol_exec") else prix_actuel
-                    pnl_usdc = (fill_exit - entry) * qty
-                    pnl_pct = (fill_exit - entry) / entry * 100
+                    exit_fee_usdc = float(fill.get("fee", 0) or 0)
+                    entry_fee_usdc = float(t.get("entry_fee_usdc", 0) or 0)
+                    net = compute_net_pnl(entry, fill_exit, qty, entry_fee_usdc, exit_fee_usdc)
+                    pnl_usdc = net["pnl_usdc"]
+                    pnl_pct = net["pnl_pct"]
                     for item in history:
                         if item.get("trade_id") == t.get("trade_id"):
                             item.update({
                                 "status": "closed", "exit_price": fill_exit,
-                                "pnl_usdc": pnl_usdc, "pnl_pct": pnl_pct,
+                                "entry_fee_usdc": entry_fee_usdc, "exit_fee_usdc": exit_fee_usdc,
+                                "fees_usdc": net["fees_usdc"], "pnl_gross_usdc": net["pnl_gross_usdc"],
+                                "pnl_usdc": pnl_usdc, "pnl_gross_pct": net["pnl_gross_pct"], "pnl_pct": pnl_pct,
                                 "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                                 "protection_failed": False, "close_reason": "protection_exhausted",
                                 "oco_retry_count": 0,
@@ -181,7 +191,8 @@ try:
     _save_trade_history_atomic(history)
     retried = len(unprotected)
     print(f"PHASE0_OCO_DONE|retried={retried}")
-    with open(f"/tmp/cycle_{CYCLE_ID}_phase0_oco_retry_output.json", "w") as f:
+    out_path = f"/tmp/cycle_{CYCLE_ID}_phase0_oco_retry_output.json"
+    with open(out_path, "w") as f:
         json.dump({"retried": retried}, f)
 
 except Exception as e:

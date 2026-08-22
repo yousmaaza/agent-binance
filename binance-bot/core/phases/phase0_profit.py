@@ -14,7 +14,7 @@ import time
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic  # noqa: E402
+from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -37,7 +37,7 @@ for pos in history:
         ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
         ticker_data = json.loads(ticker_raw)
         current_price = float(ticker_data.get(f"{coin}USDC", {}).get("c", [entry_price])[0])
-    except Exception:
+    except (ValueError, KeyError, json.JSONDecodeError):
         continue
 
     pnl_pct = ((current_price - entry_price) / entry_price) * 100
@@ -51,7 +51,7 @@ for pos in history:
                      if o.get("descr", {}).get("pair") == pair]
             if txids:
                 binance("order", "cancel", *txids, "-o", "json", "--yes")
-        except Exception:
+        except (ValueError, KeyError, json.JSONDecodeError):
             pass
         try:
             sell_raw = binance("order", "sell", f"{coin}USDC", str(qty), "--type", "market", "-o", "json", "--yes")
@@ -65,12 +65,20 @@ for pos in history:
                 vol_exec = float(fill.get("vol_exec", qty))
                 cost = float(fill.get("cost", current_price * qty))
                 exit_price = cost / vol_exec if vol_exec else current_price
-                actual_pnl_usdc = (exit_price - entry_price) * qty
-                actual_pnl_pct = (exit_price - entry_price) / entry_price * 100
+                exit_fee_usdc = float(fill.get("fee", 0) or 0)
+                entry_fee_usdc = float(pos.get("entry_fee_usdc", 0) or 0)
+                net = compute_net_pnl(entry_price, exit_price, qty, entry_fee_usdc, exit_fee_usdc)
+                actual_pnl_usdc = net["pnl_usdc"]
+                actual_pnl_pct = net["pnl_pct"]
                 pos.update({
                     "status": "closed",
                     "exit_price": exit_price,
+                    "entry_fee_usdc": entry_fee_usdc,
+                    "exit_fee_usdc": exit_fee_usdc,
+                    "fees_usdc": net["fees_usdc"],
+                    "pnl_gross_usdc": net["pnl_gross_usdc"],
                     "pnl_usdc": actual_pnl_usdc,
+                    "pnl_gross_pct": net["pnl_gross_pct"],
                     "pnl_pct": actual_pnl_pct,
                     "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "close_reason": "profit_target_phase0",
@@ -89,5 +97,6 @@ if profit_summary:
 
 closed = len(profit_summary)
 print(f"PHASE0_PROFIT_DONE|closed={closed}")
-with open(f"/tmp/cycle_{CYCLE_ID}_phase0_profit_output.json", "w") as f:
+out_path = f"/tmp/cycle_{CYCLE_ID}_phase0_profit_output.json"
+with open(out_path, "w") as f:
     json.dump({"closed": closed}, f)

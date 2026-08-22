@@ -194,6 +194,91 @@ class TestImmediateCloseWhenPriceAboveTpAtFill(unittest.TestCase):
         self.assertAlmostEqual(pos["pnl_usdc"], 2.0, places=6)
 
 
+class TestEntryFeeCapturedFromFill(unittest.TestCase):
+    """Le champ fee de la réponse query-orders du BUY est capturé dans entry_fee_usdc (#382)."""
+
+    def test_entry_fee_and_maker_or_taker_stored_on_open_position(self):
+        order = dict(BASE_ORDER)
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["2000.0", "0.01"]}},
+            "balance": {"USDC": "500.0"},
+            "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
+            "query-orders_BUYTX1": {"BUYTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "1.2"}},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC": {"txid": ["SLTX1"]},
+        }
+        _output, _mock_tg, mock_save, saved_history = _run_phase5_execution([order], kraken_scenario=kraken_scenario)
+
+        pos = saved_history[0]
+        self.assertAlmostEqual(pos["entry_fee_usdc"], 1.2)
+        self.assertEqual(pos["maker_or_taker"], "taker")
+        self.assertIsNone(pos["exit_fee_usdc"])
+        self.assertIsNone(pos["fees_usdc"])
+        self.assertIsNone(pos["pnl_gross_usdc"])
+        mock_save.assert_called_once()
+
+
+class TestNetPnlOnImmediateCloseAtFill(unittest.TestCase):
+    """Clôture immédiate (market_above_tp_at_fill) : pnl_usdc net des frais entrée+sortie (#382)."""
+
+    def test_pnl_usdc_net_of_entry_and_exit_fees(self):
+        order = dict(BASE_ORDER, stop_distance_pct=0.01)
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1}
+        kraken_scenario = {
+            # actual_entry=2000 (200/0.1) -> actual_tp = 2000*(1+0.01*1) = 2020
+            "ticker": {"ETHUSDC": {"c": ["2020.0", "0.01"]}},
+            "balance": {"USDC": "500.0"},
+            "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
+            "query-orders_BUYTX1": {"BUYTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.5"}},
+            "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
+            "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "202.0", "vol_exec": "0.1", "fee": "0.3"}},
+        }
+        output, _mock_tg, mock_save, saved_history = _run_phase5_execution(
+            [order], config=config, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["executed"], 1)
+        pos = saved_history[0]
+        # pnl_gross = (2020-2000)*0.1 = 2.0 ; fees = 0.5+0.3 = 0.8 ; pnl net = 1.2
+        self.assertAlmostEqual(pos["pnl_gross_usdc"], 2.0, places=6)
+        self.assertAlmostEqual(pos["fees_usdc"], 0.8, places=6)
+        self.assertAlmostEqual(pos["pnl_usdc"], 1.2, places=6)
+        self.assertAlmostEqual(pos["entry_fee_usdc"], 0.5)
+        self.assertAlmostEqual(pos["exit_fee_usdc"], 0.3)
+        self.assertEqual(pos["maker_or_taker"], "taker")
+        # pnl_gross_pct = (2020-2000)/2000*100 = 1.0 ; pnl_pct net = 1.2/(2000*0.1)*100 = 0.6
+        self.assertAlmostEqual(pos["pnl_gross_pct"], 1.0, places=6)
+        self.assertAlmostEqual(pos["pnl_pct"], 0.6, places=6)
+        mock_save.assert_called_once()
+
+
+class TestNetPnlSignInvariantWhenFeesFlipSign(unittest.TestCase):
+    """pnl_pct et pnl_usdc doivent toujours avoir le même signe, même si les frais absorbent
+    entièrement un gain brut positif (#382 — correction post-review PR #391)."""
+
+    def test_pnl_pct_and_pnl_usdc_share_sign_when_fees_exceed_gross_gain(self):
+        order = dict(BASE_ORDER, stop_distance_pct=0.01)
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1}
+        kraken_scenario = {
+            # actual_entry=2000 (200/0.1) -> actual_tp = 2020 ; gross = (2020-2000)*0.1 = 2.0 (positif)
+            "ticker": {"ETHUSDC": {"c": ["2020.0", "0.01"]}},
+            "balance": {"USDC": "500.0"},
+            "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
+            "query-orders_BUYTX1": {"BUYTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "2.0"}},
+            "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
+            "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "202.0", "vol_exec": "0.1", "fee": "1.0"}},
+        }
+        _output, _mock_tg, _mock_save, saved_history = _run_phase5_execution(
+            [order], config=config, kraken_scenario=kraken_scenario,
+        )
+
+        pos = saved_history[0]
+        self.assertGreater(pos["pnl_gross_usdc"], 0)   # brut positif
+        self.assertLess(pos["pnl_usdc"], 0)             # net négatif (fees = 3.0 > gross = 2.0)
+        self.assertLess(pos["pnl_pct"], 0)              # même signe que pnl_usdc, pas de contradiction
+        self.assertEqual((pos["pnl_usdc"] < 0), (pos["pnl_pct"] < 0))
+
+
 class TestProtectionFailedWhenStopLossPlacementFails(unittest.TestCase):
     """BUY réussi mais pose du SL échoue -> protection_failed=True + notification Telegram."""
 
