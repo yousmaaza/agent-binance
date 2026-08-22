@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#387](pr-387-max-open-positions.md) | [BUG] Corriger l'enforcement de max_open_positions en Phase 3 | 2026-08-22 |
 | [#386](pr-386-inclure-valeur-positions.md) | [BUG] Inclure la valeur des positions dans portfolio_total | 2026-08-22 |
 | [#381](pr-381-rsi-zone-config.md) | [M1] Élargir la zone RSI bonus Phase 3 et la rendre configurable | 2026-08-13 |
 | [#379](pr-379-arrondir-stop-loss-tick-size.md) | [BUG] Arrondir le prix stop-loss au tick_size avant pose Kraken | 2026-08-13 |
