@@ -9,6 +9,8 @@ state/pending_callback.json
 state/pending_trades.json
 state/webhook_pids.json
 state/tp_watcher_state.json
+state/maker_pending_orders.json
+state/maker_watcher_state.json
 
 # Scripts de debug ponctuels et backups manuels
 state/tp_watcher_*.py

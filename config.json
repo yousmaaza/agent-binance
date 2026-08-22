@@ -3,12 +3,16 @@
   "usdc_allocation_pct": 0.70,
   "portfolio_coins": ["XBT", "XRP", "SOL"],
   "quote_asset": "USDC",
-  "order_type": "LIMIT",
   "limit_offset_pct": 0.005,
   "min_order_usdc": 9,
   "max_single_position_pct": 0.65,
   "price_deviation_max_pct": 0.02,
   "approval_timeout_minutes": 30,
+
+  "maker_entry_enabled": true,
+  "maker_tick_seconds": 20,
+  "maker_max_concession_pct": 0.003,
+  "maker_timeout_seconds": 3600,
 
   "risk_per_trade_pct": 0.02,
   "reward_risk_ratio": 2.0,

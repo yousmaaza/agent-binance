@@ -23,7 +23,9 @@ from fixtures import test_harness as harness  # noqa: E402 -- import après sys.
 
 PHASE5_EXECUTION_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase5_execution.py")
 
-DEFAULT_CONFIG = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2}
+# maker_entry_enabled=False : ces tests couvrent le flux legacy BUY MARKET, pas la nouvelle
+# entrée maker LIMIT post-only (#388) — voir tests/test_phase5_execution_maker.py pour celle-ci.
+DEFAULT_CONFIG = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2, "maker_entry_enabled": False}
 
 BASE_ORDER = {
     "coin": "ETH",
@@ -58,6 +60,10 @@ def _run_phase5_execution(ordres_prepares, config=None, kraken_scenario=None, hi
         with contextlib.ExitStack() as stack:
             mock_tg = stack.enter_context(patch("core.trade_helpers.tg"))
             mock_save = stack.enter_context(patch("core.trade_helpers._save_trade_history_atomic"))
+            # maker_entry_enabled=False sur tous ces tests (#388) -> jamais appelée, mais mockée
+            # quand même pour ne jamais toucher le vrai state/maker_pending_orders.json.
+            stack.enter_context(patch("core.trade_helpers.load_maker_pending_orders", return_value=[]))
+            stack.enter_context(patch("core.trade_helpers.save_maker_pending_orders"))
             stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", harness.FAKE_KRAKEN_PATH))
             stack.enter_context(patch("builtins.open", side_effect=harness.fake_open_factory(text)))
 
@@ -166,7 +172,7 @@ class TestImmediateCloseWhenPriceAboveTpAtFill(unittest.TestCase):
 
     def test_position_closed_at_market_when_price_already_above_recalculated_tp(self):
         order = dict(BASE_ORDER, stop_distance_pct=0.01)
-        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1}
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "maker_entry_enabled": False}
         kraken_scenario = {
             # actual_entry=2000 (200/0.1) -> actual_tp = 2000*(1+0.01*1) = 2020
             # ticker à 2020 : drift = 1% (< 2%, passe le check) ET prix_post_fill >= actual_tp
@@ -223,7 +229,7 @@ class TestNetPnlOnImmediateCloseAtFill(unittest.TestCase):
 
     def test_pnl_usdc_net_of_entry_and_exit_fees(self):
         order = dict(BASE_ORDER, stop_distance_pct=0.01)
-        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1}
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "maker_entry_enabled": False}
         kraken_scenario = {
             # actual_entry=2000 (200/0.1) -> actual_tp = 2000*(1+0.01*1) = 2020
             "ticker": {"ETHUSDC": {"c": ["2020.0", "0.01"]}},
@@ -258,7 +264,7 @@ class TestNetPnlSignInvariantWhenFeesFlipSign(unittest.TestCase):
 
     def test_pnl_pct_and_pnl_usdc_share_sign_when_fees_exceed_gross_gain(self):
         order = dict(BASE_ORDER, stop_distance_pct=0.01)
-        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1}
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "maker_entry_enabled": False}
         kraken_scenario = {
             # actual_entry=2000 (200/0.1) -> actual_tp = 2020 ; gross = (2020-2000)*0.1 = 2.0 (positif)
             "ticker": {"ETHUSDC": {"c": ["2020.0", "0.01"]}},

@@ -284,9 +284,12 @@ webhook_server.py (process principal)
 | `portfolio_coins` | `["XBT", "XRP", "SOL"]` | Coins systématiquement inclus dans l'univers de scan (coins Kraken avec paires USDC tradables : XBTUSDC, XRPUSDC, SOLUSDC) |
 | `quote_asset` | `"USDC"` | Asset de cotation pour toutes les paires tradées |
 | `min_volume_usdc` | `500000` | Seuil volume 24h (USDC) pour inclure un coin dans l'univers Phase 1 — coins sous ce seuil ignorés sauf s'ils figurent dans `portfolio_coins` (fallback garanti). Baissé de 5M → 1M via PR #312, puis de 1M → 500k via PR #363 pour couvrir alt-coins de taille moyenne (SOL, XRP) et gain net d'ADA |
-| `order_type` | `"LIMIT"` | Type d'ordre d'entrée (ordre working de l'OTOCO) |
-| `limit_offset_pct` | `0.005` | Décalage du prix limite par rapport au prix actuel (−0.5%) |
+| `limit_offset_pct` | `0.005` | Décalage théorique utilisé par le sizing Phase 4 par rapport au prix actuel (−0.5%) |
 | `min_order_usdc` | `9` | Montant minimum d'un ordre en USDC (contrainte Binance) — abaissé de 11 à 9 via PR #268 pour couvrir dimensionnements ATR légitimes (8–11 USDC) |
+| `maker_entry_enabled` | `true` | Entrée en LIMIT post-only au bid au lieu de BUY MARKET (#388) — `false` = repli immédiat sur le comportement historique |
+| `maker_tick_seconds` | `20` | Fréquence de tick du Maker Watcher (ajustement via `kraken order amend`) |
+| `maker_max_concession_pct` | `0.003` | Budget de concession max avant repli marché (0.30%, égal à l'économie de frais maker/taker) |
+| `maker_timeout_seconds` | `3600` | Garde-fou temporel (60 min) avant repli marché, pour libérer le solde réservé et résoudre avant le cycle suivant |
 | `max_single_position_pct` | `0.65` | Part maximale du budget allouable à une seule position (65%) |
 | `price_deviation_max_pct` | `0.02` | Drift maximum toléré entre pré-calcul et exécution (2%) — sinon ordre annulé |
 | `approval_timeout_minutes` | `30` | Timeout (minutes) pour une confirmation utilisateur via inline keyboard (legacy) |

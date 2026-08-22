@@ -4,7 +4,7 @@ Bot de trading crypto **Kraken** piloté par Telegram et Claude AI (le nom du re
 
 - Scan de l'univers USDC Kraken + enrichissement via TradingView (top gainers, breakouts, sentiment) — paires USDC uniquement
 - Scoring multi-timeframe 4h + 1D (0-10 points)
-- Exécution automatique BUY MARKET/LIMIT + Stop-Loss + Take-Profit, avec surveillance temps réel (TP Watcher)
+- Exécution automatique en entrée LIMIT post-only maker (repli BUY MARKET) + Stop-Loss + Take-Profit, avec surveillance temps réel (TP Watcher + Maker Watcher)
 - Auto-scheduler : toutes les 4h alignées sur les clôtures TradingView (00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC)
 - Journal de trades + commande `/perf` avec p-value (t-test)
 - Suivi du coût API Claude par cycle (`/cout`) et rapport ROI hebdomadaire (`/eval`)
@@ -174,12 +174,16 @@ systemctl stop webhook-bot   # VPS (root)
   "usdc_allocation_pct": 0.70,             // % du solde USDC alloué au trading
   "portfolio_coins": ["XBT", "XRP", "SOL"], // toujours inclus dans l'univers, même sous le seuil de volume
   "quote_asset": "USDC",                   // asset de cotation (paires *USDC uniquement)
-  "order_type": "LIMIT",                   // type d'ordre d'entrée
-  "limit_offset_pct": 0.005,              // décalage du prix LIMIT vs marché (0.5%)
+  "limit_offset_pct": 0.005,              // décalage théorique utilisé par le sizing (Phase 4)
   "min_order_usdc": 9,                     // montant minimum d'un ordre en USDC
   "max_single_position_pct": 0.65,         // max 65% du capital sur une seule position
   "price_deviation_max_pct": 0.02,         // écart max prix accepté vs signal (2%)
   "approval_timeout_minutes": 30,          // timeout attente confirmation manuelle
+
+  "maker_entry_enabled": true,            // entrée en LIMIT post-only au bid (#388) ; false = BUY MARKET direct
+  "maker_tick_seconds": 20,               // fréquence du maker watcher (ajustement via amend)
+  "maker_max_concession_pct": 0.003,      // budget de concession max avant repli marché (0.30%)
+  "maker_timeout_seconds": 3600,          // garde-fou temporel (60 min) avant repli marché
 
   "risk_per_trade_pct": 0.02,             // risque max 2% du portfolio par trade
   "reward_risk_ratio": 2.0,               // objectif gain = 2× le risque
@@ -220,6 +224,7 @@ agent-binance/
 │   │   ├── telegram.py           ← envoi messages via curl
 │   │   ├── timing.py             ← calcul slots 4h UTC
 │   │   ├── tp_watcher.py         ← surveillance temps réel des take-profits (thread, tick 2 min)
+│   │   ├── maker_watcher.py      ← ajustement des entrées LIMIT post-only (thread, tick 20s, #388)
 │   │   ├── trade_helpers.py      ← wrapper kraken-cli + helper Telegram (tg())
 │   │   ├── state_manager.py      ← lecture/écriture trade_history.json
 │   │   ├── heartbeat.py          ← heartbeats par phase (détection cycle bloqué)
@@ -278,7 +283,7 @@ Phase 7 — Persistance MongoDB (décisions + explanation_fr vulgarisée + coût
 Phase 8 — Écriture state/cycle_log.jsonl + commit/push git (trade_history.json + cycle_log.jsonl)
 ```
 
-En parallèle, le **TP Watcher** (thread indépendant, tick toutes les 2 min) surveille les positions ouvertes et déclenche une vente dès qu'un take-profit est atteint, sans attendre le prochain cycle 4h.
+En parallèle, le **TP Watcher** (thread indépendant, tick toutes les 2 min) surveille les positions ouvertes et déclenche une vente dès qu'un take-profit est atteint, sans attendre le prochain cycle 4h. Le **Maker Watcher** (tick 20s) fait de même côté entrée : il ajuste les ordres LIMIT post-only posés par la Phase 5 jusqu'à exécution ou repli — voir section dédiée plus bas.
 
 ---
 
@@ -365,6 +370,18 @@ Voir aussi [`deploy/README.md`](deploy/README.md#débogage-rapide) pour les piè
 ## TP Watcher — surveillance temps réel
 
 Un thread indépendant tourne en continu à côté du cycle 4h (tick toutes les 2 minutes, défini dans `binance-bot/core/tp_watcher.py`) : il vérifie le prix courant de chaque position ouverte contre son take-profit calculé, et déclenche une vente **immédiatement** dès que le seuil est atteint — sans attendre le prochain cycle programmé. Il respecte le même mutex (`agent_lock.json`) que le cycle principal pour éviter toute exécution concurrente. Son état (`tp_watcher_state.json` : dernier tick, nombre de ventes) est visible via `/status`.
+
+---
+
+## Maker Watcher — entrées en LIMIT post-only (#388)
+
+Si `maker_entry_enabled` (config.json, défaut `true`), la Phase 5 ne passe plus les entrées au marché : elle pose un ordre **LIMIT post-only au bid** (frais maker Kraken deux fois moindres que taker) et l'enregistre dans `state/maker_pending_orders.json`. Un second thread indépendant (tick 20s, défini dans `binance-bot/core/maker_watcher.py`) ajuste ensuite cet ordre via `kraken order amend` (jamais annuler/replacer, pour préserver la priorité dans le carnet) jusqu'à exécution ou repli, selon trois bornes d'arrêt priorisées :
+
+1. **Budget de concession** (`maker_max_concession_pct`, 0.30% par défaut) — au-delà, poursuivre n'a plus d'intérêt économique : annulation et repli sur un BUY MARKET.
+2. **Invalidation du signal** (`price_deviation_max_pct` existant, 2%) — la thèse du trade est morte : annulation et abandon (skip TYPE_C), pas d'achat au marché.
+3. **Timeout** (`maker_timeout_seconds`, 60 min) — garde-fou pour libérer le solde réservé et garantir la résolution avant le prochain cycle 4h : annulation et repli sur un BUY MARKET.
+
+Un remplissage partiel constaté au moment d'un repli est enregistré tel quel (position réduite, `maker_or_taker="maker"`) plutôt que complété par un second ordre au marché. Le stop-loss n'est posé qu'une fois l'entrée effectivement remplie. Si `maker_entry_enabled` vaut `false`, la Phase 5 repasse en BUY MARKET direct (comportement historique). Son état (`maker_watcher_state.json`) est mis à jour à chaque tick.
 
 ---
 
