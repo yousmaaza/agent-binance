@@ -157,7 +157,7 @@ class TestBackfillIntegration(unittest.TestCase):
             "trade_id": "T1", "status": "closed", "coin": "ETH",
             "entry_price": 1000.0, "exit_price": 1100.0, "quantity": 0.1,
             "date": "2026-07-05T00:00:00+00:00", "exit_date": "2026-07-05T01:00:00+00:00",
-            "fees_usdc": 1.0,
+            "entry_fee_usdc": 0.4, "exit_fee_usdc": 0.44, "fees_usdc": 1.0,
         }]
         _updated, stats, _incoherent = backfill_fees.backfill(history, fills=[], force=False)
         self.assertEqual(stats["trades_skipped_already_done"], 1)
@@ -168,6 +168,75 @@ class TestBackfillIntegration(unittest.TestCase):
         _updated, stats, _incoherent = backfill_fees.backfill(history, fills=[], force=False)
         self.assertEqual(stats["trades_skipped_not_closed"], 1)
         self.assertEqual(stats["trades_updated"], 0)
+
+    def test_open_trade_gets_entry_fee_backfilled_without_touching_close_fields(self):
+        """Position encore ouverte (#409) : entry_fee_usdc complété via entry_order_id, aucun
+        champ de clôture ajouté ni touché."""
+        history = [{
+            "trade_id": "T1", "status": "open", "coin": "ADA",
+            "entry_order_id": "OQKXXW-XKE6E-SGWX5E", "entry_price": 0.231, "quantity": 578.5,
+            "date": "2026-08-22T08:05:53.786221+00:00",
+            "exit_price": None, "exit_date": None, "pnl_usdc": None, "pnl_pct": None,
+        }]
+        fills = [_fill("T_ENTRY", ordertxid="OQKXXW-XKE6E-SGWX5E", fee="0.53")]
+        updated, stats, _incoherent = backfill_fees.backfill(history, fills, force=False)
+
+        pos = updated[0]
+        self.assertAlmostEqual(pos["entry_fee_usdc"], 0.53)
+        self.assertEqual(stats["open_entries_backfilled"], 1)
+        self.assertEqual(stats["trades_updated"], 0)
+        self.assertIsNone(pos["exit_price"])
+        self.assertIsNone(pos["exit_date"])
+        self.assertIsNone(pos["pnl_usdc"])
+        self.assertNotIn("exit_fee_usdc", pos)
+        self.assertNotIn("fees_usdc", pos)
+
+    def test_open_trade_with_entry_fee_already_set_skipped_without_force(self):
+        history = [{
+            "trade_id": "T1", "status": "open", "coin": "ADA",
+            "entry_order_id": "OQKXXW-XKE6E-SGWX5E", "entry_fee_usdc": 0.53,
+        }]
+        fills = [_fill("T_ENTRY", ordertxid="OQKXXW-XKE6E-SGWX5E", fee="9.9")]
+        updated, stats, _incoherent = backfill_fees.backfill(history, fills, force=False)
+        self.assertAlmostEqual(updated[0]["entry_fee_usdc"], 0.53)
+        self.assertEqual(stats["trades_skipped_already_done"], 1)
+        self.assertEqual(stats["open_entries_backfilled"], 0)
+
+    def test_closed_trade_missing_entry_fee_with_exit_fee_present_recomputes_net_pnl(self):
+        """Trade déjà clôturé (XBT 616ab13c / LINK e3004b5a en prod, #409) : exit_fee_usdc déjà
+        capté en direct à la vente, entry_fee_usdc manquant -> complété puis fees_usdc/pnl_usdc
+        recalculés via compute_net_pnl(), sans re-matcher l'exit."""
+        history = [{
+            "trade_id": "616ab13c", "status": "closed", "coin": "XBT",
+            "entry_order_id": "OYVOET-YMRY4-GAPIRI",
+            "entry_price": 76869.74327860148, "exit_price": 77285.73053733267,
+            "quantity": 0.00026371,
+            "date": "2026-08-21T08:14:47.446031+00:00",
+            "exit_date": "2026-08-22T18:16:54.571325+00:00",
+            "pnl_usdc": -0.012589999999999504, "pnl_pct": -0.0621,
+            "exit_fee_usdc": 0.12229, "fees_usdc": 0.12229,
+            "pnl_gross_usdc": 0.10970000000000049, "pnl_gross_pct": 0.5412,
+            "close_reason": "signal_sell_score2",
+        }]
+        fills = [
+            _fill("T_ENTRY", ordertxid="OYVOET-YMRY4-GAPIRI", fee="0.03"),
+            # Fill de sortie volontairement présent mais non consommé : l'exit_fee_usdc déjà stocké
+            # doit être réutilisé tel quel, jamais re-matché.
+            _fill("T_EXIT", pair="XBTUSDC", type_="sell", vol="0.00026371", fee="9.9",
+                  time=1755892614.571325),
+        ]
+        updated, stats, incoherent = backfill_fees.backfill(history, fills, force=False)
+
+        pos = updated[0]
+        self.assertEqual(incoherent, [])
+        self.assertAlmostEqual(pos["entry_fee_usdc"], 0.03)
+        self.assertAlmostEqual(pos["exit_fee_usdc"], 0.12229)  # inchangé, pas re-matché
+        self.assertAlmostEqual(pos["fees_usdc"], 0.15229)
+        self.assertAlmostEqual(pos["pnl_gross_usdc"], 0.1097, places=4)
+        self.assertAlmostEqual(pos["pnl_usdc"], 0.1097 - 0.15229, places=4)
+        self.assertFalse(pos["fees_estimated"])
+        self.assertEqual(stats["trades_updated"], 1)
+        self.assertEqual(stats["entries_measured"], 1)
 
 
 class TestBackfillCoherenceGuard(unittest.TestCase):
