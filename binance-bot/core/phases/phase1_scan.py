@@ -22,7 +22,7 @@ import json
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _load_config  # noqa: E402
+from core.trade_helpers import binance, _load_config
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
