@@ -2,6 +2,8 @@
 
 Journal des décisions, incidents et contexte non triviaux — complète `CLAUDE.md` (qui contient les règles) sans le dupliquer. Contrairement à `CLAUDE.md`, ce fichier n'est pas forcément chargé automatiquement par tous les agents/outils : à consulter en cas de doute sur l'historique d'une décision, ou avant de re-proposer quelque chose qui a peut-être déjà été essayé.
 
+> **Mémoire thématique** : ce fichier est un journal *chronologique*. Pour le contexte organisé *par sujet* — frais Kraken, sémantique du PnL net, ratio gain/risque réel, stratégie maker, filtre de liquidité, contrat prompts ↔ scripts, vérification du travail des agents — voir **[`memory/`](memory/README.md)**. À lire avant de toucher au calcul d'un coût, d'un TP, d'un stop ou d'un filtre d'univers.
+
 ## 2026-07-24 — Bascule production sur VPS (Hostinger)
 
 Le bot tourne désormais en continu sur une VPS Hostinger dédiée (via systemd), plus sur le Mac de l'utilisateur — qui reste l'environnement de développement uniquement. Guide de déploiement reproductible : `deploy/README.md`.
