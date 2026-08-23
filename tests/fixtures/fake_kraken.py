@@ -38,6 +38,57 @@ def _positional_args(args):
     return [a for a in args if not a.startswith("-") and a != "json"]
 
 
+def _handle_ticker(scenario, args):
+    pairs = _positional_args(args)
+    data = scenario.get("ticker", {})
+    result = {p: data[p] for p in pairs if p in data} if pairs else data
+    print(json.dumps(result))
+
+
+def _handle_balance(scenario, args):
+    print(json.dumps(scenario.get("balance", {})))
+
+
+def _handle_pairs(scenario, args):
+    data = scenario.get("pairs", {})
+    if "--pair" in args:
+        pair = args[args.index("--pair") + 1]
+        data = {pair: data[pair]} if pair in data else {}
+    print(json.dumps(data))
+
+
+def _handle_ohlc(scenario, args):
+    pair = args[0] if args else ""
+    data = scenario.get("ohlc", {})
+    result = {pair: data[pair]} if pair in data else {}
+    print(json.dumps(result))
+
+
+def _handle_order(scenario, args):
+    sub = args[0] if args else ""
+    if sub == "amend":
+        txid = args[args.index("--txid") + 1] if "--txid" in args else ""
+        key = f"order_amend_{txid}"
+        print(json.dumps(scenario.get(key, {})))
+    elif sub == "cancel":
+        txid = args[1] if len(args) > 1 else ""
+        key = f"order_cancel_{txid}"
+        print(json.dumps(scenario.get(key, {})))
+    else:
+        pair = args[1] if len(args) > 1 else ""
+        order_type = args[args.index("--type") + 1] if "--type" in args else ""
+        typed_key = f"order_{sub}_{pair}_{order_type}"
+        plain_key = f"order_{sub}_{pair}"
+        result = scenario[typed_key] if typed_key in scenario else scenario.get(plain_key, {})
+        print(json.dumps(result))
+
+
+def _handle_query_orders(scenario, args):
+    txid = args[0] if args else ""
+    key = f"query-orders_{txid}"
+    print(json.dumps(scenario.get(key, {})))
+
+
 def main():
     argv = sys.argv[1:]
     if not argv:
@@ -46,46 +97,20 @@ def main():
 
     scenario = _load_scenario()
     cmd = argv[0]
+    args = argv[1:]
 
-    if cmd == "ticker":
-        pairs = _positional_args(argv[1:])
-        data = scenario.get("ticker", {})
-        result = {p: data[p] for p in pairs if p in data} if pairs else data
-        print(json.dumps(result))
-    elif cmd == "balance":
-        print(json.dumps(scenario.get("balance", {})))
-    elif cmd == "pairs":
-        data = scenario.get("pairs", {})
-        if "--pair" in argv:
-            pair = argv[argv.index("--pair") + 1]
-            data = {pair: data[pair]} if pair in data else {}
-        print(json.dumps(data))
-    elif cmd == "ohlc":
-        pair = argv[1] if len(argv) > 1 else ""
-        data = scenario.get("ohlc", {})
-        result = {pair: data[pair]} if pair in data else {}
-        print(json.dumps(result))
-    elif cmd == "order":
-        sub = argv[1] if len(argv) > 1 else ""
-        if sub == "amend":
-            txid = argv[argv.index("--txid") + 1] if "--txid" in argv else ""
-            key = f"order_amend_{txid}"
-            print(json.dumps(scenario.get(key, {})))
-        elif sub == "cancel":
-            txid = argv[2] if len(argv) > 2 else ""
-            key = f"order_cancel_{txid}"
-            print(json.dumps(scenario.get(key, {})))
-        else:
-            pair = argv[2] if len(argv) > 2 else ""
-            order_type = argv[argv.index("--type") + 1] if "--type" in argv else ""
-            typed_key = f"order_{sub}_{pair}_{order_type}"
-            plain_key = f"order_{sub}_{pair}"
-            result = scenario[typed_key] if typed_key in scenario else scenario.get(plain_key, {})
-            print(json.dumps(result))
-    elif cmd == "query-orders":
-        txid = argv[1] if len(argv) > 1 else ""
-        key = f"query-orders_{txid}"
-        print(json.dumps(scenario.get(key, {})))
+    handlers = {
+        "ticker": _handle_ticker,
+        "balance": _handle_balance,
+        "pairs": _handle_pairs,
+        "ohlc": _handle_ohlc,
+        "order": _handle_order,
+        "query-orders": _handle_query_orders,
+    }
+
+    handler = handlers.get(cmd)
+    if handler:
+        handler(scenario, args)
     else:
         print("{}")
 
