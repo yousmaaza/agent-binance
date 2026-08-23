@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-23 (PR #413) |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-23 (PR #425) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#425](pr-425-m1-tp-net-frais.md) | [M1] TP et dimensionnement net de frais | 2026-08-23 |
 | [#423](pr-423-test-coherence-prompt-script.md) | [TECH] Test de cohérence des contrats prompt / script | 2026-08-23 |
 | [#422](pr-422-phase6-fuseau.md) | [BUG] phase6_next_cycle.py duplique fmt_local et next_4h_slot | 2026-08-23 |
 | [#414](pr-414-filtre-liquidite.md) | [M1] Filtrer la liquidité sur le spread et sa persistance, pas un instantané | 2026-08-23 |
