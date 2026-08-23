@@ -11,6 +11,7 @@ pas ici).
 import json
 import os
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -289,6 +290,89 @@ class TestExternallyCanceledOrderWithZeroFillIsAbandoned(unittest.TestCase):
         self.assertEqual(saved_pending, [])
         self.assertFalse(fake_cli.calls_with("order", "buy"))
         self.assertFalse(fake_cli.calls_with("order", "cancel"))  # déjà terminé, pas de cancel à renvoyer
+
+
+class TestAbandonedOrderIncrementsPersistedCounter(unittest.TestCase):
+    """#408 : total_abandoned doit être propagé à _write_watcher_state, comme total_fills/fallbacks."""
+
+    def test_price_invalidation_abandon_propagates_abandoned_delta_of_one(self):
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"b": ["2000.0", "0.01"], "c": ["2100.0", "0.01"]},
+        })
+
+        with patch("core.maker_watcher.is_locked", return_value=False), \
+             patch("core.maker_watcher.acquire_lock"), \
+             patch("core.maker_watcher.release_lock"), \
+             patch("core.maker_watcher.send_telegram"), \
+             patch("core.maker_watcher._write_watcher_state") as mock_write_state, \
+             patch("core.maker_watcher.load_trade_history", return_value=[]), \
+             patch("core.maker_watcher.save_trade_history"), \
+             patch("core.maker_watcher.load_maker_pending_orders", return_value=[pending]), \
+             patch("core.maker_watcher.save_maker_pending_orders"), \
+             patch("core.maker_watcher._cli", side_effect=fake_cli):
+            maker_watcher._maker_watcher_tick(BASE_CONFIG)
+
+        mock_write_state.assert_called_once()
+        args = mock_write_state.call_args[0]
+        # (status, last_error, orders_checked, fills_delta, fallbacks_delta, abandoned_delta)
+        self.assertEqual(args[3], 0)
+        self.assertEqual(args[4], 0)
+        self.assertEqual(args[5], 1)
+
+    def test_externally_canceled_zero_fill_propagates_abandoned_delta_of_one(self):
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "canceled", "vol_exec": "0"},
+        })
+
+        with patch("core.maker_watcher.is_locked", return_value=False), \
+             patch("core.maker_watcher.acquire_lock"), \
+             patch("core.maker_watcher.release_lock"), \
+             patch("core.maker_watcher.send_telegram"), \
+             patch("core.maker_watcher._write_watcher_state") as mock_write_state, \
+             patch("core.maker_watcher.load_trade_history", return_value=[]), \
+             patch("core.maker_watcher.save_trade_history"), \
+             patch("core.maker_watcher.load_maker_pending_orders", return_value=[pending]), \
+             patch("core.maker_watcher.save_maker_pending_orders"), \
+             patch("core.maker_watcher._cli", side_effect=fake_cli):
+            maker_watcher._maker_watcher_tick(BASE_CONFIG)
+
+        args = mock_write_state.call_args[0]
+        self.assertEqual(args[5], 1)
+
+
+class TestWriteWatcherStateAbandonedCounter(unittest.TestCase):
+    """#408 : accumulation de total_abandoned, avec rétrocompatibilité sur un état sans le champ."""
+
+    def test_missing_field_in_previous_state_defaults_to_zero(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_path = os.path.join(tmp_dir, "maker_watcher_state.json")
+            with open(state_path, "w") as f:
+                json.dump({"total_ticks": 5, "total_fills": 2, "total_fallbacks": 1}, f)
+
+            with patch("core.maker_watcher._WATCHER_STATE_PATH", state_path):
+                maker_watcher._write_watcher_state("ok", None, 0, abandoned_delta=1)
+
+            with open(state_path) as f:
+                state = json.load(f)
+            self.assertEqual(state["total_abandoned"], 1)
+            self.assertEqual(state["total_fills"], 2)
+            self.assertEqual(state["total_fallbacks"], 1)
+
+    def test_abandoned_counter_accumulates_across_calls(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_path = os.path.join(tmp_dir, "maker_watcher_state.json")
+            with patch("core.maker_watcher._WATCHER_STATE_PATH", state_path):
+                maker_watcher._write_watcher_state("ok", None, 0, abandoned_delta=1)
+                maker_watcher._write_watcher_state("ok", None, 0, abandoned_delta=1)
+                maker_watcher._write_watcher_state("ok", None, 0)
+
+            with open(state_path) as f:
+                state = json.load(f)
+            self.assertEqual(state["total_abandoned"], 2)
+            self.assertEqual(state["total_ticks"], 3)
 
 
 if __name__ == "__main__":
