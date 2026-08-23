@@ -191,7 +191,9 @@ try:
     _save_trade_history_atomic(history)
     retried = len(unprotected)
     print(f"PHASE0_OCO_DONE|retried={retried}")
-    out_path = f"/tmp/cycle_{CYCLE_ID}_phase0_oco_retry_output.json"
+    # Chemin fixe volontaire (contrat avec prompts/phases/phase0_snapshot.txt) : neutralisation
+    # bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+    out_path = f"/tmp/cycle_{CYCLE_ID}_phase0_oco_retry_output.json"  # nosec B108
     with open(out_path, "w") as f:
         json.dump({"retried": retried}, f)
 

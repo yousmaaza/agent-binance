@@ -62,7 +62,9 @@ try:
 
     open_positions = len(open_positions_list)
     print(f"PHASE0_SNAPSHOT_DONE|open_positions={open_positions}|positions_value={positions_value:.2f}")
-    with open(f"/tmp/cycle_{CYCLE_ID}_phase0_snapshot_output.json", "w") as f:
+    # Chemin fixe volontaire (contrat avec prompts/phases/phase0_snapshot.txt) : neutralisation
+    # bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+    with open(f"/tmp/cycle_{CYCLE_ID}_phase0_snapshot_output.json", "w") as f:  # nosec B108
         json.dump({"open_positions": open_positions, "positions_value": positions_value}, f)
 
 except Exception as e:

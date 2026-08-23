@@ -130,5 +130,7 @@ if ts_updates:
 
 updated = len(ts_updates)
 print(f"PHASE0_TS_DONE|updated={updated}")
-with open(f"/tmp/cycle_{CYCLE_ID}_phase0_trailing_stop_output.json", "w") as f:
+# Chemin fixe volontaire (contrat avec prompts/phases/phase0_snapshot.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+with open(f"/tmp/cycle_{CYCLE_ID}_phase0_trailing_stop_output.json", "w") as f:  # nosec B108
     json.dump({"updated": updated}, f)

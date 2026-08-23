@@ -46,7 +46,9 @@ from core.trade_helpers import (  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
-in_path = f"/tmp/cycle_{CYCLE_ID}_phase5_input.json"
+# Chemin fixe volontaire (contrat avec prompts/phases/phase5_execution.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+in_path = f"/tmp/cycle_{CYCLE_ID}_phase5_input.json"  # nosec B108
 with open(in_path) as f:
     inp = json.load(f)
 
@@ -325,10 +327,12 @@ out = {
     "orders_executed": orders_executed,
     "orders_skipped_detail": orders_skipped_detail,
 }
-# Écriture atomique (bandit B108) : le contenu final atterrit bien sur le chemin fixe
+# Écriture atomique : le contenu final atterrit bien sur le chemin fixe
 # /tmp/cycle_{CYCLE_ID}_phase5_output.json attendu par le prompt (phase5_execution.txt) et donc
 # par les phases 6-8 — seule l'écriture transite par un fichier temporaire non-prévisible.
-out_path = f"/tmp/cycle_{CYCLE_ID}_phase5_output.json"
+# Chemin fixe volontaire (contrat prompt) : neutralisation bandit temporaire, à lever avec le
+# déplacement /tmp -> state/ (#392, #403)
+out_path = f"/tmp/cycle_{CYCLE_ID}_phase5_output.json"  # nosec B108
 fd, tmp_out_path = tempfile.mkstemp(prefix=f"cycle_{CYCLE_ID}_phase5_output_", suffix=".json")
 with os.fdopen(fd, "w") as f:
     json.dump(out, f)
