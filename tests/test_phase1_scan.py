@@ -103,7 +103,7 @@ class TestSpreadFilter(unittest.TestCase):
     def test_wide_spread_excluded_narrow_spread_included(self):
         pairs_data = {"WIDEUSDC": {}, "OKUSDC": {}}
         ticker_data = {
-            # 20000*100 = 2M >= seuil, spread (100.13-100)/100.13 ≈ 0,13 % > 0,05 % défaut
+            # 20000*100 = 2M >= seuil, spread (100.13-100)/100.13 ≈ 0,13 % > 0,08 % défaut
             "WIDEUSDC": _ticker(100.0, 20000, ask=100.13, bid=100.0),
             "OKUSDC": _ticker(100.0, 20000, ask=100.01, bid=100.0),  # spread ≈ 0,01 %
         }
@@ -146,7 +146,7 @@ class TestPortfolioCoinsAlwaysIncluded(unittest.TestCase):
 
     def test_portfolio_coin_included_despite_low_volume_and_wide_spread(self):
         pairs_data = {"SUIUSDC": {}}
-        # vol 50*1 = 50 << seuil, spread (1.2-1.0)/1.2 ≈ 17 % >> 0,05 % défaut
+        # vol 50*1 = 50 << seuil, spread (1.2-1.0)/1.2 ≈ 17 % >> 0,08 % défaut
         ticker_data = {"SUIUSDC": _ticker(1.0, 50, ask=1.2, bid=1.0)}
         config = {"min_volume_usdc": 1_000_000, "portfolio_coins": ["SUI"]}
         output, _ = _run_phase1_scan(pairs_data, ticker_data, config)

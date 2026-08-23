@@ -37,7 +37,7 @@ TV_MAP = {
 
 cfg = _load_config()
 MIN_VOLUME_USDC = cfg.get("min_volume_usdc", 1_000_000)
-MAX_SPREAD_PCT = cfg.get("max_spread_pct", 0.0005)
+MAX_SPREAD_PCT = cfg.get("max_spread_pct", 0.0008)
 VOLUME_PERSISTENCE_PERIODS = cfg.get("volume_persistence_periods", 6)
 portfolio_coins = set(cfg.get("portfolio_coins", []))
 
