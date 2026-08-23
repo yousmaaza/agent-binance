@@ -11,7 +11,7 @@ Chemin du scénario lu depuis la variable d'env FAKE_KRAKEN_SCENARIO. Format :
   "query-orders_TXID123": {"TXID123": {"status": "closed", "cost": "190.0", "vol_exec": "0.1"}}
 }
 
-Sous-commandes supportées : ticker, balance, pairs, order buy, order sell, order amend,
+Sous-commandes supportées : ticker, balance, pairs, ohlc, order buy, order sell, order amend,
 order cancel, query-orders.
 
 Pour `order buy`/`order sell`, la clé cherchée est d'abord `order_<sub>_<pair>_<type>` (ex.
@@ -60,6 +60,11 @@ def main():
             pair = argv[argv.index("--pair") + 1]
             data = {pair: data[pair]} if pair in data else {}
         print(json.dumps(data))
+    elif cmd == "ohlc":
+        pair = argv[1] if len(argv) > 1 else ""
+        data = scenario.get("ohlc", {})
+        result = {pair: data[pair]} if pair in data else {}
+        print(json.dumps(result))
     elif cmd == "order":
         sub = argv[1] if len(argv) > 1 else ""
         if sub == "amend":

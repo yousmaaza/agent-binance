@@ -28,6 +28,8 @@
   "max_open_positions": 4,
   "universe_scan_top_n": 20,
   "min_volume_usdc": 500000,
+  "max_spread_pct": 0.0005,
+  "volume_persistence_periods": 6,
 
   "min_profit_pct_take": 5.0,
   "max_hold_days": 14,
