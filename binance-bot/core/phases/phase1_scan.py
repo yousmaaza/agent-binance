@@ -118,6 +118,6 @@ coins_str = ",".join(c["coin"] for c in tradable)
 print(f"PHASE1_SCAN_DONE|tradable={len(tradable)}|coins={coins_str}")
 
 out = {"tradable": tradable, "non_tradable": non_tradable}
-out_path = os.path.join(tempfile.gettempdir(), f"cycle_{CYCLE_ID}_phase1_output.json")
+out_path = os.path.join(tempfile.gettempdir(), f"cycle_{CYCLE_ID}_phase1_output.json")  # contract-dynamic: gettempdir() == /tmp sur macOS/Linux, dépendance implicite non littérale (#414, #403)
 with open(out_path, "w") as f:
     json.dump(out, f)
