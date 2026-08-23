@@ -104,6 +104,50 @@ class TestProfitTargetNetOfFees(unittest.TestCase):
         self.assertAlmostEqual(pos["exit_fee_usdc"], 0.7)
 
 
+class TestProfitTargetEvaluatedNet(unittest.TestCase):
+    """Le seuil min_profit_pct_take est évalué sur un pourcentage NET (frais de sortie estimés
+    déduits), pas brut (#411) : un profit latent brut au-dessus du seuil mais net en-dessous ne
+    doit pas déclencher la clôture."""
+
+    def test_gross_above_threshold_but_net_below_does_not_close(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": "1000",
+             "quantity": "1"},
+        ]
+        # +5.5% brut > seuil 5%, mais net estimé = 5.5% - fee_round_trip_pct(0.9%) = 4.6% < 5%
+        kraken_scenario = {"ticker": {"ETHUSDC": {"c": ["1055.0", "0.01"]}}}
+        output, mock_tg, mock_save = _run_phase0_profit(
+            history_data,
+            config={"min_profit_pct_take": 5.0, "fee_round_trip_pct": 0.009},
+            kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 0)
+        mock_save.assert_not_called()
+        mock_tg.assert_not_called()
+
+    def test_net_above_threshold_closes(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": "1000",
+             "quantity": "1"},
+        ]
+        # +6% brut, net estimé = 6% - 0.9% = 5.1% >= seuil 5%
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1060.0", "0.01"]}},
+            "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
+            "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "1060.0", "vol_exec": "1.0"}},
+        }
+        output, mock_tg, mock_save = _run_phase0_profit(
+            history_data,
+            config={"min_profit_pct_take": 5.0, "fee_round_trip_pct": 0.009},
+            kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        mock_save.assert_called()
+        mock_tg.assert_called()
+
+
 class TestProfitBelowThresholdNoAction(unittest.TestCase):
     def test_position_untouched_when_profit_below_threshold(self):
         history_data = [

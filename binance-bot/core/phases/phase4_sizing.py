@@ -39,9 +39,12 @@ cfg = inp.get("config") or _load_config()
 
 risk_per_trade_pct = cfg.get("risk_per_trade_pct", 0.01)
 atr_stop_multiplier = cfg.get("atr_stop_multiplier", 2)
-# reward_risk_ratio : chargé depuis config.json, détermine le rapport TP/SL
-# Si absent : défaut 2. Affecte le calcul du prix_tp en phase 4 (ligne 57)
-reward_risk_ratio = cfg.get("reward_risk_ratio", 2)
+# reward_risk_ratio : chargé depuis config.json, détermine le rapport TP/SL, net de frais (#411)
+# Si absent : défaut 1.5. Affecte le calcul du prix_tp en phase 4 (ligne ~62)
+reward_risk_ratio = cfg.get("reward_risk_ratio", 1.5)
+# fee_round_trip_pct : estimation du coût aller-retour (entrée+sortie), utilisée pour que le TP
+# et le dimensionnement reflètent le gain/perte réel net plutôt que brut (#411)
+fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
 limit_offset_pct = cfg.get("limit_offset_pct", 0.001)
 min_order_usdc = cfg.get("min_order_usdc", 9)
 max_single_position_pct = cfg.get("max_single_position_pct", 0.3)
@@ -58,15 +61,17 @@ for candidate in buy_candidates:
     stop_distance_pct = atr_pct * atr_stop_multiplier
     prix_entry = prix_actuel * (1 - limit_offset_pct)
     prix_stop = prix_entry * (1 - stop_distance_pct)
-    # TP smart : basé sur reward_risk_ratio (config.json). TP = Entry * (1 + SL_distance * ratio)
-    prix_tp = prix_entry * (1 + stop_distance_pct * reward_risk_ratio)
+    # TP net de frais (#411) : le gain net vise reward_risk_ratio × la perte nette (stop + frais)
+    prix_tp = prix_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
 
     if prix_stop <= 0:
         skipped.append({"coin": coin, "reason": "prix_stop négatif (volatilité extrême)"})
         continue
 
     if stop_distance_pct > 0:
-        quantite = risk_usdc / (prix_entry * stop_distance_pct)
+        # Perte réelle = distance stop + frais aller-retour (#411) : la quantité doit rentrer
+        # dans le budget de risque une fois les frais comptés, pas seulement le glissement au stop.
+        quantite = risk_usdc / (prix_entry * (stop_distance_pct + fee_round_trip_pct))
     else:
         skipped.append({"coin": coin, "reason": "stop_distance_pct nul"})
         continue

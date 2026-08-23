@@ -56,7 +56,9 @@ ordres_prepares = inp.get("ordres_prepares", [])
 cfg = inp.get("config") or _load_config()
 
 price_deviation_max_pct = cfg.get("price_deviation_max_pct", 0.02)
-reward_risk_ratio = cfg.get("reward_risk_ratio", 2)
+reward_risk_ratio = cfg.get("reward_risk_ratio", 1.5)
+# fee_round_trip_pct : estimation du coût aller-retour, pour un TP net de frais (#411)
+fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
 maker_entry_enabled = cfg.get("maker_entry_enabled", True)
 
 with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
@@ -124,6 +126,7 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
                     "risk_usdc": risk_usdc,
                     "stop_distance_pct": stop_distance_pct,
                     "reward_risk_ratio": reward_risk_ratio,
+                    "fee_round_trip_pct": fee_round_trip_pct,
                     "score": score,
                     "scan_price": prix_entry,
                     "initial_limit_price": maker_limit_price,
@@ -177,7 +180,8 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
         prix_post_fill = float(json.loads(ticker_raw2).get(f"{coin}USDC", {}).get("c", [0])[0])
 
         actual_stop = actual_entry * (1 - stop_distance_pct)
-        actual_tp = actual_entry * (1 + stop_distance_pct * reward_risk_ratio)
+        # TP net de frais (#411) : le gain net vise reward_risk_ratio × la perte nette (stop + frais)
+        actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
 
         if prix_post_fill >= actual_tp:
             sell_raw = binance("order", "sell", f"{coin}USDC", str(actual_qty), "--type", "market", "-o", "json", "--yes")

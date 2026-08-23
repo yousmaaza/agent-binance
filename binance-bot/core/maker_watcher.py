@@ -121,10 +121,13 @@ def _register_open_position(pending: dict, entry_txid: str, actual_qty: float, a
                              entry_fee_usdc: float, maker_or_taker: str, history: list) -> None:
     coin = pending["coin"]
     pair = pending["pair"]
-    reward_risk_ratio = pending.get("reward_risk_ratio", 2)
+    reward_risk_ratio = pending.get("reward_risk_ratio", 1.5)
+    # fee_round_trip_pct : posé sur l'ordre pending par phase5_execution.py, pour un TP net de
+    # frais identique aux autres emplacements de calcul (#411)
+    fee_round_trip_pct = pending.get("fee_round_trip_pct", 0.009)
     stop_distance_pct = pending["stop_distance_pct"]
     actual_stop = actual_entry * (1 - stop_distance_pct)
-    actual_tp = actual_entry * (1 + stop_distance_pct * reward_risk_ratio)
+    actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
 
     sl_txid, protection_failed, sl_err_msg, actual_stop_rounded = _place_stop_loss(pair, actual_qty, actual_stop)
     if protection_failed:

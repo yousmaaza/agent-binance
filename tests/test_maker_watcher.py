@@ -38,6 +38,7 @@ def _pending(**overrides):
         "risk_usdc": 20.0,
         "stop_distance_pct": 0.05,
         "reward_risk_ratio": 2,
+        "fee_round_trip_pct": 0.009,
         "score": 8,
         "scan_price": 2000.0,
         "initial_limit_price": 1999.5,
@@ -133,6 +134,26 @@ class TestOrderFilledRegistersPositionAndPlacesStopLoss(unittest.TestCase):
         self.assertIsNotNone(pos["maker_fill_seconds"])
         self.assertGreaterEqual(pos["maker_fill_seconds"], 45)
         self.assertLess(pos["maker_fill_seconds"], 60)
+        # TP net de frais (#411) : 2000*(1+(0.05+0.009)*2+0.009) = 2254.0
+        self.assertAlmostEqual(pos["tp_price"], 2254.0, places=6)
+
+
+class TestTpCalculationNetOfFees(unittest.TestCase):
+    """actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio
+    + fee_round_trip_pct) — même formule que phase4_sizing.py et phase5_execution.py (#411)."""
+
+    def test_tp_price_integrates_fee_round_trip_pct_from_pending(self):
+        pending = _pending(stop_distance_pct=0.03, reward_risk_ratio=1.5, fee_round_trip_pct=0.009)
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
+            "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX1"]},
+        })
+
+        history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
+
+        # actual_entry = 200/0.1 = 2000 -> tp_price = 2000*(1+(0.03+0.009)*1.5+0.009) = 2135.0
+        self.assertAlmostEqual(history[0]["tp_price"], 2135.0, places=6)
 
 
 class TestBudgetExhaustedTriggersMarketFallback(unittest.TestCase):

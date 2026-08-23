@@ -25,7 +25,9 @@ PHASE5_EXECUTION_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases
 
 # maker_entry_enabled=False : ces tests couvrent le flux legacy BUY MARKET, pas la nouvelle
 # entrée maker LIMIT post-only (#388) — voir tests/test_phase5_execution_maker.py pour celle-ci.
-DEFAULT_CONFIG = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2, "maker_entry_enabled": False}
+# fee_round_trip_pct=0 : frais neutralisés par défaut, isole ces tests des formules nettes (#411).
+DEFAULT_CONFIG = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2, "fee_round_trip_pct": 0,
+                   "maker_entry_enabled": False}
 
 BASE_ORDER = {
     "coin": "ETH",
@@ -172,7 +174,7 @@ class TestImmediateCloseWhenPriceAboveTpAtFill(unittest.TestCase):
 
     def test_position_closed_at_market_when_price_already_above_recalculated_tp(self):
         order = dict(BASE_ORDER, stop_distance_pct=0.01)
-        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "maker_entry_enabled": False}
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "fee_round_trip_pct": 0, "maker_entry_enabled": False}
         kraken_scenario = {
             # actual_entry=2000 (200/0.1) -> actual_tp = 2000*(1+0.01*1) = 2020
             # ticker à 2020 : drift = 1% (< 2%, passe le check) ET prix_post_fill >= actual_tp
@@ -198,6 +200,35 @@ class TestImmediateCloseWhenPriceAboveTpAtFill(unittest.TestCase):
         self.assertEqual(pos["close_reason"], "market_above_tp_at_fill")
         self.assertAlmostEqual(pos["exit_price"], 2020.0)
         self.assertAlmostEqual(pos["pnl_usdc"], 2.0, places=6)
+
+
+class TestTpCalculationNetOfFees(unittest.TestCase):
+    """actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio
+    + fee_round_trip_pct) — même formule que phase4_sizing.py et maker_watcher.py (#411)."""
+
+    def test_actual_tp_integrates_fee_round_trip_pct(self):
+        order = dict(BASE_ORDER, stop_distance_pct=0.03)
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1.5, "fee_round_trip_pct": 0.009,
+                   "maker_entry_enabled": False}
+        kraken_scenario = {
+            # actual_entry = 200/0.1 = 2000 -> actual_tp = 2000*(1+(0.03+0.009)*1.5+0.009) = 2135.0
+            # ticker sous ce TP pour rester en position ouverte plutôt que clôturée au fill.
+            "ticker": {"ETHUSDC": {"c": ["2000.0", "0.01"]}},
+            "balance": {"USDC": "500.0"},
+            "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
+            "query-orders_BUYTX1": {"BUYTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1"}},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC": {"txid": ["SLTX1"]},
+        }
+        output, _mock_tg, mock_save, saved_history = _run_phase5_execution(
+            [order], config=config, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["executed"], 1)
+        executed = output["orders_executed"][0]
+        self.assertAlmostEqual(executed["actual_tp"], 2135.0, places=6)
+        mock_save.assert_called_once()
+        self.assertAlmostEqual(saved_history[0]["tp_price"], 2135.0, places=6)
 
 
 class TestEntryFeeCapturedFromFill(unittest.TestCase):
@@ -229,7 +260,7 @@ class TestNetPnlOnImmediateCloseAtFill(unittest.TestCase):
 
     def test_pnl_usdc_net_of_entry_and_exit_fees(self):
         order = dict(BASE_ORDER, stop_distance_pct=0.01)
-        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "maker_entry_enabled": False}
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "fee_round_trip_pct": 0, "maker_entry_enabled": False}
         kraken_scenario = {
             # actual_entry=2000 (200/0.1) -> actual_tp = 2000*(1+0.01*1) = 2020
             "ticker": {"ETHUSDC": {"c": ["2020.0", "0.01"]}},
@@ -264,7 +295,7 @@ class TestNetPnlSignInvariantWhenFeesFlipSign(unittest.TestCase):
 
     def test_pnl_pct_and_pnl_usdc_share_sign_when_fees_exceed_gross_gain(self):
         order = dict(BASE_ORDER, stop_distance_pct=0.01)
-        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "maker_entry_enabled": False}
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1, "fee_round_trip_pct": 0, "maker_entry_enabled": False}
         kraken_scenario = {
             # actual_entry=2000 (200/0.1) -> actual_tp = 2020 ; gross = (2020-2000)*0.1 = 2.0 (positif)
             "ticker": {"ETHUSDC": {"c": ["2020.0", "0.01"]}},
