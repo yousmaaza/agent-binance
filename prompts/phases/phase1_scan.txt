@@ -7,10 +7,13 @@ Univers de candidats : récupère toutes les paires USDC disponibles sur Kraken 
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase1_scan.py __CYCLE_ID__
 
 Ce script appelle `kraken pairs -o json` pour lister les paires USDC, calcule le volume 24h
-de chacune via `kraken ticker` (batches de 10 paires), et retourne uniquement les coins
-au-dessus du seuil min_volume_usdc (config.json, défaut 1M USDC).
+et le spread de chacune via `kraken ticker` (batches de 10 paires), et ne retient que les
+coins au-dessus du seuil min_volume_usdc, en-dessous du seuil max_spread_pct, et dont le
+volume tient sur plusieurs périodes consécutives (`kraken ohlc`, vérifié uniquement sur les
+candidats déjà filtrés volume+spread) — un pic isolé ne suffit plus (config.json).
 Les coins de portfolio_coins (XBT, XRP, SOL — cf. config.json) sont toujours inclus même si
-leur volume est sous le seuil — rôle de fallback garanti pour les positions déjà ouvertes.
+leur volume est sous le seuil ou leur spread au-dessus — rôle de fallback garanti pour les
+positions déjà ouvertes.
 
 Lis le fichier /tmp/cycle___CYCLE_ID___phase1_output.json. Ce fichier contient un OBJET JSON racine
 (un dict, pas une liste) avec exactement deux clés : {"tradable": [...], "non_tradable": [...]}.
