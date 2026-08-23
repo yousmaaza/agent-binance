@@ -9,18 +9,16 @@ Output : /tmp/cycle_{CYCLE_ID}_phase6_next_output.json
 import sys
 import os
 import json
-import datetime
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
+
+from core.timing import fmt_local, next_4h_slot  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
-now = datetime.datetime.now(datetime.timezone.utc)
-slot_h = (now.hour // 4) * 4
-next_slot = now.replace(hour=slot_h, minute=5, second=0, microsecond=0)
-if next_slot <= now:
-    next_slot += datetime.timedelta(hours=4)
-next_str = next_slot.astimezone().strftime("%d/%m %H:%M") + " (heure locale)"
+next_slot = next_4h_slot()
+next_str = fmt_local(next_slot)
 
 print(f"PHASE6_NEXT_CYCLE_DONE|next={next_str}")
 with open(f"/tmp/cycle_{CYCLE_ID}_phase6_next_output.json", "w") as f:
