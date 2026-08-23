@@ -97,6 +97,8 @@ if profit_summary:
 
 closed = len(profit_summary)
 print(f"PHASE0_PROFIT_DONE|closed={closed}")
-out_path = f"/tmp/cycle_{CYCLE_ID}_phase0_profit_output.json"
+# Chemin fixe volontaire (contrat avec prompts/phases/phase0_snapshot.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+out_path = f"/tmp/cycle_{CYCLE_ID}_phase0_profit_output.json"  # nosec B108
 with open(out_path, "w") as f:
     json.dump({"closed": closed}, f)

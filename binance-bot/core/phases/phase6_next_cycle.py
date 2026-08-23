@@ -21,5 +21,7 @@ next_slot = next_4h_slot()
 next_str = fmt_local(next_slot)
 
 print(f"PHASE6_NEXT_CYCLE_DONE|next={next_str}")
-with open(f"/tmp/cycle_{CYCLE_ID}_phase6_next_output.json", "w") as f:
+# Chemin fixe volontaire (contrat avec prompts/phases/phases6_8.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+with open(f"/tmp/cycle_{CYCLE_ID}_phase6_next_output.json", "w") as f:  # nosec B108
     json.dump({"next_str": next_str}, f)

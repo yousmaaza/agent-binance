@@ -19,7 +19,9 @@ from core.trade_helpers import tg  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
-in_path = f"/tmp/cycle_{CYCLE_ID}_phase7_input.json"
+# Chemin fixe volontaire (contrat avec prompts/phases/phases6_8.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+in_path = f"/tmp/cycle_{CYCLE_ID}_phase7_input.json"  # nosec B108
 with open(in_path) as f:
     inp = json.load(f)
 

@@ -29,7 +29,9 @@ from core.trade_helpers import tg, _load_config  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
-in_path = f"/tmp/cycle_{CYCLE_ID}_phase3_input.json"
+# Chemin fixe volontaire (contrat avec prompts/phases/phase3_scoring.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+in_path = f"/tmp/cycle_{CYCLE_ID}_phase3_input.json"  # nosec B108
 with open(in_path) as f:
     inp = json.load(f)
 
@@ -180,7 +182,9 @@ out = {
     "top_score": top_score,
     "N_buy": N_buy,
 }
-with open(f"/tmp/cycle_{CYCLE_ID}_phase3_output.json", "w") as f:
+# Chemin fixe volontaire (contrat avec prompts/phases/phase3_scoring.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+with open(f"/tmp/cycle_{CYCLE_ID}_phase3_output.json", "w") as f:  # nosec B108
     json.dump(out, f)
 
 print(f"PHASE3_DONE|N_buy={N_buy}|skipped={len(skip_coins_detail)}|top_score={top_score}")
