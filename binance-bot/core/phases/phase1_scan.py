@@ -13,12 +13,13 @@ Exécuté par Claude en Phase 1 :
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase1_scan.py __CYCLE_ID__
 
 Stdout : PHASE1_SCAN_DONE|tradable=N|coins=XBT,SOL,...
-Output : /tmp/cycle_{CYCLE_ID}_phase1_output.json
+Output : $TMPDIR/cycle_{CYCLE_ID}_phase1_output.json
 """
 import sys
 import os
 import json
 import subprocess
+import tempfile
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
@@ -117,5 +118,6 @@ coins_str = ",".join(c["coin"] for c in tradable)
 print(f"PHASE1_SCAN_DONE|tradable={len(tradable)}|coins={coins_str}")
 
 out = {"tradable": tradable, "non_tradable": non_tradable}
-with open(f"/tmp/cycle_{CYCLE_ID}_phase1_output.json", "w") as f:
+out_path = os.path.join(tempfile.gettempdir(), f"cycle_{CYCLE_ID}_phase1_output.json")
+with open(out_path, "w") as f:
     json.dump(out, f)

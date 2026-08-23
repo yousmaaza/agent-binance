@@ -11,6 +11,7 @@ Helpers partagés : voir tests/fixtures/test_harness.py.
 import contextlib
 import os
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -55,7 +56,7 @@ def _run_phase1_scan(pairs_data, ticker_data, config=None, ohlc_data=None):
     cycle_id = harness.new_cycle_id()
     scenario = {"pairs": pairs_data, "ticker": ticker_data, "ohlc": ohlc_data or {}}
     scenario_path = harness.write_kraken_scenario(scenario)
-    out_path = f"/tmp/cycle_{cycle_id}_phase1_output.json"
+    out_path = os.path.join(tempfile.gettempdir(), f"cycle_{cycle_id}_phase1_output.json")
     cfg = config if config is not None else DEFAULT_CONFIG
 
     old_env = harness.set_fake_kraken_env(scenario_path)
