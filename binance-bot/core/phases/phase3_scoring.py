@@ -84,7 +84,8 @@ for coin, data in analysis_results.items():
         reasons.append(f"1D {signal_1d}")
     elif signal_1d not in (None, "BUY", "STRONG_BUY"):
         reasons.append(f"1D {signal_1d}")
-    if rsi_4h is not None and rsi_zone_min <= rsi_4h <= rsi_zone_max:
+    rsi_in_zone = rsi_4h is not None and rsi_zone_min <= rsi_4h <= rsi_zone_max
+    if rsi_in_zone:
         score += 1
     elif rsi_4h is not None:
         reasons.append(f"RSI {rsi_4h:.0f} hors zone")
@@ -105,9 +106,20 @@ for coin, data in analysis_results.items():
 
     top_score = max(top_score, score)
 
+    # Mode dégradé : le RSI devient un garde-fou d'éligibilité (pas juste un bonus) —
+    # sans signal 1D, on n'achète pas un actif suracheté. RSI inconnu = inéligible aussi
+    # (deux inconnues ne se compensent pas).
+    degraded_rsi_block = all_rl and not rsi_in_zone
+
     if score >= effective_min_score and signal_4h in ("BUY", "STRONG_BUY"):
         if data.get("in_portfolio"):
             scores_detail[coin] = {"score": score, "decision": "HOLD", "skip_type": None, "reasons": reasons}
+        elif degraded_rsi_block:
+            skip_detail_str = ("RSI indisponible (mode dégradé)" if rsi_4h is None
+                                else f"RSI {rsi_4h:.0f} hors zone (mode dégradé)")
+            skip_coins_detail[coin] = {"skip_type": "TYPE_A", "skip_detail": skip_detail_str}
+            _reasons = reasons if rsi_4h is not None else reasons + [skip_detail_str]
+            scores_detail[coin] = {"score": score, "decision": "SKIP", "skip_type": "TYPE_A", "reasons": _reasons}
         elif open_positions + len(buy_candidates) >= max_open_positions:
             skip_detail_str = f"Positions max atteintes ({open_positions + len(buy_candidates)}/{max_open_positions})"
             skip_coins_detail[coin] = {"skip_type": "TYPE_A", "skip_detail": skip_detail_str}

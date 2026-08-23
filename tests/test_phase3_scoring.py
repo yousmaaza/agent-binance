@@ -144,6 +144,75 @@ class TestDegradedMode(unittest.TestCase):
         self.assertEqual(out["scores_detail"]["NOTRLCOIN"]["decision"], "SKIP")
 
 
+class TestDegradedModeRsiGuard(unittest.TestCase):
+    """Issue #406 : en mode dégradé, le RSI devient un garde-fou d'éligibilité BUY,
+    pas un simple bonus — régression incident TRUMP (score 4, RSI 70.4, stop touché)."""
+
+    def test_degraded_high_rsi_is_skipped_even_above_threshold(self):
+        analysis_results = {
+            "TRUMP": {
+                "signal_4h": "BUY",              # +2
+                "macd_bullish_4h": True,          # +1
+                "rsi_4h": 70.4,                   # hors zone [30, 65] -> pas de bonus, garde-fou
+                "signal_1d_rate_limited": True,
+            },
+        }
+        out = _run_phase3(analysis_results, top_gainers_symbols=["TRUMP"], config=DEFAULT_CONFIG)  # +1
+        detail = out["scores_detail"]["TRUMP"]
+        self.assertEqual(detail["score"], 4)
+        self.assertEqual(detail["decision"], "SKIP")
+        self.assertEqual(detail["skip_type"], "TYPE_A")
+        self.assertNotIn("TRUMP", [c["coin"] for c in out["buy_candidates"]])
+        self.assertIn("mode dégradé", out["skip_coins_detail"]["TRUMP"]["skip_detail"])
+
+    def test_degraded_healthy_rsi_stays_eligible(self):
+        analysis_results = {
+            "SANECOIN": {
+                "signal_4h": "BUY",              # +2
+                "macd_bullish_4h": True,          # +1
+                "rsi_4h": 45,                     # +1, dans zone [30, 65]
+                "signal_1d_rate_limited": True,
+            },
+        }
+        out = _run_phase3(analysis_results, config=DEFAULT_CONFIG)
+        detail = out["scores_detail"]["SANECOIN"]
+        self.assertEqual(detail["score"], 4)
+        self.assertEqual(detail["decision"], "BUY")
+        self.assertIn("SANECOIN", [c["coin"] for c in out["buy_candidates"]])
+
+    def test_degraded_unknown_rsi_is_skipped(self):
+        analysis_results = {
+            "NORSICOIN": {
+                "signal_4h": "BUY", "macd_bullish_4h": True,
+                "rsi_4h": None,
+                "signal_1d_rate_limited": True,
+            },
+        }
+        out = _run_phase3(analysis_results, top_gainers_symbols=["NORSICOIN"], config=DEFAULT_CONFIG)  # +1
+        detail = out["scores_detail"]["NORSICOIN"]
+        self.assertEqual(detail["score"], 4)
+        self.assertEqual(detail["decision"], "SKIP")
+        self.assertEqual(detail["skip_type"], "TYPE_A")
+        self.assertIn("indisponible", out["skip_coins_detail"]["NORSICOIN"]["skip_detail"])
+
+    def test_normal_mode_high_rsi_with_high_score_still_buys(self):
+        """Hors mode dégradé, le RSI reste un bonus (issue #380) — pas un garde-fou."""
+        analysis_results = {
+            "HOTCOIN": {
+                "signal_4h": "STRONG_BUY",        # +2
+                "signal_1d": "BUY",                # +2
+                "macd_bullish_4h": True,           # +1
+                "rsi_4h": 70.4,                    # hors zone, pas de bonus, mais pas bloquant
+                "signal_1d_rate_limited": False,
+            },
+        }
+        out = _run_phase3(analysis_results, sentiment="Bullish", config=DEFAULT_CONFIG)  # +1
+        detail = out["scores_detail"]["HOTCOIN"]
+        self.assertEqual(detail["score"], 6)
+        self.assertEqual(detail["decision"], "BUY")
+        self.assertIn("HOTCOIN", [c["coin"] for c in out["buy_candidates"]])
+
+
 class TestSignal4hRequired(unittest.TestCase):
     def test_high_score_without_4h_buy_never_gives_buy(self):
         analysis_results = {
