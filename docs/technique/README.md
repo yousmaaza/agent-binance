@@ -26,6 +26,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | PR | Titre | Date |
 |---|---|---|
 | [#413](pr-413-rsi-garde-fou.md) | [BUG] Durcir le RSI en garde-fou d'éligibilité en mode dégradé | 2026-08-23 |
+| [#412](pr-412-compter-abandons-watcher.md) | [M1] Compter les abandons du watcher maker | 2026-08-23 |
 | [#404](pr-404-commande-maker.md) | [M1] Commande Telegram /maker — suivi du watcher d'ordres maker | 2026-08-22 |
 | [#397](pr-397-m1-watcher-ordres-limite-maker-entrees.md) | [M1] Watcher d'ordres limite maker sur les entrées (stratégie B) | 2026-08-22 |
 | [#395](pr-395-fuseau-affichage-paris.md) | [BUG] Fuseau d'affichage explicite (heure locale réellement Paris) | 2026-08-22 |
