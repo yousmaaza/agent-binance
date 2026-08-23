@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#415](pr-415-frais-entree-manquants.md) | [BUG] Frais d'entrée manquants sur positions ouvertes et trades clôturés | 2026-08-23 |
 | [#413](pr-413-rsi-garde-fou.md) | [BUG] Durcir le RSI en garde-fou d'éligibilité en mode dégradé | 2026-08-23 |
 | [#412](pr-412-compter-abandons-watcher.md) | [M1] Compter les abandons du watcher maker | 2026-08-23 |
 | [#404](pr-404-commande-maker.md) | [M1] Commande Telegram /maker — suivi du watcher d'ordres maker | 2026-08-22 |
