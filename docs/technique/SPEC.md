@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-08-22 (PR #397)
+> **Dernière mise à jour** : 2026-08-23 (PR #413)
 > **Commit** : (HEAD)
 
 ---
@@ -342,6 +342,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#413](pr-413-rsi-garde-fou.md) | 2026-08-23 | [BUG] Durcir le RSI en garde-fou d'éligibilité en mode dégradé : incident TRUMP (RSI 70.4 hors zone, score 4 ≥ seuil dégradé 4, acheté à tort). Nouvelle logique Phase 3 : en mode dégradé (rate-limit 1D), RSI devient **condition d'éligibilité** (pas juste bonus) — coin suracheté (RSI hors zone) exclu même au-dessus du seuil abaissé ; RSI inconnu (`None`) aussi inéligible. Garde-fou appliqué uniquement aux nouveaux achats, pas aux HOLD positions existantes. Hors mode dégradé : RSI reste bonus (PR #380). Tests : 4 nouveaux cas (high_rsi_blocked, healthy_rsi_eligible, unknown_rsi_blocked, normal_mode_unchanged), suite 156/156 PASS. |
 | [#404](pr-404-commande-maker.md) | 2026-08-22 | [M1] Commande Telegram `/maker` : suivi watcher d'ordres LIMIT maker en 3 blocs (santé, ordres en cours, efficacité cumulée) — lecture seule, répond < 5s. Ajout champs `adjustments` (compteur amends) et `maker_fill_seconds` (délai remplissage maker) à l'état persistant. Tests : 152/152 PASS (+21 nouveaux). Intégration suite à PR #397. |
 | [#397](pr-397-m1-watcher-ordres-limite-maker-entrees.md) | 2026-08-22 | [M1] Watcher d'ordres limite maker sur les entrées (stratégie B) : économie frais Kraken ~0.30% par trade (maker 0.30% vs taker 0.60%). Nouveau module `core/maker_watcher.py` (daemon thread) : ajuste chaque ordre LIMIT post-only via `order amend` (sans casser la priorité carnet) jusqu'à exécution, ou repli selon 3 bornes (invalidation prix → abandon, budget/timeout → repli BUY MARKET, remplissage partiel enregistré). Phase 5 pose l'ordre limité quand `maker_entry_enabled=true` (défaut), enregistre en `state/maker_pending_orders.json`, passe au coin suivant. Watcher query toutes les 20s (`maker_tick_seconds` configurable), décide d'amend ou de repli, enregistre position au fill via SL. État persistant du watcher dans `maker_watcher_state.json` (télémétrie ticks/fills/fallbacks). Nouveau helper `maker_or_taker_from_ordertype()` pour tracer frais. Tests : 130/130 PASS (13 nouveaux). Suppression de `order_type` (jamais utilisée). Compatibilité totale avec phases 0/6/7/8 existantes (isolation entrée). |
 | [#395](pr-395-fuseau-affichage-paris.md) | 2026-08-22 | [BUG] Fuseau d'affichage explicite (#393) : `fmt_local()` utilise désormais `ZoneInfo(APP_CONFIG["display_timezone"])` au lieu de `astimezone()` sans argument — indépendance du fuseau de la machine hôte (VPS Etc/UTC). Clé `"display_timezone": "Europe/Paris"` ajoutée dans `config.json`. Transitions été/hiver gérées automatiquement (zoneinfo stdlib). Repli gracieux sur `astimezone()` si clé absente ou fuseau invalide. Tests couvrant CEST/CET et cas edge. |
