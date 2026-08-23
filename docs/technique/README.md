@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#414](pr-414-filtre-liquidite.md) | [M1] Filtrer la liquidité sur le spread et sa persistance, pas un instantané | 2026-08-23 |
 | [#415](pr-415-frais-entree-manquants.md) | [BUG] Frais d'entrée manquants sur positions ouvertes et trades clôturés | 2026-08-23 |
 | [#413](pr-413-rsi-garde-fou.md) | [BUG] Durcir le RSI en garde-fou d'éligibilité en mode dégradé | 2026-08-23 |
 | [#412](pr-412-compter-abandons-watcher.md) | [M1] Compter les abandons du watcher maker | 2026-08-23 |
