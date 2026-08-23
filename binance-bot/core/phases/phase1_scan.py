@@ -18,6 +18,7 @@ Output : /tmp/cycle_{CYCLE_ID}_phase1_output.json
 import sys
 import os
 import json
+import subprocess
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
@@ -69,7 +70,7 @@ for i in range(0, len(pairs_list), batch_size):
                 bid = float(data["b"][0])
                 spread_pct = (ask - bid) / ask if ask else 1.0
                 ticker_by_pair[pair] = {"price": price, "volume_24h": vol_base * price, "spread_pct": spread_pct}
-    except Exception as e:
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError) as e:
         print(f"batch ticker error (batch {i // batch_size + 1}): {e}", file=sys.stderr)
 
 
@@ -82,7 +83,7 @@ def _volume_is_persistent(pair):
         threshold = MIN_VOLUME_USDC / VOLUME_PERSISTENCE_PERIODS
         ok_periods = sum(1 for c in candles if float(c[6]) * float(c[5]) >= threshold)
         return ok_periods >= PERSISTENCE_REQUIRED
-    except Exception as e:
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError) as e:
         print(f"ohlc error {pair}: {e}", file=sys.stderr)
         return False
 
