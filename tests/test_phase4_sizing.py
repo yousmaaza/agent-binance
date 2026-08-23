@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     "risk_per_trade_pct": 0.01,
     "atr_stop_multiplier": 2,
     "reward_risk_ratio": 2,
+    "fee_round_trip_pct": 0,  # frais neutralisés par défaut : isole les tests des formules pré-#411
     "limit_offset_pct": 0,
     "min_order_usdc": 9,
     "max_single_position_pct": 0.3,
@@ -80,7 +81,7 @@ class TestStopCalculationFromAtrMultiplier(unittest.TestCase):
 
 
 class TestTpCalculationFromRewardRiskRatio(unittest.TestCase):
-    """prix_tp = prix_entry * (1 + atr_pct * atr_stop_multiplier * reward_risk_ratio)."""
+    """prix_tp = prix_entry * (1 + atr_pct * atr_stop_multiplier * reward_risk_ratio) (frais nuls)."""
 
     def test_tp_price_uses_reward_risk_ratio(self):
         candidates = [{"coin": "ETH", "prix_actuel": 2000, "atr_pct": 0.02, "score": 8}]
@@ -89,8 +90,39 @@ class TestTpCalculationFromRewardRiskRatio(unittest.TestCase):
 
         self.assertEqual(output["skipped"], [])
         order = output["ordres_prepares"][0]
-        # stop_distance_pct = 0.04 -> prix_tp = 2000 * (1 + 0.04 * 3) = 2000 * 1.12 = 2240
+        # stop_distance_pct = 0.04, fee_round_trip_pct=0 -> prix_tp = 2000 * (1 + 0.04 * 3) = 2240
         self.assertAlmostEqual(order["prix_tp"], 2240.0, places=6)
+
+
+class TestTpCalculationNetOfFees(unittest.TestCase):
+    """prix_tp = prix_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio
+    + fee_round_trip_pct) — le gain net vise reward_risk_ratio × la perte nette (#411)."""
+
+    def test_tp_price_integrates_fee_round_trip_pct(self):
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.015, "score": 8}]
+        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5, fee_round_trip_pct=0.009)
+        output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
+
+        self.assertEqual(output["skipped"], [])
+        order = output["ordres_prepares"][0]
+        # stop_distance_pct = 0.03 -> prix_tp = 1000 * (1 + (0.03+0.009)*1.5 + 0.009) = 1000 * 1.0675
+        self.assertAlmostEqual(order["prix_tp"], 1067.5, places=6)
+
+
+class TestSizingBudgetsFeesIntoRiskUsdc(unittest.TestCase):
+    """quantite = risk_usdc / (prix_entry * (stop_distance_pct + fee_round_trip_pct)) (#411) — la
+    perte réelle (stop + frais) doit rentrer dans le budget de risque, pas seulement le glissement
+    de prix au stop."""
+
+    def test_quantity_accounts_for_fee_round_trip_pct(self):
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.015, "score": 8}]
+        config = dict(DEFAULT_CONFIG, risk_per_trade_pct=0.01, atr_stop_multiplier=2, fee_round_trip_pct=0.009)
+        output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
+
+        self.assertEqual(output["skipped"], [])
+        order = output["ordres_prepares"][0]
+        # risk_usdc = 100, stop_distance_pct = 0.03 -> quantite = 100 / (1000 * (0.03+0.009)) = 2.5641...
+        self.assertAlmostEqual(order["quantite"], 100 / (1000 * 0.039), places=6)
 
 
 class TestMinOrderUsdcFilter(unittest.TestCase):

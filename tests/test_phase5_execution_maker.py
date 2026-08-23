@@ -23,8 +23,8 @@ from fixtures import test_harness as harness  # noqa: E402 -- import après sys.
 
 PHASE5_EXECUTION_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase5_execution.py")
 
-MAKER_CONFIG = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2, "maker_entry_enabled": True,
-                 "maker_max_concession_pct": 0.003}
+MAKER_CONFIG = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2, "fee_round_trip_pct": 0,
+                 "maker_entry_enabled": True, "maker_max_concession_pct": 0.003}
 
 BASE_ORDER = {
     "coin": "ETH",
@@ -116,6 +116,8 @@ class TestMakerEntryPlacesPostOnlyLimitAndDefersToWatcher(unittest.TestCase):
         self.assertAlmostEqual(pending_entry["scan_price"], 2000.0)
         self.assertAlmostEqual(pending_entry["initial_limit_price"], 1999.5)
         self.assertAlmostEqual(pending_entry["current_limit_price"], 1999.5)
+        # fee_round_trip_pct posé sur l'ordre pending pour un TP net de frais cohérent au fill (#411)
+        self.assertAlmostEqual(pending_entry["fee_round_trip_pct"], 0)
 
 
 class TestMakerEntryFallsBackToMarketAfterRepeatedPostOnlyRejection(unittest.TestCase):
@@ -155,7 +157,8 @@ class TestMakerEntryDisabledKeepsLegacyBehaviorUnchanged(unittest.TestCase):
 
     def test_maker_entry_disabled_uses_market_buy_directly_without_pending_placement(self):
         order = dict(BASE_ORDER)
-        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2, "maker_entry_enabled": False}
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2, "fee_round_trip_pct": 0,
+                   "maker_entry_enabled": False}
         kraken_scenario = {
             "ticker": {"ETHUSDC": {"c": ["2000.0", "0.01"]}},
             "balance": {"USDC": "500.0"},

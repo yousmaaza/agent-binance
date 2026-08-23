@@ -22,7 +22,11 @@ with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
     history = json.load(f)
 
 profit_summary = []
-min_profit = _load_config().get("min_profit_pct_take", 2.0)
+cfg = _load_config()
+min_profit = cfg.get("min_profit_pct_take", 5.0)
+# fee_round_trip_pct : estimation du coût aller-retour, pour évaluer le profit latent net plutôt
+# que brut (#411) — le frais de sortie réel n'est connu qu'après le SELL MARKET.
+fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
 
 for pos in history:
     if pos.get("status") != "open":
@@ -41,8 +45,11 @@ for pos in history:
         continue
 
     pnl_pct = ((current_price - entry_price) / entry_price) * 100
+    # Estimation nette (#411) : le frais de sortie réel n'est connu qu'au fill, on soustrait le
+    # coût aller-retour estimé pour comparer un pourcentage net à min_profit_pct_take.
+    pnl_pct_net_est = pnl_pct - fee_round_trip_pct * 100
 
-    if pnl_pct >= min_profit:
+    if pnl_pct_net_est >= min_profit:
         try:
             # Annuler les ordres actifs sur la paire avant SELL MARKET
             open_data = json.loads(binance("open-orders", "-o", "json"))

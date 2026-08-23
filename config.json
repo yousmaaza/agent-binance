@@ -15,7 +15,8 @@
   "maker_timeout_seconds": 3600,
 
   "risk_per_trade_pct": 0.02,
-  "reward_risk_ratio": 2.0,
+  "reward_risk_ratio": 1.5,
+  "fee_round_trip_pct": 0.009,
   "min_signal_score": 6,
   "min_signal_score_degraded": 4,
   "max_correlated_positions": 2,
