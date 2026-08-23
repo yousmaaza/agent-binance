@@ -10,11 +10,18 @@ Côté script, les chemins sont extraits en parcourant l'AST (module `ast`, stdl
 grattant le texte brut : une simple regex ne distingue pas un chemin littéral (`f"/tmp/cycle_..."`)
 d'un chemin reconstruit via `os.path.join(PROJECT_DIR, "state", f"cycle_...")`, qui est pourtant
 tout aussi comparable statiquement (PROJECT_DIR et les littéraux sont connus). `_resolve_literal`
-résout récursivement ce type d'expression ; seul un argument réellement non résoluble (un appel
-comme `tempfile.gettempdir()`) rend le chemin non comparable — et doit alors porter le marqueur
-`# contract-dynamic` sur sa ligne, sinon le test échoue pour le signaler plutôt que de l'ignorer
-silencieusement (cf. PR #414). L'exemption est à la ligne, pas au fichier : une autre ligne du
-même script reste vérifiée normalement.
+résout récursivement ce type d'expression (f-string, `PROJECT_DIR`, `os.path.join`, concaténation
+`+` de littéraux).
+
+**La charge de la preuve est inversée** : dès qu'un script référence, dans une expression non
+entièrement résoluble (`tempfile.gettempdir()`, `tempfile.mkstemp()`, concaténation avec un appel
+dynamique...), le nom d'un fichier d'échange que le prompt associé référence *aussi*, le test
+échoue — sauf si la ligne porte explicitement le marqueur `# contract-dynamic`. L'absence de
+preuve ne vaut jamais preuve de conformité, et l'exemption est à la ligne, pas au fichier :
+`phase1_scan.py:121` est aujourd'hui la seule ligne marquée (#414). Un chemin non résoluble qui
+ne correspond à AUCUN nom référencé côté prompt n'est pas signalé : il n'est pas partagé, donc
+hors du contrat (cf. les scripts de Phase 0 et `phase6_next_cycle.py`, dont certaines sorties ne
+sont jamais relues par le prompt — repéré et documenté dans la PR, hors scope de ce ticket).
 
 Côté prompt (texte, pas du Python), l'extraction reste une regex sur le texte brut.
 
@@ -98,9 +105,11 @@ def _posix_join(parts: list) -> str:
 def _resolve_literal(node):
     """Résout récursivement une expression AST en chaîne littérale, ou None si impossible.
 
-    Gère : chaîne/f-string littérale, nom PROJECT_DIR, et os.path.join(...) dont TOUS les
-    arguments sont eux-mêmes résolubles (récursion). Un appel non reconnu (tempfile.mkstemp(),
-    tempfile.gettempdir(), variable arbitraire...) fait échouer la résolution -> None.
+    Gère : chaîne/f-string littérale, nom PROJECT_DIR, os.path.join(...) et concaténation `+`
+    dont TOUS les opérandes sont eux-mêmes résolubles (récursion). Un appel non reconnu
+    (tempfile.mkstemp(), tempfile.gettempdir(), variable arbitraire...) fait échouer la
+    résolution -> None : c'est ce None qui déclenche la recherche de motif « touché mais non
+    résolu » dans _find_exchange_basenames, pas une approbation implicite.
     """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
@@ -121,9 +130,15 @@ def _resolve_literal(node):
         return KNOWN_LITERAL_NAMES[node.id]
     if _is_os_path_join_call(node):
         parts = [_resolve_literal(arg) for arg in node.args]
-        if any(p is None for p in parts) or not parts:
+        if not parts or any(p is None for p in parts):
             return None
         return _posix_join(parts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _resolve_literal(node.left)
+        right = _resolve_literal(node.right)
+        if left is not None and right is not None:
+            return left + right
+        return None
     return None
 
 
@@ -140,7 +155,22 @@ def _open_call_path_node(node):
     return None
 
 
-def _check_node(value_node, lineno, source_lines, script_name, prompt_name, script_paths, dynamic_notes, divergences):
+def _find_exchange_basenames(node) -> set:
+    """Parcourt tout le sous-arbre AST de `node` (même s'il n'est pas résoluble dans son
+    ensemble, ex. `tempfile.gettempdir() + f"/cycle_..."`) et retourne les noms de fichiers
+    d'échange qui apparaissent littéralement quelque part dedans, résolus fragment par
+    fragment. C'est ce qui permet de détecter qu'une expression "touche" un chemin d'échange
+    même quand elle n'est pas résoluble en un chemin complet."""
+    found = set()
+    for sub in ast.walk(node):
+        if isinstance(sub, (ast.Constant, ast.JoinedStr)):
+            resolved = _resolve_literal(sub)
+            if resolved is not None:
+                found.update(EXCHANGE_FILENAME_RE.findall(resolved))
+    return found
+
+
+def _check_node(value_node, lineno, source_lines, script_name, script_paths, unresolved_candidates):
     resolved = _resolve_literal(value_node)
     if resolved is not None:
         basename = resolved.rsplit("/", 1)[-1]
@@ -148,70 +178,78 @@ def _check_node(value_node, lineno, source_lines, script_name, prompt_name, scri
             script_paths.add(resolved)
         return
 
-    if not _is_os_path_join_call(value_node):
-        return
-
-    # Non entièrement résolu : le join touche-t-il pourtant un chemin d'échange ?
-    touches = any(
-        (r := _resolve_literal(arg)) is not None and EXCHANGE_FILENAME_RE.search(r)
-        for arg in value_node.args
-    )
-    if not touches:
+    basenames = _find_exchange_basenames(value_node)
+    if not basenames:
         return
 
     line_text = source_lines[lineno - 1] if 0 <= lineno - 1 < len(source_lines) else ""
-    if DYNAMIC_MARKER in line_text:
-        dynamic_notes.append(f"{script_name}:{lineno} (marqueur {DYNAMIC_MARKER!r} présent)")
-        return
-
-    divergences.append(
-        f"{script_name}:{lineno} construit un chemin d'échange dynamiquement via os.path.join "
-        f"(argument non résoluble statiquement, ex. tempfile.gettempdir()/mkstemp()) sans le "
-        f"marqueur {DYNAMIC_MARKER!r} sur la ligne — vérifier manuellement la cohérence avec "
-        f"{prompt_name} puis ajouter le marqueur si c'est intentionnel."
-    )
+    for basename in basenames:
+        unresolved_candidates.append(
+            {"basename": basename, "lineno": lineno, "line_text": line_text, "script_name": script_name}
+        )
 
 
-def _extract_script_paths(script_name, script_text, prompt_name):
-    """Retourne (script_paths, dynamic_notes, divergences) pour un script de phase."""
+def _extract_script_paths(script_name, script_text):
+    """Retourne (script_paths, unresolved_candidates) pour un script de phase.
+
+    - script_paths : chemins littéraux complets, résolus statiquement.
+    - unresolved_candidates : expressions non résolubles qui touchent pourtant un nom de fichier
+      d'échange (basename, lineno, line_text, script_name) — statut (divergence/documenté/hors
+      contrat) tranché plus loin dans find_divergences, une fois les chemins du prompt connus.
+    """
     tree = ast.parse(script_text)
     source_lines = script_text.splitlines()
     script_paths = set()
-    dynamic_notes = []
-    divergences = []
+    unresolved_candidates = []
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
-            _check_node(
-                node.value, node.lineno, source_lines, script_name, prompt_name,
-                script_paths, dynamic_notes, divergences,
-            )
+            _check_node(node.value, node.lineno, source_lines, script_name, script_paths, unresolved_candidates)
         elif _is_open_call(node):
             path_node = _open_call_path_node(node)
             if path_node is not None:
-                _check_node(
-                    path_node, node.lineno, source_lines, script_name, prompt_name,
-                    script_paths, dynamic_notes, divergences,
-                )
+                _check_node(path_node, node.lineno, source_lines, script_name, script_paths, unresolved_candidates)
 
-    return script_paths, dynamic_notes, divergences
+    return script_paths, unresolved_candidates
 
 
 def find_divergences(script_name, script_text, prompt_name, prompt_text):
     """Compare les chemins d'échange partagés entre un script et son prompt.
 
     Retourne (divergences, dynamic_notes) :
-    - divergences : chemin littéral qui diffère entre les deux mondes, ou chemin construit
-      dynamiquement (os.path.join non entièrement résoluble) sans marqueur `# contract-dynamic`.
+    - divergences : chemin littéral qui diffère entre les deux mondes, OU expression non
+      résoluble statiquement qui touche un nom de fichier d'échange référencé aussi par le
+      prompt, sans marqueur `# contract-dynamic` sur sa ligne (charge de la preuve inversée :
+      l'absence de résolution ne vaut jamais approbation implicite).
     - dynamic_notes : chemins dynamiques rencontrés mais explicitement documentés (informationnel).
     """
-    script_paths, dynamic_notes, divergences = _extract_script_paths(script_name, script_text, prompt_name)
+    script_paths, unresolved_candidates = _extract_script_paths(script_name, script_text)
     prompt_paths = _extract_prompt_paths(prompt_text)
 
     script_by_name = {p.rsplit("/", 1)[-1]: p for p in script_paths}
     prompt_by_name = {p.rsplit("/", 1)[-1]: p for p in prompt_paths}
-    shared_names = set(script_by_name) & set(prompt_by_name)
 
+    divergences = []
+    dynamic_notes = []
+
+    for candidate in unresolved_candidates:
+        basename = candidate["basename"]
+        if basename not in prompt_by_name:
+            # Chemin non partagé (ex. sortie de Phase 0 jamais relue par le prompt) : pas de
+            # contrat à vérifier ici, cf. docstring du module.
+            continue
+        if DYNAMIC_MARKER in candidate["line_text"]:
+            dynamic_notes.append(f"{candidate['script_name']}:{candidate['lineno']} (marqueur {DYNAMIC_MARKER!r} présent)")
+            continue
+        divergences.append(
+            f"{candidate['script_name']}:{candidate['lineno']} référence le chemin d'échange partagé "
+            f"'{basename}' (attendu par {prompt_name}) dans une expression non résoluble "
+            f"statiquement en chemin complet, sans le marqueur {DYNAMIC_MARKER!r} sur la ligne — "
+            f"vérifier manuellement la cohérence avec {prompt_name} puis ajouter le marqueur si "
+            f"c'est intentionnel."
+        )
+
+    shared_names = set(script_by_name) & set(prompt_by_name)
     for name in sorted(shared_names):
         script_path = script_by_name[name]
         prompt_path = prompt_by_name[name]
@@ -263,9 +301,9 @@ class TestDetectsReintroducedRegression(unittest.TestCase):
         self.assertIn("/tmp/cycle_{CYCLE_ID}_phase5_output.json", message)
 
     def test_diverging_os_path_join_regression_is_detected(self):
-        """Forme exacte rejouée par la review de la PR #423 : os.path.join(PROJECT_DIR, "state",
-        f"...") remplaçant un f"/tmp/..." littéral — c'est la forme qui était passée inaperçue
-        avec la première version du test (liste blanche par fichier au lieu du marqueur par ligne)."""
+        """Forme rejouée lors de la première review de la PR #423 : os.path.join(PROJECT_DIR,
+        "state", f"...") remplaçant un f"/tmp/..." littéral — passait inaperçue avec la liste
+        blanche par fichier de la toute première version du test."""
         script_text = (
             'in_path = os.path.join(PROJECT_DIR, "state", f"cycle_{CYCLE_ID}_phase5_input.json")\n'
         )
@@ -282,6 +320,28 @@ class TestDetectsReintroducedRegression(unittest.TestCase):
         self.assertIn("PROJECT_DIR/state/cycle_{CYCLE_ID}_phase5_input.json", message)
         self.assertIn("/tmp/cycle_{CYCLE_ID}_phase5_input.json", message)
 
+    def test_diverging_string_concat_with_gettempdir_is_detected(self):
+        """Forme rejouée lors de la deuxième review de la PR #423 : tempfile.gettempdir() +
+        f"/cycle_..." sur un chemin partagé (phase7_mongo.py / phases6_8.txt) — passait inaperçue
+        car seul os.path.join(...) déclenchait la vérification "touche un motif mais non résolu"
+        dans la version précédente. La charge de la preuve doit s'appliquer à toute expression
+        non résoluble, pas seulement à os.path.join(...)."""
+        script_text = (
+            'in_path = tempfile.gettempdir() + f"/cycle_{CYCLE_ID}_phase7_input.json"\n'
+        )
+        prompt_text = "Écris d'abord le document dans /tmp/cycle___CYCLE_ID___phase7_input.json.\n"
+
+        divergences, _ = find_divergences(
+            "phase7_mongo.py", script_text, "phases6_8.txt", prompt_text
+        )
+
+        self.assertEqual(len(divergences), 1)
+        message = divergences[0]
+        self.assertIn("phase7_mongo.py", message)
+        self.assertIn("phases6_8.txt", message)
+        self.assertIn("cycle_{CYCLE_ID}_phase7_input.json", message)
+        self.assertIn(DYNAMIC_MARKER, message)
+
     def test_matching_literal_path_has_no_divergence(self):
         script_text = 'out_path = f"/tmp/cycle_{CYCLE_ID}_phase5_output.json"\n'
         prompt_text = "Le script écrit /tmp/cycle___CYCLE_ID___phase5_output.json.\n"
@@ -294,10 +354,13 @@ class TestDetectsReintroducedRegression(unittest.TestCase):
 
 
 class TestDetectsUnregisteredDynamicPath(unittest.TestCase):
-    """Un chemin construit dynamiquement (tempfile.mkstemp/gettempdir) et non marqué
-    `# contract-dynamic` sur sa ligne doit faire échouer le test plutôt que d'être ignoré
-    silencieusement (cf. PR #414 : c'est ce qui rend un chemin non comparable statiquement).
-    L'exemption est à la ligne, pas au fichier : une autre ligne du même script reste vérifiée."""
+    """Un chemin construit dynamiquement (tempfile.mkstemp/gettempdir, concaténation...) et non
+    marqué `# contract-dynamic` sur sa ligne doit faire échouer le test dès lors que le nom de
+    fichier est référencé aussi par le prompt — plutôt que d'être ignoré silencieusement
+    (cf. PR #414 : c'est ce qui rend un chemin non comparable statiquement). L'exemption est à
+    la ligne, pas au fichier : une autre ligne du même script reste vérifiée. Un chemin non
+    résoluble mais NON partagé avec le prompt n'est en revanche pas signalé (pas de faux positif
+    sur les sorties de Phase 0 jamais relues, hors périmètre du contrat)."""
 
     def test_unmarked_dynamic_path_fails(self):
         script_text = (
@@ -313,6 +376,22 @@ class TestDetectsUnregisteredDynamicPath(unittest.TestCase):
         self.assertEqual(len(divergences), 1)
         self.assertIn("phase9_hypothetical.py", divergences[0])
         self.assertIn(DYNAMIC_MARKER, divergences[0])
+
+    def test_unmarked_dynamic_path_not_shared_with_prompt_is_ignored(self):
+        """Un chemin non résoluble qui ne correspond à aucun nom référencé côté prompt n'est
+        pas un chemin du contrat (ex. sortie de Phase 0 jamais relue) : pas de faux positif."""
+        script_text = (
+            "out_path = os.path.join(tempfile.gettempdir(), "
+            'f"cycle_{CYCLE_ID}_phase9_output.json")\n'
+        )
+        prompt_text = "Ce prompt ne référence aucun chemin d'échange de la phase 9.\n"
+
+        divergences, dynamic_notes = find_divergences(
+            "phase9_hypothetical.py", script_text, "phase9_hypothetical.txt", prompt_text
+        )
+
+        self.assertEqual(divergences, [])
+        self.assertEqual(dynamic_notes, [])
 
     def test_marked_dynamic_path_does_not_fail(self):
         script_text = (
