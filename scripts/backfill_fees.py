@@ -20,9 +20,17 @@ pnl_gross_usdc reprend le pnl_usdc déjà stocké AVANT backfill (l'ancien calcu
 l'ère Binance (avant migration Kraken), entry_price/exit_price/quantity ne sont pas garantis
 cohérents entre eux (ex. #382 post-mortem — trade SYN 38515bab, sl_hit à +61% du prix d'entrée,
 +44 USDC fictifs injectés lors du premier backfill en prod). pnl_gross_pct reprend de même le
-pnl_pct stocké. Garde-fou : si le pnl_usdc stocké diverge de plus de 1% (relatif) de
-(exit_price - entry_price) * quantity, le trade n'est PAS modifié — il est seulement signalé dans
-le résumé (trades_incoherents), y compris en --dry-run.
+pnl_pct stocké. Garde-fou : si le pnl_usdc (ou pnl_gross_usdc quand déjà présent, cf. #409)
+stocké diverge de plus de 1% (relatif) de (exit_price - entry_price) * quantity, le trade n'est
+PAS modifié — il est seulement signalé dans le résumé (trades_incoherents), y compris en
+--dry-run.
+
+Positions ouvertes et rattrapage entrée seule (#409) : une position encore ouverte ne reçoit que
+son entry_fee_usdc (mesuré via entry_order_id, jamais estimé — pas de champs de clôture à
+toucher). Un trade déjà clôturé dont l'entry_fee_usdc est manquant mais l'exit_fee_usdc déjà
+présent (capté en direct à la vente, cf. tp_watcher/phase0_profit/phase5_execution) voit son
+entrée complétée (mesurée ou estimée) puis fees_usdc/pnl_usdc/pnl_pct recalculés via
+compute_net_pnl() (core/trade_helpers.py) — sans re-matcher l'exit déjà connu.
 
 Usage :
     .venv/bin/python3 scripts/backfill_fees.py [--dry-run] [--force]
@@ -39,7 +47,7 @@ from datetime import datetime, timedelta, timezone
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import binance, _save_trade_history_atomic  # noqa: E402
+from core.trade_helpers import binance, _save_trade_history_atomic, compute_net_pnl  # noqa: E402
 from core.timing import parse_dt  # noqa: E402
 
 TRADE_HISTORY_PATH = os.path.join(PROJECT_DIR, "state", "trade_history.json")
@@ -102,6 +110,23 @@ def _match_entry_fee(trade: dict, fills: list, consumed: set):
     return sum(float(f.get("fee", 0) or 0) for f in matches)
 
 
+def _resolve_entry_fee(trade: dict, fills: list, consumed: set, stats: dict):
+    """Frais d'entrée mesuré via entry_order_id, sinon estimé au taux du palier Kraken (#382/#409).
+
+    Retourne (entry_fee, estimated) et incrémente stats["entries_measured"/"entries_estimated"].
+    """
+    entry_fee = _match_entry_fee(trade, fills, consumed)
+    if entry_fee is not None:
+        stats["entries_measured"] += 1
+        return entry_fee, False
+    entry_dt = parse_dt(trade.get("date"))
+    rate = _estimated_fee_rate(entry_dt) if entry_dt else _FEE_TIERS[0][1]
+    entry_price = float(trade.get("entry_price", 0) or 0)
+    qty = float(trade.get("quantity", 0) or 0)
+    stats["entries_estimated"] += 1
+    return entry_price * qty * rate, True
+
+
 def _match_exit_fee(trade: dict, fills: list, consumed: set):
     """Fill "sell" le plus proche temporellement, même paire, même volume (tolérance 0.0001)."""
     coin = trade.get("coin")
@@ -140,12 +165,16 @@ def _match_exit_fee(trade: dict, fills: list, consumed: set):
 
 
 def _coherence_diagnostic(trade: dict):
-    """Compare le pnl_usdc stocké à (exit_price - entry_price) * quantity.
+    """Compare le pnl stocké à (exit_price - entry_price) * quantity.
+
+    Compare pnl_gross_usdc quand déjà présent (trade dont l'exit a déjà été capté en direct,
+    cf. #409 — pnl_usdc y est déjà partiellement net, comparaison contre lui donnerait un faux
+    positif), sinon pnl_usdc comme avant (comportement legacy inchangé, cf. #382 post-mortem).
 
     Retourne un dict de diagnostic si l'écart relatif dépasse COHERENCE_REL_TOLERANCE (données
     legacy potentiellement incohérentes entre elles, cf. #382 post-mortem), sinon None.
     """
-    stored_pnl = trade.get("pnl_usdc")
+    stored_pnl = trade.get("pnl_gross_usdc", trade.get("pnl_usdc"))
     if stored_pnl is None:
         # Trade closed sans pnl_usdc stocké — enregistrement douteux, signalé plutôt qu'un crash
         # sur trade["pnl_usdc"] plus bas dans backfill().
@@ -184,14 +213,27 @@ def backfill(history: list, fills: list, force: bool) -> tuple:
         "trades_incoherents": 0,
         "entries_measured": 0, "entries_estimated": 0,
         "exits_measured": 0, "exits_estimated": 0,
+        "open_entries_backfilled": 0,
     }
     incoherent_trades = []
 
     for trade in history:
         if trade.get("status") != "closed":
-            stats["trades_skipped_not_closed"] += 1
+            # Position ouverte (#409) : ne compléter que l'entrée, jamais estimée (le rapprochement
+            # entry_order_id doit rester fiable), jamais de champ de clôture touché.
+            if trade.get("entry_fee_usdc") is not None and not force:
+                stats["trades_skipped_already_done"] += 1
+                continue
+            entry_fee = _match_entry_fee(trade, fills, consumed)
+            if entry_fee is None:
+                stats["trades_skipped_not_closed"] += 1
+                continue
+            trade["entry_fee_usdc"] = entry_fee
+            stats["open_entries_backfilled"] += 1
             continue
-        if trade.get("fees_usdc") is not None and not force:
+
+        entry_fee_present = trade.get("entry_fee_usdc") is not None
+        if entry_fee_present and trade.get("fees_usdc") is not None and not force:
             stats["trades_skipped_already_done"] += 1
             continue
 
@@ -201,30 +243,41 @@ def backfill(history: list, fills: list, force: bool) -> tuple:
             incoherent_trades.append(diag)
             continue  # champs internes incohérents (ex. legacy Binance) -> ne pas écraser
 
-        estimated = False
+        if not entry_fee_present and trade.get("exit_fee_usdc") is not None:
+            # Trade clôturé dont seule l'entrée manque (#409) : l'exit_fee_usdc a déjà été capté en
+            # direct à la vente -> ne pas le re-matcher, juste compléter l'entrée et recalculer via
+            # compute_net_pnl().
+            entry_fee, estimated = _resolve_entry_fee(trade, fills, consumed, stats)
+            net = compute_net_pnl(
+                float(trade.get("entry_price", 0) or 0),
+                float(trade.get("exit_price", 0) or 0),
+                float(trade.get("quantity", 0) or 0),
+                entry_fee,
+                float(trade["exit_fee_usdc"]),
+            )
+            trade["entry_fee_usdc"] = entry_fee
+            trade["fees_usdc"] = net["fees_usdc"]
+            trade["pnl_gross_usdc"] = net["pnl_gross_usdc"]
+            trade["pnl_usdc"] = net["pnl_usdc"]
+            trade["pnl_gross_pct"] = net["pnl_gross_pct"]
+            trade["pnl_pct"] = net["pnl_pct"]
+            trade["fees_estimated"] = estimated
+            stats["trades_updated"] += 1
+            continue
 
-        entry_fee = _match_entry_fee(trade, fills, consumed)
-        if entry_fee is not None:
-            stats["entries_measured"] += 1
-        else:
-            entry_dt = parse_dt(trade.get("date"))
-            rate = _estimated_fee_rate(entry_dt) if entry_dt else _FEE_TIERS[0][1]
-            entry_price = float(trade.get("entry_price", 0) or 0)
-            qty = float(trade.get("quantity", 0) or 0)
-            entry_fee = entry_price * qty * rate
-            estimated = True
-            stats["entries_estimated"] += 1
+        entry_fee, entry_estimated = _resolve_entry_fee(trade, fills, consumed, stats)
 
         exit_fee = _match_exit_fee(trade, fills, consumed)
         if exit_fee is not None:
             stats["exits_measured"] += 1
+            exit_estimated = False
         else:
             exit_dt = parse_dt(trade.get("exit_date"))
             rate = _estimated_fee_rate(exit_dt) if exit_dt else _FEE_TIERS[0][1]
             exit_price = float(trade.get("exit_price", 0) or 0)
             qty = float(trade.get("quantity", 0) or 0)
             exit_fee = exit_price * qty * rate
-            estimated = True
+            exit_estimated = True
             stats["exits_estimated"] += 1
 
         # pnl_gross_usdc/pct = l'ancien calcul déjà stocké (#382), jamais une reconstitution via
@@ -248,7 +301,7 @@ def backfill(history: list, fills: list, force: bool) -> tuple:
         trade["pnl_usdc"] = pnl_usdc
         trade["pnl_gross_pct"] = pnl_gross_pct
         trade["pnl_pct"] = pnl_pct
-        trade["fees_estimated"] = estimated
+        trade["fees_estimated"] = entry_estimated or exit_estimated
         stats["trades_updated"] += 1
 
     return history, stats, incoherent_trades
