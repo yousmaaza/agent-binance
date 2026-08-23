@@ -45,17 +45,19 @@ _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "maker_watcher_state.js
 
 
 def _write_watcher_state(status: str, last_error: str | None, orders_checked: int,
-                          fills_delta: int = 0, fallbacks_delta: int = 0) -> None:
+                          fills_delta: int = 0, fallbacks_delta: int = 0, abandoned_delta: int = 0) -> None:
     try:
         with open(_WATCHER_STATE_PATH) as f:
             prev = json.load(f)
         total_ticks = prev.get("total_ticks", 0) + 1
         total_fills = prev.get("total_fills", 0) + fills_delta
         total_fallbacks = prev.get("total_fallbacks", 0) + fallbacks_delta
+        total_abandoned = prev.get("total_abandoned", 0) + abandoned_delta
     except (FileNotFoundError, json.JSONDecodeError, KeyError):
         total_ticks = 1
         total_fills = fills_delta
         total_fallbacks = fallbacks_delta
+        total_abandoned = abandoned_delta
     state = {
         "last_tick": datetime.now(timezone.utc).isoformat() + "Z",
         "status": status,
@@ -64,6 +66,7 @@ def _write_watcher_state(status: str, last_error: str | None, orders_checked: in
         "total_ticks": total_ticks,
         "total_fills": total_fills,
         "total_fallbacks": total_fallbacks,
+        "total_abandoned": total_abandoned,
     }
     tmp = _WATCHER_STATE_PATH + ".tmp"
     with open(tmp, "w") as f:
@@ -263,54 +266,54 @@ def _handle_closed_order(pending: dict, order_status: dict, history: list) -> tu
         release_lock()
 
 
-def _handle_externally_canceled(pending: dict, status: str, history: list, tick_state: dict) -> tuple[bool, int, int]:
+def _handle_externally_canceled(pending: dict, status: str, history: list, tick_state: dict) -> tuple[bool, int, int, int]:
     coin = pending["coin"]
     acquire_lock()
     try:
         outcome = _resolve_after_cancel(pending, allow_market_fallback=False, history=history)
         if outcome == "filled_partial":
-            return True, 1, 0
-        return False, 0, 0
+            return True, 1, 0, 0
+        return False, 0, 0, 1 if outcome == "abandoned" else 0
     except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
         logger.error(f"[Maker Watcher] Résolution {status} {coin} : {e}")
         tick_state["status"] = "error"
         tick_state["last_error"] = f"Résolution {status} {coin} : {e}"
-        return False, 0, 0
+        return False, 0, 0, 0
     finally:
         release_lock()
 
 
-def _handle_invalidated_price(pending: dict, history: list, tick_state: dict) -> tuple[bool, int, int]:
+def _handle_invalidated_price(pending: dict, history: list, tick_state: dict) -> tuple[bool, int, int, int]:
     coin = pending["coin"]
     acquire_lock()
     try:
         outcome = _cancel_and_resolve(pending, allow_market_fallback=False, history=history)
         if outcome == "filled_partial":
-            return True, 1, 0
-        return False, 0, 0
+            return True, 1, 0, 0
+        return False, 0, 0, 1 if outcome == "abandoned" else 0
     except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
         logger.error(f"[Maker Watcher] Invalidation prix {coin} : {e}")
         tick_state["status"] = "error"
         tick_state["last_error"] = f"Invalidation prix {coin} : {e}"
-        return False, 0, 0
+        return False, 0, 0, 0
     finally:
         release_lock()
 
 
-def _handle_timeout_or_concession(pending: dict, history: list, tick_state: dict) -> tuple[bool, int, int]:
+def _handle_timeout_or_concession(pending: dict, history: list, tick_state: dict) -> tuple[bool, int, int, int]:
     coin = pending["coin"]
     acquire_lock()
     try:
         outcome = _cancel_and_resolve(pending, allow_market_fallback=True, history=history)
         if outcome in ("filled_partial", "market_fallback"):
             fallbacks = 1 if outcome == "market_fallback" else 0
-            return True, 1, fallbacks
-        return False, 0, 0
+            return True, 1, fallbacks, 0
+        return False, 0, 0, 0
     except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
         logger.error(f"[Maker Watcher] Repli marché {coin} : {e}")
         tick_state["status"] = "error"
         tick_state["last_error"] = f"Repli marché {coin} : {e}"
-        return False, 0, 0
+        return False, 0, 0, 0
     finally:
         release_lock()
 
@@ -350,6 +353,7 @@ def _maker_watcher_tick(cfg: dict) -> None:
     orders_checked = 0
     fills_delta = 0
     fallbacks_delta = 0
+    abandoned_delta = 0
     tick_state = {"status": "ok", "last_error": None}
 
     for pending in pending_orders:
@@ -382,10 +386,11 @@ def _maker_watcher_tick(cfg: dict) -> None:
             continue
 
         if status in ("canceled", "expired"):
-            changed, fills, fallbacks = _handle_externally_canceled(pending, status, history, tick_state)
+            changed, fills, fallbacks, abandoned = _handle_externally_canceled(pending, status, history, tick_state)
             history_changed = history_changed or changed
             fills_delta += fills
             fallbacks_delta += fallbacks
+            abandoned_delta += abandoned
             continue
 
         # Ordre toujours vivant ("open") -> évaluation des bornes d'arrêt.
@@ -408,17 +413,19 @@ def _maker_watcher_tick(cfg: dict) -> None:
         concession_pct = max(0.0, (current_bid - initial_price) / initial_price) if initial_price else 0.0
 
         if price_drift > price_deviation_max_pct:
-            changed, fills, fallbacks = _handle_invalidated_price(pending, history, tick_state)
+            changed, fills, fallbacks, abandoned = _handle_invalidated_price(pending, history, tick_state)
             history_changed = history_changed or changed
             fills_delta += fills
             fallbacks_delta += fallbacks
+            abandoned_delta += abandoned
             continue
 
         if concession_pct >= maker_max_concession_pct or elapsed_seconds >= maker_timeout_seconds:
-            changed, fills, fallbacks = _handle_timeout_or_concession(pending, history, tick_state)
+            changed, fills, fallbacks, abandoned = _handle_timeout_or_concession(pending, history, tick_state)
             history_changed = history_changed or changed
             fills_delta += fills
             fallbacks_delta += fallbacks
+            abandoned_delta += abandoned
             continue
 
         if current_bid and current_bid != pending.get("current_limit_price"):
@@ -433,4 +440,5 @@ def _maker_watcher_tick(cfg: dict) -> None:
     if history_changed:
         save_trade_history(history)
 
-    _write_watcher_state(tick_state["status"], tick_state["last_error"], orders_checked, fills_delta, fallbacks_delta)
+    _write_watcher_state(tick_state["status"], tick_state["last_error"], orders_checked,
+                          fills_delta, fallbacks_delta, abandoned_delta)
