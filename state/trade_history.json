@@ -2198,13 +2198,15 @@
     "status": "closed",
     "exit_price": 77285.73053733267,
     "exit_date": "2026-08-22T18:16:54.571325+00:00",
-    "pnl_usdc": -0.012589999999999504,
-    "pnl_pct": -0.0621,
+    "pnl_usdc": -0.1342199999999995,
+    "pnl_pct": -0.6621177111307971,
     "exit_fee_usdc": 0.12229,
-    "fees_usdc": 0.12229,
+    "fees_usdc": 0.24392,
     "pnl_gross_usdc": 0.10970000000000049,
-    "pnl_gross_pct": 0.5412,
-    "close_reason": "signal_sell_score2"
+    "pnl_gross_pct": 0.5411586418644692,
+    "close_reason": "signal_sell_score2",
+    "entry_fee_usdc": 0.12163,
+    "fees_estimated": false
   },
   {
     "trade_id": "e3004b5a",
@@ -2223,13 +2225,15 @@
     "status": "closed",
     "exit_price": 11.752799980501084,
     "exit_date": "2026-08-22T18:16:52.101907+00:00",
-    "pnl_usdc": 0.1972673999999999,
-    "pnl_pct": 1.3017,
+    "pnl_usdc": 0.10633919999999991,
+    "pnl_pct": 0.7016909837348727,
     "exit_fee_usdc": 0.0926678,
-    "fees_usdc": 0.0926678,
+    "fees_usdc": 0.18359599999999998,
     "pnl_gross_usdc": 0.2899351999999999,
-    "pnl_gross_pct": 1.9132,
-    "close_reason": "signal_sell_score2"
+    "pnl_gross_pct": 1.9131695151681334,
+    "close_reason": "signal_sell_score2",
+    "entry_fee_usdc": 0.0909282,
+    "fees_estimated": false
   },
   {
     "trade_id": "d7a41910",
@@ -2245,11 +2249,17 @@
     "entry_order_id": "OQKXXW-XKE6E-SGWX5E",
     "sl_order_txid": "OZVT63-Q3KJ2-RSLXOM",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null
+    "status": "closed",
+    "exit_price": 0.21469700000157355,
+    "exit_date": "2026-08-23T07:10:04.170545+00:00",
+    "pnl_usdc": -11.00561404999999,
+    "pnl_pct": -8.23334681368592,
+    "entry_fee_usdc": 0.80202724,
+    "exit_fee_usdc": 0.74527738,
+    "fees_usdc": 1.54730462,
+    "pnl_gross_usdc": -9.45830942999999,
+    "pnl_gross_pct": -7.075801627656203,
+    "close_reason": "sl_hit"
   },
   {
     "trade_id": "a427b410",
@@ -2269,7 +2279,8 @@
     "exit_price": null,
     "exit_date": null,
     "pnl_usdc": null,
-    "pnl_pct": null
+    "pnl_pct": null,
+    "entry_fee_usdc": 0.799874611
   },
   {
     "trade_id": "e253323e",
