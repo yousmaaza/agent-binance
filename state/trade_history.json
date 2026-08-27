@@ -2391,5 +2391,32 @@
     "pnl_usdc": null,
     "pnl_gross_pct": null,
     "pnl_pct": null
+  },
+  {
+    "trade_id": "a364c3f3",
+    "date": "2026-08-27T20:14:28.292102+00:00",
+    "coin": "XBT",
+    "side": "BUY",
+    "signal_score": 4,
+    "entry_price": 79988.43205574913,
+    "stop_price": 75565.07,
+    "tp_price": 88423.21221602787,
+    "quantity": 0.001722,
+    "risk_usdc": 8.8104,
+    "entry_order_id": "OMGW5W-R6LUR-HRLKGI",
+    "sl_order_txid": "OQW466-Y5TTJ-2HOB2P",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.41322,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 104.563403,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
