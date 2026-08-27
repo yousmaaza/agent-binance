@@ -10,6 +10,86 @@ Les entrées les plus récentes sont en haut. Le fichier de référence chronolo
 
 ---
 
+## 2026-08-27
+
+### PRs mergées (0)
+
+Aucune PR mergée ce jour.
+
+---
+
+### Issues fermées (0)
+
+Aucune issue fermée ce jour.
+
+---
+
+### Nouveaux tickets créés (1)
+
+#### #427 — [CONFIG] max_open_positions trop bas — 9 blocages sur 7 jours dont 1 signal valide refusé
+
+- **Labels** : `enhancement`
+- **Créé** : 20:10 UTC
+- **Statut** : open
+- **Contexte** : Ticket généré par l'agent d'analyse-config après observation des cycles du 20 au 27 août. Sur 7 jours, 9 cycles ont vu au moins un signal écarté à cause du gate `max_open_positions = 4`. Parmi eux, 1 signal qualifié comme "valide" selon les critères de scoring (score ≥ 6/10, sentiment Bullish, RSI dans la zone) a été refusé non pour ses mérites propres mais uniquement parce que le plafond de 4 positions simultanées était atteint. Ce ticket fait suite au #405 ouvert le 22/08 ("7 cycles bloqués en 48h") — le problème persiste et s'amplifie sur une fenêtre plus longue. L'analyse de la journée du 27/08 illustre ce pattern : les cycles 00:00, 04:00 et 08:00 UTC avaient tous 4 positions ouvertes, bloquant mécaniquement toute nouvelle entrée même en contexte Bullish (cycle 08:00 : top_score 5/10, 2 coins skippés pour score insuffisant couplé à max atteint).
+
+---
+
+### Commits directs notables sur `main`
+
+Commits automatiques de cycle log — 6 cycles réguliers (slots 4h) :
+
+| Timestamp UTC | Hash | Type |
+|---|---|---|
+| 00:13 | `a04f3da` | chore: cycle log 20260827_000504 |
+| 04:12 | `7efbb46` | chore: cycle log 20260827_040506 |
+| 08:13 | `434b43d` | chore: cycle log 20260827_080502 |
+| 12:14 | `d826449` | chore: cycle log 20260827_120501 |
+| 16:12 | `4bdc1e1` | chore: cycle log 20260827_160500 |
+| 20:14 | `aec808e` | chore: cycle log 20260827_200509 |
+
+---
+
+### Cycles d'auto-trading observés
+
+6/6 slots couverts. Journée marquée par une saturation progressive des positions et une récupération partielle en fin de journée.
+
+| Heure UTC | Cycle ID | top_score | Open pos. | Exécutés | Sentiment | Portfolio USDC |
+|---|---|---|---|---|---|---|
+| 00:05 | 20260827_000504 | 3 | 4 | 0 | Bearish | 436,76 |
+| 04:05 | 20260827_040506 | 2 | 4 | 0 | Bearish | 435,36 |
+| 08:05 | 20260827_080502 | 5 | 4 | 0 | Bullish | 438,63 |
+| 12:05 | 20260827_120501 | 4 | 4 | 0 | Bullish | 440,60 |
+| 16:05 | 20260827_160500 | 7 | 3 | 0 | Bullish | 442,57 |
+| 20:05 | 20260827_200509 | 4 | 3 | 0 (1 pending maker) | Bullish | 440,52 |
+
+Observations du jour :
+- Sentiment Bearish le matin → retournement Bullish à partir de 08:05 UTC
+- Réduction des positions ouvertes de 4 → 3 entre 12:05 et 16:05 UTC : une position a été clôturée (TP ou SL atteint)
+- Cycle 16:05 : top_score 7/10 (le plus haut de la journée), mais 0 exécution — les deux coins candidats avaient probablement des signaux 1D insuffisants ou le sizing restait hors des contraintes après clôture partielle
+- Cycle 20:05 : 1 ordre maker pending — la stratégie maker (entrée limite au bid) est en cours d'exécution sur un coin
+- Portfolio entre 435 USDC (creux) et 442 USDC (pic journée), en légère amélioration sur la semaine
+
+---
+
+### Matériel Medium
+
+**Angle principal** : La journée illustre un paradoxe opérationnel récurrent — le bot dispose de signaux exploitables (top_score 7/10 à 16:05) mais reste bloqué par ses propres contraintes de portfolio configurées il y a plusieurs semaines dans un contexte différent. Le ticket #427 pointe directement ce décalage : `max_open_positions = 4` a été calibré pour limiter l'exposition lors du drawdown de -36% (août 2026), mais depuis la correction des PRs #385/#387/#391 (portfolio_total réel, gate de concentration, PnL net de frais), le bot a retrouvé une lecture plus fidèle de son exposition réelle. La limite de 4, jadis protectrice, est potentiellement devenue conservatrice.
+
+**Angle secondaire** : La journée du 27/08 complète une semaine sans aucun merge (dernier merge : 23/08). Ce type de silence de développement est généralement signe de stabilité opérationnelle — le bot tourne sans régression. Mais il peut aussi signaler une accumulation de dette de configuration non traitée : les tickets #405 et #427, tous deux sur `max_open_positions`, ont été créés à 4 jours d'intervalle sans être adressés. La question narrative : faut-il merger rapidement un changement de config, ou attendre un consensus de données sur une fenêtre plus longue ?
+
+**Données clés** :
+- PRs mergées : **0** (4 jours sans merge depuis le 23/08)
+- Issues fermées : **0**
+- Nouveaux tickets : **1** (#427 — config max_open_positions)
+- Cycles aujourd'hui : **6/6 slots couverts**
+- Portfolio ouverture : **436,76 USDC** → clôture : **440,52 USDC** (+3,76 USDC)
+- top_score max du jour : **7/10** (cycle 16:05 UTC)
+- Positions ouvertes : 4 → 3 (1 position clôturée en journée)
+- Ordres maker pending en fin de journée : **1**
+
+---
+
 ## 2026-08-23
 
 ### PRs mergées (9)
