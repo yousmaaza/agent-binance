@@ -19,7 +19,7 @@ def check_password(candidate: str) -> bool:
 
 def safe_next_path(value):
     """Liste blanche : n'accepte qu'un chemin relatif interne (#435 — redirection ouverte)."""
-    if not value or not value.startswith("/") or value.startswith("//") or value.startswith("/\\"):
+    if not value or not value.startswith("/") or value.startswith(("//", "/\\")):
         return None
     parts = urlsplit(value)
     if parts.scheme or parts.netloc:
