@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#436](pr-436-fermer-redirection-ouverte.md) | [BUG] Fermer la redirection ouverte sur next du login dashboard | 2026-08-28 |
 | [#434](pr-434-dashboard-railway.md) | [M1] Dashboard web du bot hébergé sur Railway | 2026-08-28 |
 | [#433](pr-433-dashboard-state-mongo.md) | [M1] Publier l'état du bot dans MongoDB pour le dashboard | 2026-08-28 |
 | [#429](pr-429-plafond-tp.md) | [M1] Plafonner le TP à ce que le marché délivre réellement | 2026-08-28 |
