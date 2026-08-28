@@ -44,10 +44,12 @@ MAKER_WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "maker_watcher_sta
 TP_WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "tp_watcher_state.json")
 
 # Clés de config.json qui pilotent le comportement (#431) — cf. issue pour la liste exacte.
+# display_timezone ajoutée pour #432 : le dashboard en a besoin pour convertir les heures affichées.
 _CONFIG_KEYS = [
     "min_signal_score", "min_signal_score_degraded", "rsi_zone_min", "rsi_zone_max",
     "max_open_positions", "reward_risk_ratio", "fee_round_trip_pct", "max_tp_pct",
     "max_spread_pct", "risk_per_trade_pct", "daily_loss_limit_pct", "min_profit_pct_take",
+    "display_timezone",
 ]
 
 

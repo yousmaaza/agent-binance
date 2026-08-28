@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Dashboard non configuré{% endblock %}
+{% block body %}
+<main class="centered">
+  <div class="card degraded">
+    <h1>⚠️ Dashboard non configuré</h1>
+    <p>Les variables d'environnement <code>DASHBOARD_PASSWORD</code> et <code>DASHBOARD_SECRET_KEY</code>
+    doivent être définies pour que l'application démarre — une URL non devinable ne suffit pas à
+    protéger une page qui expose la valeur du portefeuille.</p>
+    <p>Configure-les côté Railway (Settings → Variables) puis redéploie.</p>
+  </div>
+</main>
+{% endblock %}

@@ -374,7 +374,7 @@ class TestDashboardStateWatchersAndConfig(unittest.TestCase):
             "rsi_zone_min": 30, "rsi_zone_max": 65, "max_open_positions": 4,
             "reward_risk_ratio": 1.5, "fee_round_trip_pct": 0.009, "max_tp_pct": 0.06,
             "max_spread_pct": 0.0008, "risk_per_trade_pct": 0.02, "daily_loss_limit_pct": 0.05,
-            "min_profit_pct_take": 5.0,
+            "min_profit_pct_take": 5.0, "display_timezone": "Europe/Paris",
             "telegram_token_should_not_leak": "secret", "usdc_blacklist": ["FOO"],
         }
         set_doc = _run_phase7_dashboard([], config_data=config_data)
@@ -385,10 +385,12 @@ class TestDashboardStateWatchersAndConfig(unittest.TestCase):
                 "min_signal_score", "min_signal_score_degraded", "rsi_zone_min", "rsi_zone_max",
                 "max_open_positions", "reward_risk_ratio", "fee_round_trip_pct", "max_tp_pct",
                 "max_spread_pct", "risk_per_trade_pct", "daily_loss_limit_pct", "min_profit_pct_take",
+                "display_timezone",
             },
         )
         self.assertEqual(set_doc["config"]["min_signal_score"], 6)
         self.assertEqual(set_doc["config"]["rsi_zone_max"], 65)
+        self.assertEqual(set_doc["config"]["display_timezone"], "Europe/Paris")
 
 
 if __name__ == "__main__":
