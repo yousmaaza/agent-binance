@@ -4,9 +4,8 @@ import hmac
 from functools import wraps
 from urllib.parse import urlsplit
 
-from flask import redirect, request, session, url_for
-
 import settings
+from flask import redirect, request, session, url_for
 
 
 def is_configured() -> bool:

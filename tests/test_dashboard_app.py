@@ -15,14 +15,15 @@ from unittest.mock import patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "dashboard"))
 
-import settings  # noqa: E402
+import settings
+
 settings.DASHBOARD_PASSWORD = "test-password"
 settings.DASHBOARD_SECRET_KEY = "test-secret-key"
 
-import app as dashboard_app  # noqa: E402
-from cache import cache  # noqa: E402
-from kraken_client import KrakenUnavailable  # noqa: E402
-from mongo_client import DashboardStateMissing, MongoUnavailable  # noqa: E402
+import app as dashboard_app
+from cache import cache
+from kraken_client import KrakenUnavailable
+from mongo_client import DashboardStateMissing, MongoUnavailable
 
 SAMPLE_STATE = {
     "_id": "current",
@@ -135,16 +136,16 @@ class TestDegradedStates(DashboardAppTestBase):
             self._login()
             r = self.client.get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn("MongoDB injoignable".encode(), r.data)
-        self.assertNotIn("Aucune donn".encode(), r.data)
+        self.assertIn(b"MongoDB injoignable", r.data)
+        self.assertNotIn(b"Aucune donn", r.data)
 
     def test_state_missing_shows_distinct_message(self):
         with patch("app.get_dashboard_state", side_effect=DashboardStateMissing("no doc")):
             self._login()
             r = self.client.get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn("Aucune donn".encode(), r.data)
-        self.assertNotIn("MongoDB injoignable".encode(), r.data)
+        self.assertIn(b"Aucune donn", r.data)
+        self.assertNotIn(b"MongoDB injoignable", r.data)
 
     def test_stale_data_shows_warning_banner(self):
         old_state = dict(SAMPLE_STATE, updated_at=(datetime.now(timezone.utc) - timedelta(hours=8)).isoformat())
@@ -171,7 +172,7 @@ class TestDegradedStates(DashboardAppTestBase):
             self._login()
             r = self.client.get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn("API Kraken injoignable".encode(), r.data)
+        self.assertIn(b"API Kraken injoignable", r.data)
         self.assertIn(b"BNB", r.data)  # la position reste affich\xc3\xa9e, sans prix courant
 
 

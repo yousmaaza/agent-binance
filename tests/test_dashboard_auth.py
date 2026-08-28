@@ -6,8 +6,8 @@ import unittest
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "dashboard"))
 
-import auth  # noqa: E402
-import settings  # noqa: E402
+import auth
+import settings
 
 
 class TestIsConfigured(unittest.TestCase):
