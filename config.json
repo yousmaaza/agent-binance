@@ -17,6 +17,7 @@
   "risk_per_trade_pct": 0.02,
   "reward_risk_ratio": 1.5,
   "fee_round_trip_pct": 0.009,
+  "max_tp_pct": 0.06,
   "min_signal_score": 6,
   "min_signal_score_degraded": 4,
   "max_correlated_positions": 2,

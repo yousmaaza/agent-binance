@@ -70,6 +70,7 @@ Le script affiche sur stdout : PHASE0_OCO_DONE|retried=N
 #   TV_MAP = {"XBT": "BTC", "XDG": "DOGE"}
 #   reward_risk_ratio = cfg.get("reward_risk_ratio", 1.5)   # net de frais (#411)
 #   fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
+#   max_tp_pct = cfg.get("max_tp_pct", 0.06)   # plafond absolu, indépendant de la résistance (#428)
 #
 # ÉTAPE 2 — Pour chaque trade "open", appeler DIRECTEMENT le tool MCP (pas via subprocess ni Python) :
 #   mcp__tradingview__combined_analysis(symbol="{TV_MAP.get(coin, coin)}USDT", exchange="BINANCE", timeframe="4h")
@@ -81,11 +82,14 @@ Le script affiche sur stdout : PHASE0_OCO_DONE|retried=N
 #   tp_mecanique = entry_price × (1 + (stop_distance_pct + fee_round_trip_pct) × reward_risk_ratio + fee_round_trip_pct)
 #   tp_plancher = entry_price × (1 + 2 × fee_round_trip_pct)   # entrée majorée des frais aller-retour
 #                                                                # + marge minimale de gain net (#411)
+#   tp_plafond_absolu = entry_price × (1 + max_tp_pct)   # plafond indépendant de la résistance (#428)
+#
+#   tp_candidat = min(tp_mecanique, tp_plafond_absolu)
 #   Si r2_4h existe et r2_4h > entry_price :
-#     tp_smart_resistance = min(tp_mecanique, r2_4h × 0.98)
-#     Si tp_smart_resistance >= tp_plancher : tp_smart = tp_smart_resistance
-#     Sinon : tp_smart = tp_mecanique   # résistance trop proche pour une cible viable -> pas de plafond perdant
-#   Sinon : tp_smart = tp_mecanique
+#     tp_candidat = min(tp_candidat, r2_4h × 0.98)
+#   Si tp_candidat >= tp_plancher : tp_smart = tp_candidat
+#   Sinon : tp_smart = tp_mecanique   # tout plafond (résistance et/ou absolu) trop bas pour une
+#                                       cible viable -> pas de plafond perdant, on garde le mécanique
 #   Si |tp_smart - tp_actuel| / tp_actuel > 0.005 → ajouter à updates dict
 #
 # ÉTAPE 4 — Sauvegarder les TPs mis à jour via script Python :
