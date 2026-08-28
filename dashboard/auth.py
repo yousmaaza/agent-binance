@@ -2,6 +2,7 @@
 suffit pas à protéger une page qui expose la valeur du portefeuille."""
 import hmac
 from functools import wraps
+from urllib.parse import urlsplit
 
 from flask import redirect, request, session, url_for
 
@@ -14,6 +15,16 @@ def is_configured() -> bool:
 
 def check_password(candidate: str) -> bool:
     return hmac.compare_digest(candidate or "", settings.DASHBOARD_PASSWORD)
+
+
+def safe_next_path(value):
+    """Liste blanche : n'accepte qu'un chemin relatif interne (#435 — redirection ouverte)."""
+    if not value or not value.startswith("/") or value.startswith("//") or value.startswith("/\\"):
+        return None
+    parts = urlsplit(value)
+    if parts.scheme or parts.netloc:
+        return None
+    return value
 
 
 def login_required(view):

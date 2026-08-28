@@ -44,5 +44,28 @@ class TestCheckPassword(unittest.TestCase):
         self.assertFalse(auth.check_password(None))
 
 
+class TestSafeNextPath(unittest.TestCase):
+    def test_internal_path_accepted(self):
+        self.assertEqual(auth.safe_next_path("/"), "/")
+
+    def test_absolute_url_rejected(self):
+        self.assertIsNone(auth.safe_next_path("https://exemple-malveillant.test/x"))
+
+    def test_protocol_relative_url_rejected(self):
+        self.assertIsNone(auth.safe_next_path("//exemple.test/x"))
+
+    def test_backslash_variant_rejected(self):
+        self.assertIsNone(auth.safe_next_path("/\\exemple.test"))
+
+    def test_none_rejected(self):
+        self.assertIsNone(auth.safe_next_path(None))
+
+    def test_empty_string_rejected(self):
+        self.assertIsNone(auth.safe_next_path(""))
+
+    def test_no_leading_slash_rejected(self):
+        self.assertIsNone(auth.safe_next_path("exemple.test"))
+
+
 if __name__ == "__main__":
     unittest.main()
