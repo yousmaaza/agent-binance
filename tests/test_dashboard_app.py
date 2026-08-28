@@ -99,6 +99,28 @@ class TestAuthFlow(DashboardAppTestBase):
         self.assertEqual(r.status_code, 302)
 
 
+class TestLoginRedirectNext(DashboardAppTestBase):
+    def test_absolute_url_next_rejected_redirects_home(self):
+        r = self.client.post("/login?next=https://exemple-malveillant.test/x", data={"password": "test-password"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/")
+
+    def test_protocol_relative_next_rejected_redirects_home(self):
+        r = self.client.post("/login?next=//exemple.test/x", data={"password": "test-password"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/")
+
+    def test_backslash_variant_next_rejected_redirects_home(self):
+        r = self.client.post("/login?next=/\\exemple.test", data={"password": "test-password"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/")
+
+    def test_legitimate_internal_next_accepted(self):
+        r = self.client.post("/login?next=/", data={"password": "test-password"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], "/")
+
+
 class TestNotConfigured(DashboardAppTestBase):
     def test_returns_503_with_distinct_message_when_password_env_var_missing(self):
         settings.DASHBOARD_PASSWORD = ""

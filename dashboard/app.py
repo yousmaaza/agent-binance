@@ -9,7 +9,7 @@ from flask import Flask, redirect, render_template, request, session, url_for
 import analysis
 import settings
 import viewdata
-from auth import check_password, is_configured, login_required
+from auth import check_password, is_configured, login_required, safe_next_path
 from kraken_client import KrakenUnavailable, get_prices
 from mongo_client import DashboardStateMissing, MongoUnavailable, get_dashboard_state, get_recent_cycles
 
@@ -32,7 +32,7 @@ def login():
     if request.method == "POST":
         if check_password(request.form.get("password", "")):
             session["authenticated"] = True
-            return redirect(request.args.get("next") or url_for("dashboard_home"))
+            return redirect(safe_next_path(request.args.get("next")) or url_for("dashboard_home"))
         error = "Mot de passe incorrect."
     return render_template("login.html", error=error)
 
