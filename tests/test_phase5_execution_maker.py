@@ -118,6 +118,8 @@ class TestMakerEntryPlacesPostOnlyLimitAndDefersToWatcher(unittest.TestCase):
         self.assertAlmostEqual(pending_entry["current_limit_price"], 1999.5)
         # fee_round_trip_pct posé sur l'ordre pending pour un TP net de frais cohérent au fill (#411)
         self.assertAlmostEqual(pending_entry["fee_round_trip_pct"], 0)
+        # max_tp_pct posé sur l'ordre pending pour un plafond absolu cohérent au fill (#428)
+        self.assertIn("max_tp_pct", pending_entry)
 
 
 class TestMakerEntryFallsBackToMarketAfterRepeatedPostOnlyRejection(unittest.TestCase):

@@ -189,6 +189,7 @@ systemctl stop webhook-bot   # VPS (root)
   "risk_per_trade_pct": 0.02,             // risque max 2% du portfolio par trade
   "reward_risk_ratio": 1.5,               // objectif gain NET de frais = 1.5× la perte nette (stop + frais) (#411)
   "fee_round_trip_pct": 0.009,            // coût aller-retour estimé (entrée maker 0.30% + sortie taker 0.60%, Tier 2)
+  "max_tp_pct": 0.06,                     // plafond absolu sur la cible, indépendant de la résistance 4h (#428)
   "min_signal_score": 6,                  // score minimum sur 10 pour trader
   "min_signal_score_degraded": 4,         // seuil abaissé si TradingView rate-limite le 1D
   "atr_stop_multiplier": 3.5,             // stop-loss à 3.5× ATR
@@ -289,6 +290,8 @@ Phase 8 — Écriture state/cycle_log.jsonl + commit/push git (trade_history.jso
 En parallèle, le **TP Watcher** (thread indépendant, tick toutes les 2 min) surveille les positions ouvertes et déclenche une vente dès qu'un take-profit est atteint, sans attendre le prochain cycle 4h. Le **Maker Watcher** (tick 20s) fait de même côté entrée : il ajuste les ordres LIMIT post-only posés par la Phase 5 jusqu'à exécution ou repli — voir section dédiée plus bas.
 
 **TP et dimensionnement net de frais (#411)** : `reward_risk_ratio` n'est **pas** un ratio brut (distance TP = distance stop × ratio) — depuis #411 c'est un ratio **net de frais**. Le prix TP intègre le coût aller-retour estimé (`fee_round_trip_pct`) des deux côtés de la formule (`prix_tp = prix_entry × (1 + (stop_distance_pct + fee_round_trip_pct) × reward_risk_ratio + fee_round_trip_pct)`), et le dimensionnement (Phase 4) budgète la perte réelle stop + frais plutôt que le seul glissement de prix au stop. Le recalibrage automatique du TP (Phase 0) applique la même formule et respecte un plancher de viabilité (jamais sous le prix d'entrée majoré des frais aller-retour + une marge minimale de gain) avant de plafonner à la résistance 4h — si la résistance ne permet pas ce plancher, le TP mécanique est conservé plutôt qu'une cible perdante.
+
+**Plafond absolu du TP (#428)** : un stop large (`atr_stop_multiplier` élevé) peut produire une cible mécanique très au-dessus de ce que le marché délivre en pratique (médiane +4.9%, 90e centile +9.3% de hausse pendant la détention, mesuré sur l'historique). `max_tp_pct` plafonne la cible finale indépendamment de la résistance 4h — `prix_tp = min(tp_mécanique, prix_entry × (1 + max_tp_pct)[, résistance × 0.98])` — appliqué aux quatre emplacements où le TP est calculé (Phase 4, Phase 5, `maker_watcher.py`, recalibrage Phase 0). Comme pour le plafonnement à la résistance, si `max_tp_pct` ramène la cible sous le plancher de viabilité (#411), le plancher prime et le TP mécanique est conservé.
 
 ---
 

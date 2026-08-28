@@ -59,6 +59,8 @@ price_deviation_max_pct = cfg.get("price_deviation_max_pct", 0.02)
 reward_risk_ratio = cfg.get("reward_risk_ratio", 1.5)
 # fee_round_trip_pct : estimation du coût aller-retour, pour un TP net de frais (#411)
 fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
+# max_tp_pct : plafond absolu sur la cible, indépendant de la résistance 4h (#428)
+max_tp_pct = cfg.get("max_tp_pct", 0.06)
 maker_entry_enabled = cfg.get("maker_entry_enabled", True)
 
 with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
@@ -127,6 +129,7 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
                     "stop_distance_pct": stop_distance_pct,
                     "reward_risk_ratio": reward_risk_ratio,
                     "fee_round_trip_pct": fee_round_trip_pct,
+                    "max_tp_pct": max_tp_pct,
                     "score": score,
                     "scan_price": prix_entry,
                     "initial_limit_price": maker_limit_price,
@@ -182,6 +185,14 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
         actual_stop = actual_entry * (1 - stop_distance_pct)
         # TP net de frais (#411) : le gain net vise reward_risk_ratio × la perte nette (stop + frais)
         actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
+        # Plafond absolu (#428) : la cible ne dépasse jamais max_tp_pct, sauf si ça la ramène sous
+        # le plancher de viabilité (entrée majorée de 2× les frais aller-retour, #411) — dans ce
+        # cas le plafond est ignoré et la cible mécanique est conservée.
+        actual_tp_plancher = actual_entry * (1 + 2 * fee_round_trip_pct)
+        actual_tp_plafond = actual_entry * (1 + max_tp_pct)
+        actual_tp = min(actual_tp, actual_tp_plafond)
+        if actual_tp < actual_tp_plancher:
+            actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
 
         if prix_post_fill >= actual_tp:
             sell_raw = binance("order", "sell", f"{coin}USDC", str(actual_qty), "--type", "market", "-o", "json", "--yes")

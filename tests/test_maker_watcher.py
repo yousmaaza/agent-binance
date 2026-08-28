@@ -39,6 +39,7 @@ def _pending(**overrides):
         "stop_distance_pct": 0.05,
         "reward_risk_ratio": 2,
         "fee_round_trip_pct": 0.009,
+        "max_tp_pct": 1.0,  # plafond absolu neutralisé par défaut, isole ces tests du plafond (#428)
         "score": 8,
         "scan_price": 2000.0,
         "initial_limit_price": 1999.5,
@@ -153,6 +154,67 @@ class TestTpCalculationNetOfFees(unittest.TestCase):
         history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
 
         # actual_entry = 200/0.1 = 2000 -> tp_price = 2000*(1+(0.03+0.009)*1.5+0.009) = 2135.0
+        self.assertAlmostEqual(history[0]["tp_price"], 2135.0, places=6)
+
+
+class TestMaxTpPctCapsWideStopTarget(unittest.TestCase):
+    """Plafond absolu (#428) : un stop large produit une cible mécanique au-dessus de max_tp_pct
+    -> la cible finale (tp_price) est ramenée au plafond, posé sur le pending par
+    phase5_execution.py."""
+
+    def test_wide_stop_tp_price_capped_to_max_tp_pct(self):
+        pending = _pending(stop_distance_pct=0.05, reward_risk_ratio=2, fee_round_trip_pct=0.009,
+                            max_tp_pct=0.06)
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
+            "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX1"]},
+        })
+
+        history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
+
+        # actual_entry = 2000 -> tp_mecanique = 2000*(1+(0.059)*2+0.009) = 2254.0
+        # tp_plafond = 2000*1.06 = 2120 < tp_mecanique -> plafond appliqué
+        self.assertAlmostEqual(history[0]["tp_price"], 2120.0, places=6)
+
+
+class TestMaxTpPctDoesNotAffectLowTarget(unittest.TestCase):
+    """Plafond absolu (#428) : une cible mécanique déjà sous max_tp_pct n'est pas modifiée."""
+
+    def test_narrow_stop_tp_price_unaffected_by_max_tp_pct(self):
+        pending = _pending(stop_distance_pct=0.02, reward_risk_ratio=1, fee_round_trip_pct=0.009,
+                            max_tp_pct=0.06)
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
+            "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX1"]},
+        })
+
+        history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
+
+        # actual_entry = 2000 -> tp_mecanique = 2000*(1+(0.029)*1+0.009) = 2076.0, sous le plafond
+        # (2120) -> inchangé
+        self.assertAlmostEqual(history[0]["tp_price"], 2076.0, places=6)
+
+
+class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
+    """Plafond absolu (#428) vs plancher de viabilité (#411) : si max_tp_pct configuré ramène la
+    cible sous le plancher (entrée + 2× frais), le plancher prime — la cible mécanique est
+    conservée plutôt qu'une cible perdante."""
+
+    def test_max_tp_pct_below_floor_falls_back_to_mecanique(self):
+        pending = _pending(stop_distance_pct=0.03, reward_risk_ratio=1.5, fee_round_trip_pct=0.009,
+                            max_tp_pct=0.01)  # plafond +1% < plancher +1.8%
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
+            "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX1"]},
+        })
+
+        history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
+
+        # actual_entry = 2000 -> tp_mecanique = 2135.0 ; tp_plafond = 2020 < tp_plancher = 2036 ->
+        # conflit, le plancher prime, mécanique conservée
         self.assertAlmostEqual(history[0]["tp_price"], 2135.0, places=6)
 
 
