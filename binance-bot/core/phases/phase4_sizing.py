@@ -45,6 +45,10 @@ reward_risk_ratio = cfg.get("reward_risk_ratio", 1.5)
 # fee_round_trip_pct : estimation du coût aller-retour (entrée+sortie), utilisée pour que le TP
 # et le dimensionnement reflètent le gain/perte réel net plutôt que brut (#411)
 fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
+# max_tp_pct : plafond absolu sur la cible, indépendant de la résistance 4h (#428) — le marché ne
+# délivre en pratique qu'une hausse médiane de 4.9% pendant la détention (90e centile 9.3%), très
+# en-dessous des cibles mécaniques que produit un stop large (atr_stop_multiplier élevé).
+max_tp_pct = cfg.get("max_tp_pct", 0.06)
 limit_offset_pct = cfg.get("limit_offset_pct", 0.001)
 min_order_usdc = cfg.get("min_order_usdc", 9)
 max_single_position_pct = cfg.get("max_single_position_pct", 0.3)
@@ -63,6 +67,14 @@ for candidate in buy_candidates:
     prix_stop = prix_entry * (1 - stop_distance_pct)
     # TP net de frais (#411) : le gain net vise reward_risk_ratio × la perte nette (stop + frais)
     prix_tp = prix_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
+    # Plafond absolu (#428) : la cible ne dépasse jamais max_tp_pct, sauf si ça la ramène sous le
+    # plancher de viabilité (entrée majorée de 2× les frais aller-retour, #411) — dans ce cas le
+    # plafond est ignoré et la cible mécanique est conservée plutôt qu'une cible perdante.
+    tp_plancher = prix_entry * (1 + 2 * fee_round_trip_pct)
+    tp_plafond = prix_entry * (1 + max_tp_pct)
+    prix_tp = min(prix_tp, tp_plafond)
+    if prix_tp < tp_plancher:
+        prix_tp = prix_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
 
     if prix_stop <= 0:
         skipped.append({"coin": coin, "reason": "prix_stop négatif (volatilité extrême)"})

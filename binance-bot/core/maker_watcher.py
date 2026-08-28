@@ -125,9 +125,20 @@ def _register_open_position(pending: dict, entry_txid: str, actual_qty: float, a
     # fee_round_trip_pct : posé sur l'ordre pending par phase5_execution.py, pour un TP net de
     # frais identique aux autres emplacements de calcul (#411)
     fee_round_trip_pct = pending.get("fee_round_trip_pct", 0.009)
+    # max_tp_pct : posé sur l'ordre pending par phase5_execution.py, plafond absolu identique aux
+    # autres emplacements de calcul (#428)
+    max_tp_pct = pending.get("max_tp_pct", 0.06)
     stop_distance_pct = pending["stop_distance_pct"]
     actual_stop = actual_entry * (1 - stop_distance_pct)
     actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
+    # Plafond absolu (#428) : la cible ne dépasse jamais max_tp_pct, sauf si ça la ramène sous le
+    # plancher de viabilité (entrée majorée de 2× les frais aller-retour, #411) — dans ce cas le
+    # plafond est ignoré et la cible mécanique est conservée.
+    actual_tp_plancher = actual_entry * (1 + 2 * fee_round_trip_pct)
+    actual_tp_plafond = actual_entry * (1 + max_tp_pct)
+    actual_tp = min(actual_tp, actual_tp_plafond)
+    if actual_tp < actual_tp_plancher:
+        actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
 
     sl_txid, protection_failed, sl_err_msg, actual_stop_rounded = _place_stop_loss(pair, actual_qty, actual_stop)
     if protection_failed:

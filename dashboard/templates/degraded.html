@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Dashboard indisponible{% endblock %}
+{% block body %}
+<main class="centered">
+  <div class="card degraded">
+    {% if kind == "mongo_unavailable" %}
+      <h1>🔌 MongoDB injoignable</h1>
+      <p>Impossible de se connecter à MongoDB Atlas. Vérifie :</p>
+      <ul>
+        <li>que <code>MONGODB_URI</code> est correctement configurée côté Railway ;</li>
+        <li>que l'IP sortante de Railway est bien autorisée dans la liste blanche Atlas
+          (Network Access) — voir la documentation de déploiement.</li>
+      </ul>
+    {% elif kind == "state_missing" %}
+      <h1>📭 Aucune donnée publiée</h1>
+      <p>Le document <code>dashboard_state</code> n'existe pas encore en base. Le bot le crée à
+      la fin de son premier cycle (toutes les 4h) depuis le déploiement de #431.</p>
+      <p>Reviens dans quelques heures, ou vérifie que le bot tourne bien sur la VPS.</p>
+    {% endif %}
+    <p class="detail">{{ detail }}</p>
+    <p><a href="{{ url_for('dashboard_home') }}">↻ Réessayer</a></p>
+  </div>
+</main>
+{% endblock %}

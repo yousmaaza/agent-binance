@@ -1,0 +1,130 @@
+:root {
+  --bg: #0f1115;
+  --card: #171a21;
+  --text: #e6e8ec;
+  --sub: #8b93a7;
+  --pos: #3ecf8e;
+  --neg: #ef5757;
+  --accent: #5b8def;
+  --border: #262a33;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+}
+
+.centered {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px;
+}
+
+.login-card { max-width: 320px; width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.login-card input { padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: #0c0e12; color: var(--text); }
+.login-card button { padding: 10px; border-radius: 8px; border: none; background: var(--accent); color: white; font-weight: 600; }
+.error { color: var(--neg); }
+
+.degraded ul { padding-left: 18px; }
+.degraded .detail { color: var(--sub); font-size: 12px; word-break: break-word; }
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+}
+.topbar h1 { font-size: 18px; margin: 0; }
+.topbar .logout { color: var(--sub); font-size: 13px; text-decoration: none; }
+
+.freshness {
+  margin: 0 16px 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.freshness.ok { background: rgba(62, 207, 142, 0.12); color: var(--pos); }
+.freshness.stale { background: rgba(239, 87, 87, 0.15); color: var(--neg); }
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 8px;
+  overflow-x: auto;
+}
+.tab-btn {
+  padding: 8px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--sub);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+h2 { font-size: 15px; margin: 0 0 10px; color: var(--sub); text-transform: uppercase; letter-spacing: .03em; }
+
+.chain { font-size: 16px; }
+.num { font-weight: 700; }
+.pos { color: var(--pos); }
+.neg { color: var(--neg); }
+.sub { color: var(--sub); font-size: 12px; }
+
+.equity-curve { width: 100%; height: 80px; color: var(--accent); margin-top: 8px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table th, table td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+
+.position { border-top: 1px solid var(--border); padding: 10px 0; }
+.position:first-of-type { border-top: none; }
+.position-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.position-head .maker { color: var(--pos); font-size: 11px; }
+.position-head .taker { color: var(--sub); font-size: 11px; }
+.position-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 13px; }
+
+.warning { color: #e6b93b; font-size: 13px; }
+
+.cadence-band { display: flex; align-items: flex-end; gap: 2px; height: 60px; }
+.cadence-bar { flex: 1; min-width: 2px; background: var(--border); border-radius: 2px 2px 0 0; }
+.cadence-bar.action { background: var(--accent); }
+.cadence-bar.action.error { background: var(--neg); }
+
+.bar-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+.bar-row span:first-child { flex: 0 0 160px; }
+.bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); }
+
+.cycle-entry { border-top: 1px solid var(--border); padding: 10px 0; }
+.cycle-entry:first-of-type { border-top: none; }
+.cycle-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.badge { background: var(--border); border-radius: 6px; padding: 2px 8px; font-size: 11px; text-transform: uppercase; }
+.status-error .badge { background: var(--neg); color: white; }
+.cycle-head button { margin-left: auto; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--accent); }
+.decisions { font-size: 12px; color: var(--sub); padding-left: 16px; }
+
+dialog { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 12px; max-width: 420px; padding: 16px; }
+dialog::backdrop { background: rgba(0,0,0,0.6); }
+
+@media (min-width: 720px) {
+  .position-grid { grid-template-columns: repeat(4, 1fr); }
+  main { max-width: 900px; margin: 0 auto; }
+}

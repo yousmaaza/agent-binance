@@ -26,8 +26,9 @@ PHASE5_EXECUTION_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases
 # maker_entry_enabled=False : ces tests couvrent le flux legacy BUY MARKET, pas la nouvelle
 # entrée maker LIMIT post-only (#388) — voir tests/test_phase5_execution_maker.py pour celle-ci.
 # fee_round_trip_pct=0 : frais neutralisés par défaut, isole ces tests des formules nettes (#411).
+# max_tp_pct=1.0 : plafond absolu neutralisé par défaut, isole ces tests du plafond (#428).
 DEFAULT_CONFIG = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 2, "fee_round_trip_pct": 0,
-                   "maker_entry_enabled": False}
+                   "max_tp_pct": 1.0, "maker_entry_enabled": False}
 
 BASE_ORDER = {
     "coin": "ETH",
@@ -208,8 +209,10 @@ class TestTpCalculationNetOfFees(unittest.TestCase):
 
     def test_actual_tp_integrates_fee_round_trip_pct(self):
         order = dict(BASE_ORDER, stop_distance_pct=0.03)
+        # max_tp_pct=1.0 : isole ce test du plafond absolu (#428, testé séparément par les classes
+        # TestMaxTpPct*) pour ne vérifier ici que l'intégration de fee_round_trip_pct.
         config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1.5, "fee_round_trip_pct": 0.009,
-                   "maker_entry_enabled": False}
+                   "max_tp_pct": 1.0, "maker_entry_enabled": False}
         kraken_scenario = {
             # actual_entry = 200/0.1 = 2000 -> actual_tp = 2000*(1+(0.03+0.009)*1.5+0.009) = 2135.0
             # ticker sous ce TP pour rester en position ouverte plutôt que clôturée au fill.
@@ -229,6 +232,91 @@ class TestTpCalculationNetOfFees(unittest.TestCase):
         self.assertAlmostEqual(executed["actual_tp"], 2135.0, places=6)
         mock_save.assert_called_once()
         self.assertAlmostEqual(saved_history[0]["tp_price"], 2135.0, places=6)
+
+
+class TestMaxTpPctCapsWideStopTarget(unittest.TestCase):
+    """Plafond absolu (#428) : un stop large produit une cible mécanique au-dessus de max_tp_pct
+    -> la cible finale (actual_tp) est ramenée au plafond."""
+
+    def test_wide_stop_actual_tp_capped_to_max_tp_pct(self):
+        order = dict(BASE_ORDER, stop_distance_pct=0.07)
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1.5, "fee_round_trip_pct": 0.009,
+                   "max_tp_pct": 0.06, "maker_entry_enabled": False}
+        kraken_scenario = {
+            # actual_entry = 200/0.1 = 2000 -> tp_mecanique = 2000*(1+(0.079)*1.5+0.009) = 2255.0
+            # tp_plafond = 2000*1.06 = 2120 < tp_mecanique -> plafond appliqué
+            "ticker": {"ETHUSDC": {"c": ["2000.0", "0.01"]}},
+            "balance": {"USDC": "500.0"},
+            "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
+            "query-orders_BUYTX1": {"BUYTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1"}},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC": {"txid": ["SLTX1"]},
+        }
+        output, _mock_tg, mock_save, saved_history = _run_phase5_execution(
+            [order], config=config, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["executed"], 1)
+        executed = output["orders_executed"][0]
+        self.assertAlmostEqual(executed["actual_tp"], 2120.0, places=6)
+        mock_save.assert_called_once()
+        self.assertAlmostEqual(saved_history[0]["tp_price"], 2120.0, places=6)
+
+
+class TestMaxTpPctDoesNotAffectLowTarget(unittest.TestCase):
+    """Plafond absolu (#428) : une cible mécanique déjà sous max_tp_pct n'est pas modifiée."""
+
+    def test_narrow_stop_actual_tp_unaffected_by_max_tp_pct(self):
+        order = dict(BASE_ORDER, stop_distance_pct=0.02)
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1.5, "fee_round_trip_pct": 0.009,
+                   "max_tp_pct": 0.06, "maker_entry_enabled": False}
+        kraken_scenario = {
+            # actual_entry = 2000 -> tp_mecanique = 2000*(1+(0.029)*1.5+0.009) = 2105.0
+            # sous le plafond (2120) -> inchangé
+            "ticker": {"ETHUSDC": {"c": ["2000.0", "0.01"]}},
+            "balance": {"USDC": "500.0"},
+            "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
+            "query-orders_BUYTX1": {"BUYTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1"}},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC": {"txid": ["SLTX1"]},
+        }
+        output, _mock_tg, mock_save, saved_history = _run_phase5_execution(
+            [order], config=config, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["executed"], 1)
+        executed = output["orders_executed"][0]
+        self.assertAlmostEqual(executed["actual_tp"], 2105.0, places=6)
+        mock_save.assert_called_once()
+
+
+class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
+    """Plafond absolu (#428) vs plancher de viabilité (#411) : si max_tp_pct configuré ramène la
+    cible sous le plancher (entrée + 2× frais), le plancher prime — la cible mécanique est
+    conservée plutôt qu'une cible perdante."""
+
+    def test_max_tp_pct_below_floor_falls_back_to_mecanique(self):
+        order = dict(BASE_ORDER, stop_distance_pct=0.03)
+        config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1.5, "fee_round_trip_pct": 0.009,
+                   "max_tp_pct": 0.01, "maker_entry_enabled": False}  # plafond +1% < plancher +1.8%
+        kraken_scenario = {
+            # actual_entry = 2000 -> tp_mecanique = 2000*(1+(0.039)*1.5+0.009) = 2135.0
+            # tp_plafond = 2020 < tp_plancher = 2036 -> conflit, le plancher prime, mécanique conservée
+            "ticker": {"ETHUSDC": {"c": ["2000.0", "0.01"]}},
+            "balance": {"USDC": "500.0"},
+            "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
+            "query-orders_BUYTX1": {"BUYTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1"}},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC": {"txid": ["SLTX1"]},
+        }
+        output, _mock_tg, mock_save, saved_history = _run_phase5_execution(
+            [order], config=config, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["executed"], 1)
+        executed = output["orders_executed"][0]
+        self.assertAlmostEqual(executed["actual_tp"], 2135.0, places=6)
+        mock_save.assert_called_once()
 
 
 class TestEntryFeeCapturedFromFill(unittest.TestCase):

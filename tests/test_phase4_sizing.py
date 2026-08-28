@@ -28,6 +28,7 @@ DEFAULT_CONFIG = {
     "atr_stop_multiplier": 2,
     "reward_risk_ratio": 2,
     "fee_round_trip_pct": 0,  # frais neutralisés par défaut : isole les tests des formules pré-#411
+    "max_tp_pct": 1.0,  # plafond absolu neutralisé par défaut : isole les tests du plafond (#428)
     "limit_offset_pct": 0,
     "min_order_usdc": 9,
     "max_single_position_pct": 0.3,
@@ -186,6 +187,57 @@ class TestLotDecimalsRounding(unittest.TestCase):
         # risk_usdc=100, stop_distance_pct=0.06 -> quantite brute = 100/(1000*0.06) = 1.6666...
         # floor à 2 décimales -> 1.66 (pas un round naïf qui donnerait 1.67)
         self.assertAlmostEqual(order["quantite"], 1.66, places=6)
+
+
+class TestMaxTpPctCapsWideStopTarget(unittest.TestCase):
+    """Plafond absolu (#428) : un stop large produit une cible mécanique au-dessus de max_tp_pct
+    -> la cible finale est ramenée au plafond."""
+
+    def test_wide_stop_tp_capped_to_max_tp_pct(self):
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.035, "score": 8}]
+        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5,
+                      fee_round_trip_pct=0.009, max_tp_pct=0.06)
+        output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
+
+        self.assertEqual(output["skipped"], [])
+        order = output["ordres_prepares"][0]
+        # stop_distance_pct = 0.07 -> tp_mecanique = 1000*(1+(0.079)*1.5+0.009) = 1127.5 (+12.75%)
+        # tp_plafond = 1000*1.06 = 1060 < tp_mecanique -> plafond appliqué
+        self.assertAlmostEqual(order["prix_tp"], 1060.0, places=6)
+
+
+class TestMaxTpPctDoesNotAffectLowTarget(unittest.TestCase):
+    """Plafond absolu (#428) : une cible mécanique déjà sous max_tp_pct n'est pas modifiée."""
+
+    def test_narrow_stop_tp_unaffected_by_max_tp_pct(self):
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.01, "score": 8}]
+        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5,
+                      fee_round_trip_pct=0.009, max_tp_pct=0.06)
+        output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
+
+        self.assertEqual(output["skipped"], [])
+        order = output["ordres_prepares"][0]
+        # stop_distance_pct = 0.02 -> tp_mecanique = 1000*(1+(0.029)*1.5+0.009) = 1052.5 (+5.25%)
+        # sous le plafond de 1060 (+6%) -> inchangé
+        self.assertAlmostEqual(order["prix_tp"], 1052.5, places=6)
+
+
+class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
+    """Plafond absolu (#428) vs plancher de viabilité (#411) : si max_tp_pct configuré ramène la
+    cible sous le plancher (entrée + 2× frais), le plancher prime — le plafond est ignoré et la
+    cible mécanique est conservée plutôt qu'une cible perdante."""
+
+    def test_max_tp_pct_below_floor_falls_back_to_mecanique(self):
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.015, "score": 8}]
+        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5,
+                      fee_round_trip_pct=0.009, max_tp_pct=0.01)  # plafond +1% < plancher +1.8%
+        output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
+
+        self.assertEqual(output["skipped"], [])
+        order = output["ordres_prepares"][0]
+        # stop_distance_pct = 0.03 -> tp_mecanique = 1000*(1+(0.039)*1.5+0.009) = 1067.5
+        # tp_plafond = 1010 < tp_plancher = 1018 -> conflit, le plancher prime, mécanique conservée
+        self.assertAlmostEqual(order["prix_tp"], 1067.5, places=6)
 
 
 if __name__ == "__main__":
