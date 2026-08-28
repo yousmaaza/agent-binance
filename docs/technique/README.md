@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#433](pr-433-dashboard-state-mongo.md) | [M1] Publier l'état du bot dans MongoDB pour le dashboard | 2026-08-28 |
 | [#429](pr-429-plafond-tp.md) | [M1] Plafonner le TP à ce que le marché délivre réellement | 2026-08-28 |
 | [#426](pr-426-perf-frais-rendu.md) | [M1] /perf — afficher les frais payés et rendre le gain réel plus lisible | 2026-08-23 |
 | [#425](pr-425-m1-tp-net-frais.md) | [M1] TP et dimensionnement net de frais | 2026-08-23 |
