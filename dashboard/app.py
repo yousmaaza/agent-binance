@@ -50,6 +50,8 @@ def logout():
 @app.route("/")
 @login_required
 def dashboard_home():
+    # CC=15 (grade C) — Monitoring required. If more than 20 lines added, consider refactoring
+    # into helper functions (e.g., separate data fetching, view building). Issue #441.
     try:
         state = get_dashboard_state()
     except MongoUnavailable as e:
