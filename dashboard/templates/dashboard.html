@@ -216,6 +216,66 @@
 <!-- ============ onglet 2 : cycles ============ -->
 <div class="panel p-cycles pad">
 
+  {% set grid = cycles.grid %}
+  <section class="cgrid-sec">
+    <h2>État des cycles<em>{{ grid.days }} derniers jours</em></h2>
+    <p class="note">Le bot a rendez-vous toutes les 4 h. Chaque case est un rendez-vous —
+      tenu ou manqué. Un cycle qui ne démarre pas n'écrit rien en base : sans partir des
+      créneaux attendus, il resterait invisible.</p>
+
+    <div class="grid-wrap">
+      <table class="cgrid">
+        <caption class="visually-hidden">État de chaque créneau de 4 heures sur {{ grid.days }} jours</caption>
+        <tbody>
+          {% for slot_label in grid.slot_labels %}
+          {% set row = loop.index0 %}
+          <tr>
+            <th scope="row">{{ slot_label }}</th>
+            {% for col in grid.columns %}
+              {% set cell = col.cells[row] %}
+              {% if cell is none %}
+                <td class="c-void"></td>
+              {% else %}
+                <td class="c-{{ cell.state }}" tabindex="0"
+                    data-when="{{ cell.slot_local }}"
+                    data-state="{{ cell.state }}"
+                    {% if cell.state != 'missing' %}
+                    data-detail="score {{ cell.top_score }}/10 · {{ cell.duration_s }} s · {{ "%.2f"|format(cell.cost_usd) }} ${% if cell.executed or cell.pending %} · {{ cell.executed }} exécuté(s), {{ cell.pending }} en attente{% endif %}{% if cell.manual %} · lancé à la main{% endif %}"
+                    {% endif %}
+                    aria-label="{{ cell.slot_local }} — {{ cell.state }}"></td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          <tr class="cdates">
+            <th scope="row"></th>
+            {% for col in grid.columns %}
+              <td>{% if col.show_label %}<span>{{ col.label }}</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cgrid-tip" hidden aria-hidden="true"></div>
+
+    <div class="legend">
+      <span><i class="sw-action"></i>a passé un ordre</span>
+      <span><i class="sw-idle"></i>a tourné sans agir</span>
+      <span><i class="sw-error"></i>en échec</span>
+      <span><i class="sw-missing"></i>jamais démarré</span>
+    </div>
+
+    <div class="facts" style="margin-top:20px">
+      <div class="fact"><span>créneaux</span><b>{{ grid.total }}</b><i>sur {{ grid.days }} jours</i></div>
+      <div class="fact"><span>ont tourné</span><b>{{ grid.ran_pct if grid.ran_pct is not none else 'n/d' }} %</b>
+        <i>{{ grid.counts.missing }} jamais démarré(s)</i></div>
+      <div class="fact"><span>en échec</span><b class="{{ 'loss' if (grid.error_pct or 0) > 10 }}">{{ grid.error_pct if grid.error_pct is not none else 'n/d' }} %</b>
+        <i>{{ grid.counts.error }} sur {{ grid.ran }} lancés</i></div>
+      <div class="fact"><span>avec ordre</span><b class="gain">{{ grid.counts.action }}</b>
+        <i>{{ grid.counts.idle }} sans action</i></div>
+    </div>
+  </section>
+
   <section>
     <h2>Motifs de blocage<em>{{ cycles.blocking.total }} skips</em></h2>
     <p class="note">{{ cycles.blocking.comment }}</p>

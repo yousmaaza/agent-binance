@@ -13,6 +13,7 @@ from kraken_client import KrakenUnavailable, get_prices
 from mongo_client import (
     DashboardStateMissing,
     MongoUnavailable,
+    get_cycles_for_grid,
     get_dashboard_state,
     get_recent_cycles,
 )
@@ -78,6 +79,15 @@ def _load_cycles():
         return [], str(e)
 
 
+def _load_grid_cycles():
+    # 6 créneaux par jour, plus une marge pour les cycles lancés à la main
+    limit = settings.CYCLE_GRID_DAYS * len(viewdata.SLOT_HOURS_UTC) + 40
+    try:
+        return get_cycles_for_grid(limit)
+    except MongoUnavailable:
+        return []
+
+
 def _build_results_view(state, prices, cycles):
     open_positions = state.get("open_positions") or []
     financials = state.get("financials") or {}
@@ -103,6 +113,8 @@ def _build_cycles_view(cycles, cycles_error, tz_name):
     cadence = viewdata.build_cadence_band(cycles)
 
     return {
+        "grid": viewdata.build_cycle_grid(
+            _load_grid_cycles(), settings.CYCLE_GRID_DAYS, tz_name),
         "journal": [viewdata.build_cycle_row(c, tz_name) for c in cycles],
         "cadence": cadence,
         "cadence_summary": viewdata.cadence_summary(cadence),

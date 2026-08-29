@@ -2,7 +2,7 @@
 
 Séparé des routes Flask pour rester testable sans client HTTP : chaque fonction prend des
 dicts déjà lus (dashboard_state, cycles) et retourne des dicts/valeurs simples."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from timeutil import parse_iso, to_local
 
@@ -272,6 +272,124 @@ def build_cycle_row(cycle: dict, tz_name: str) -> dict:
 
 
 CADENCE_SCORE_THRESHOLD = 6  # score minimal déclenchant un achat
+
+# Créneaux auto du bot, alignés sur les clôtures TradingView 4h (cf. CLAUDE.md, règle 6).
+SLOT_HOURS_UTC = (0, 4, 8, 12, 16, 20)
+SLOT_MINUTE_UTC = 5
+SLOT_TOLERANCE_S = 3600  # un cycle compte pour son créneau s'il démarre dans l'heure qui suit
+
+
+def build_cycle_grid(cycles: list, days: int, tz_name: str, now: datetime | None = None) -> dict:
+    """Grille des créneaux attendus sur `days` jours, une colonne par jour (#450).
+
+    Part du **calendrier théorique** et non des documents en base : c'est la seule façon de voir
+    les cycles qui n'ont jamais démarré, lesquels n'écrivent rien et sont donc invisibles pour
+    tout compteur qui parcourt la collection."""
+    now = now or datetime.now(timezone.utc)
+
+    slots = []
+    first_day = (now - timedelta(days=days - 1)).replace(
+        hour=0, minute=SLOT_MINUTE_UTC, second=0, microsecond=0)
+    for offset in range(days):
+        day = first_day + timedelta(days=offset)
+        for hour in SLOT_HOURS_UTC:
+            slot = day.replace(hour=hour)
+            if slot <= now:
+                slots.append(slot)
+
+    matched = _match_cycles_to_slots(cycles, slots)
+
+    columns, counts = [], {"action": 0, "idle": 0, "error": 0, "missing": 0}
+    for offset in range(days):
+        day = first_day + timedelta(days=offset)
+        cells = []
+        for hour in SLOT_HOURS_UTC:
+            slot = day.replace(hour=hour)
+            if slot not in set(slots):
+                cells.append(None)  # créneau encore à venir aujourd'hui
+                continue
+            cell = _grid_cell(slot, matched.get(slot), tz_name)
+            counts[cell["state"]] += 1
+            cells.append(cell)
+        columns.append({
+            "date": day.strftime("%Y-%m-%d"),
+            "label": day.strftime("%d/%m"),
+            "is_month_start": day.day == 1,
+            "cells": cells,
+        })
+
+    _mark_date_labels(columns)
+
+    ran = len(slots) - counts["missing"]
+    return {
+        "columns": columns,
+        "slot_labels": [_slot_label(first_day.replace(hour=h), tz_name) for h in SLOT_HOURS_UTC],
+        "counts": counts,
+        "total": len(slots),
+        "ran": ran,
+        "ran_pct": round(ran / len(slots) * 100) if slots else None,
+        "error_pct": round(counts["error"] / ran * 100) if ran else None,
+        "days": days,
+    }
+
+
+
+def _mark_date_labels(columns: list, spacing: int = 7) -> None:
+    """Un repère de date tous les 7 jours et à chaque début de mois, mais jamais deux collés :
+    31/07 et 01/08 sont voisins et leurs libellés se chevaucheraient (#450)."""
+    last = None
+    for i, column in enumerate(columns):
+        wanted = i == 0 or column["is_month_start"] or i % spacing == 0
+        column["show_label"] = bool(wanted and (last is None or i - last >= 3))
+        if column["show_label"]:
+            last = i
+
+
+def _match_cycles_to_slots(cycles: list, slots: list) -> dict:
+    """Rattache chaque cycle au créneau le plus proche, dans la tolérance. Un cycle lancé à la
+    main près d'un créneau le tient : le travail a bien été fait, peu importe le déclencheur."""
+    matched: dict = {}
+    for cycle in cycles:
+        started = parse_iso(cycle.get("timestamp"))
+        if started is None:
+            continue
+        candidates = [s for s in slots if abs((started - s).total_seconds()) <= SLOT_TOLERANCE_S]
+        if not candidates:
+            continue
+        slot = min(candidates, key=lambda s: abs((started - s).total_seconds()))
+        previous = matched.get(slot)
+        # à créneau égal, garder le cycle le plus proche de l'heure théorique
+        if previous is None or abs((started - slot).total_seconds()) < abs(
+                (parse_iso(previous["timestamp"]) - slot).total_seconds()):
+            matched[slot] = cycle
+    return matched
+
+
+def _grid_cell(slot: datetime, cycle: dict | None, tz_name: str) -> dict:
+    local = to_local(slot, tz_name, fmt="%d/%m %H:%M")
+    if cycle is None:
+        return {"state": "missing", "slot_local": local, "cycle_id": None}
+
+    execution = cycle.get("execution") or {}
+    executed = execution.get("executed", cycle.get("executed", 0)) or 0
+    pending = execution.get("pending", cycle.get("pending", 0)) or 0
+    failed = cycle.get("status") == "error"
+
+    return {
+        "state": "error" if failed else ("action" if (executed or pending) else "idle"),
+        "slot_local": local,
+        "cycle_id": cycle.get("cycle_id"),
+        "top_score": cycle.get("top_score") or 0,
+        "executed": executed,
+        "pending": pending,
+        "duration_s": round(cycle.get("duration_s") or cycle.get("duration_seconds") or 0),
+        "cost_usd": round(cycle.get("api_cost_usd") or 0, 2),
+        "manual": cycle.get("trigger") == "manual",
+    }
+
+
+def _slot_label(slot: datetime, tz_name: str) -> str:
+    return to_local(slot, tz_name, fmt="%H:%M")
 
 
 def build_cadence_band(cycles: list) -> list:

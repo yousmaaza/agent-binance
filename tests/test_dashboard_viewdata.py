@@ -328,5 +328,102 @@ class TestPnlBars(unittest.TestCase):
 
 
 
+
+class TestBuildCycleGrid(unittest.TestCase):
+    """#450 — la grille part des créneaux attendus, seule façon de voir ce qui n'a jamais tourné."""
+
+    NOW = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
+
+    def _cycle(self, iso, **kw):
+        base = {"cycle_id": iso, "timestamp": iso, "status": "completed", "top_score": 5}
+        base.update(kw)
+        return base
+
+    def test_covers_six_slots_per_day(self):
+        grid = viewdata.build_cycle_grid([], days=3, tz_name="UTC", now=self.NOW)
+        self.assertEqual(len(grid["columns"]), 3)
+        self.assertEqual(len(grid["slot_labels"]), 6)
+
+    def test_absent_cycle_is_reported_missing_not_ignored(self):
+        """Le cœur du ticket : un cycle qui n'a jamais démarré n'écrit rien en base. Sans
+        partir du calendrier, il serait invisible au lieu d'être signalé."""
+        grid = viewdata.build_cycle_grid([], days=2, tz_name="UTC", now=self.NOW)
+        self.assertEqual(grid["counts"]["missing"], grid["total"])
+        self.assertEqual(grid["ran"], 0)
+
+    def test_cycle_is_matched_to_its_slot(self):
+        cycles = [self._cycle("2026-08-29T08:05:09+00:00", execution={"executed": 1})]
+        grid = viewdata.build_cycle_grid(cycles, days=1, tz_name="UTC", now=self.NOW)
+        states = [c["state"] for c in grid["columns"][0]["cells"] if c]
+        self.assertIn("action", states)
+        self.assertEqual(grid["counts"]["action"], 1)
+
+    def test_cycle_late_within_tolerance_still_holds_its_slot(self):
+        cycles = [self._cycle("2026-08-29T08:50:00+00:00")]
+        grid = viewdata.build_cycle_grid(cycles, days=1, tz_name="UTC", now=self.NOW)
+        self.assertEqual(grid["counts"]["missing"], grid["total"] - 1)
+
+    def test_cycle_far_from_any_slot_does_not_fill_one(self):
+        cycles = [self._cycle("2026-08-29T10:30:00+00:00")]
+        grid = viewdata.build_cycle_grid(cycles, days=1, tz_name="UTC", now=self.NOW)
+        self.assertEqual(grid["counts"]["missing"], grid["total"])
+
+    def test_error_beats_action_in_the_cell_state(self):
+        cycles = [self._cycle("2026-08-29T08:05:00+00:00", status="error", execution={"executed": 1})]
+        grid = viewdata.build_cycle_grid(cycles, days=1, tz_name="UTC", now=self.NOW)
+        self.assertEqual(grid["counts"]["error"], 1)
+        self.assertEqual(grid["counts"]["action"], 0)
+
+    def test_future_slots_of_today_are_neither_missing_nor_counted(self):
+        """À 12:00, les créneaux de 12:05, 16:05 et 20:05 ne sont pas encore dus : les compter
+        comme manqués ferait chuter le taux d'exécution pour la seule raison qu'il est tôt."""
+        grid = viewdata.build_cycle_grid([], days=1, tz_name="UTC", now=self.NOW)
+        cells = grid["columns"][0]["cells"]
+        self.assertEqual(sum(1 for c in cells if c is None), 3)
+        self.assertEqual(grid["total"], 3)   # seuls 00:05, 04:05 et 08:05 sont échus
+
+    def test_slot_labels_use_the_display_timezone(self):
+        """Les créneaux sont planifiés en UTC mais s'affichent en heure locale (CLAUDE.md
+        règle 6) : à Paris en été, 00:05 UTC se lit 02:05."""
+        grid = viewdata.build_cycle_grid([], days=1, tz_name="Europe/Paris", now=self.NOW)
+        self.assertEqual(grid["slot_labels"][0], "02:05")
+        self.assertEqual(grid["slot_labels"][3], "14:05")
+
+    def test_percentages_are_none_rather_than_zero_when_nothing_ran(self):
+        grid = viewdata.build_cycle_grid([], days=1, tz_name="UTC", now=self.NOW)
+        self.assertEqual(grid["ran_pct"], 0)
+        self.assertIsNone(grid["error_pct"])
+
+    def test_closest_cycle_wins_when_two_land_on_one_slot(self):
+        cycles = [
+            self._cycle("2026-08-29T08:45:00+00:00", cycle_id="loin"),
+            self._cycle("2026-08-29T08:06:00+00:00", cycle_id="proche"),
+        ]
+        grid = viewdata.build_cycle_grid(cycles, days=1, tz_name="UTC", now=self.NOW)
+        ids = [c["cycle_id"] for c in grid["columns"][0]["cells"] if c and c["cycle_id"]]
+        self.assertEqual(ids, ["proche"])
+
+    def test_cycle_without_timestamp_is_skipped_without_crashing(self):
+        grid = viewdata.build_cycle_grid([{"cycle_id": "x"}], days=1, tz_name="UTC", now=self.NOW)
+        self.assertEqual(grid["counts"]["missing"], grid["total"])
+
+
+class TestDateLabelSpacing(unittest.TestCase):
+    def test_never_places_two_labels_side_by_side(self):
+        """31/07 et 01/08 sont voisins : la règle hebdomadaire et celle du début de mois
+        peuvent se déclencher sur deux colonnes contiguës et se chevaucher à l'écran."""
+        columns = [{"is_month_start": i == 8} for i in range(21)]
+        viewdata._mark_date_labels(columns)
+        marked = [i for i, c in enumerate(columns) if c["show_label"]]
+        for previous, following in pairwise(marked):
+            self.assertGreaterEqual(following - previous, 3)
+
+    def test_always_labels_the_first_column(self):
+        columns = [{"is_month_start": False} for _ in range(10)]
+        viewdata._mark_date_labels(columns)
+        self.assertTrue(columns[0]["show_label"])
+
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -83,6 +83,43 @@ h1{
 }
 .pnl-tip b{font-weight:600;margin-left:7px}
 
+/* ---------- grille des cycles (#450) ---------- */
+.cgrid-sec{position:relative}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.grid-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-top:18px}
+table.cgrid{border-collapse:separate;border-spacing:2px;width:auto}
+table.cgrid th[scope=row]{
+  font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--ink-3);letter-spacing:.04em;
+  font-weight:400;text-align:right;padding:0 7px 0 0;border:none;white-space:nowrap;
+}
+table.cgrid td{padding:0;border:none;width:13px;height:13px;min-width:13px}
+table.cgrid td[data-state]{cursor:pointer}
+table.cgrid td[data-state]:hover,table.cgrid td[data-state]:focus-visible{opacity:.62;outline:none}
+.c-action{background:var(--gain)}
+.c-idle{background:var(--ink-3);opacity:.28}
+.c-error{background:var(--loss)}
+.c-missing{border:1px dashed var(--rule-2)}
+.c-void{background:none}
+/* les libellés sont en position absolue pour déborder de leur colonne de 13px sans la
+   déformer : la cellule doit donc porter une hauteur explicite, sinon la ligne est rognée */
+tr.cdates td{height:13px;padding-top:5px;vertical-align:top;position:relative}
+tr.cdates span{
+  position:absolute;left:0;font-family:"IBM Plex Mono",monospace;font-size:9px;
+  color:var(--ink-3);letter-spacing:.03em;white-space:nowrap;
+}
+.cgrid-tip{
+  position:absolute;z-index:6;pointer-events:none;transform:translate(-50%,-100%);
+  background:var(--ink);color:var(--sheet);padding:6px 10px;white-space:nowrap;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-variant-numeric:tabular-nums;line-height:1.55;
+}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.05em;color:var(--ink-3)}
+.legend i{display:inline-block;width:9px;height:9px;margin-right:6px;vertical-align:baseline;font-style:normal}
+.sw-action{background:var(--gain)}
+.sw-idle{background:var(--ink-3);opacity:.28}
+.sw-error{background:var(--loss)}
+.sw-missing{border:1px dashed var(--rule-2)}
+
 /* ---------- onglets ---------- */
 .tabsel{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--rule);margin-top:0}
