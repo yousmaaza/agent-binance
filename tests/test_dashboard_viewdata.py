@@ -141,25 +141,6 @@ class TestBuildCycleRow(unittest.TestCase):
         self.assertFalse(row["has_action"])
 
 
-class TestBuildCadenceBand(unittest.TestCase):
-    def test_height_scales_with_top_score(self):
-        cycles = [
-            {"cycle_id": "c1", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed", "top_score": 10, "execution": {"executed": 1}},
-            {"cycle_id": "c2", "timestamp": "2026-08-28T06:00:00+00:00", "status": "completed", "top_score": 0, "execution": {}},
-        ]
-        band = viewdata.build_cadence_band(cycles)
-        # ordre chronologique (le plus ancien d'abord) après inversion de l'ordre desc de Mongo
-        self.assertEqual(band[0]["cycle_id"], "c2")
-        self.assertEqual(band[1]["height_pct"], 100)
-        self.assertTrue(band[1]["has_action"])
-
-    def test_zero_score_still_shows_a_visible_bar(self):
-        cycles = [{"cycle_id": "c1", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed", "top_score": 0, "execution": {}}]
-        band = viewdata.build_cadence_band(cycles)
-        self.assertGreater(band[0]["height_pct"], 0)
-
-
-
 class TestFormatPrice(unittest.TestCase):
     """#442 — Kraken renvoie des flottantes brutes, illisibles telles quelles."""
 
@@ -243,24 +224,6 @@ class TestEquityCurveGeometry(unittest.TestCase):
 
 
 class TestCadenceGeometry(unittest.TestCase):
-    def test_bars_are_laid_out_left_to_right_without_overlap(self):
-        cycles = [
-            {"cycle_id": f"c{i}", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed",
-             "top_score": 5, "execution": {}}
-            for i in range(4)
-        ]
-        band = viewdata.build_cadence_band(cycles)
-        xs = [b["x"] for b in band]
-        self.assertEqual(xs, sorted(xs))
-        for previous, following in pairwise(band):
-            self.assertLessEqual(previous["x"] + previous["width"], following["x"] + 0.01)
-
-    def test_last_bar_stays_inside_the_viewbox(self):
-        cycles = [{"cycle_id": "c", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed",
-                   "top_score": 10, "execution": {}}]
-        band = viewdata.build_cadence_band(cycles)
-        self.assertLessEqual(band[-1]["x"] + band[-1]["width"], viewdata.CADENCE_VIEWBOX_WIDTH)
-
     def test_summary_splits_idle_acted_and_failed_without_double_counting(self):
         cycles = [
             {"cycle_id": "a", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed", "top_score": 7, "execution": {"executed": 1}},
@@ -270,6 +233,98 @@ class TestCadenceGeometry(unittest.TestCase):
         summary = viewdata.cadence_summary(viewdata.build_cadence_band(cycles))
         self.assertEqual((summary["acted"], summary["failed"], summary["idle"]), (1, 1, 1))
         self.assertEqual(summary["acted"] + summary["failed"] + summary["idle"], summary["total"])
+
+
+
+
+class TestPnlByPeriod(unittest.TestCase):
+    """#450 — PnL par période dérivé de la courbe cumulée publiée par la Phase 7."""
+
+    CURVE = [
+        {"date": "2026-05-22", "cumulative_pnl_usdc": -0.64},
+        {"date": "2026-06-03", "cumulative_pnl_usdc": 3.65},
+        {"date": "2026-06-19", "cumulative_pnl_usdc": 4.18},
+        {"date": "2026-07-11", "cumulative_pnl_usdc": -1.43},
+    ]
+
+    def test_first_point_starts_from_zero(self):
+        # le premier jour n'a pas de cumul précédent : son PnL est sa valeur cumulée
+        day = viewdata.pnl_by_period(self.CURVE, "day")
+        self.assertAlmostEqual(day[0]["value"], -0.64)
+
+    def test_following_days_are_differences_of_cumulative(self):
+        day = viewdata.pnl_by_period(self.CURVE, "day")
+        self.assertAlmostEqual(day[1]["value"], 3.65 - (-0.64))
+        self.assertAlmostEqual(day[3]["value"], -1.43 - 4.18)
+
+    def test_months_group_the_days_they_contain(self):
+        months = viewdata.pnl_by_period(self.CURVE, "month")
+        self.assertEqual([m["key"] for m in months], ["2026-05", "2026-06", "2026-07"])
+        self.assertAlmostEqual(months[1]["value"], (3.65 + 0.64) + (4.18 - 3.65))
+
+    def test_sum_of_periods_equals_final_cumulative(self):
+        """Garde-fou de cohérence : la somme des barres doit reconstituer le net global affiché
+        ailleurs sur la page, sinon le graphe raconte autre chose que l'équation brut/frais/net."""
+        final = self.CURVE[-1]["cumulative_pnl_usdc"]
+        for granularity in ("day", "month"):
+            total = sum(p["value"] for p in viewdata.pnl_by_period(self.CURVE, granularity))
+            self.assertAlmostEqual(total, final, places=6, msg=granularity)
+
+    def test_empty_curve_yields_no_period(self):
+        self.assertEqual(viewdata.pnl_by_period([], "day"), [])
+        self.assertEqual(viewdata.pnl_by_period([], "month"), [])
+
+    def test_single_point_yields_one_period_per_granularity(self):
+        curve = [{"date": "2026-08-28", "cumulative_pnl_usdc": 5.0}]
+        self.assertEqual(len(viewdata.pnl_by_period(curve, "day")), 1)
+        self.assertEqual(len(viewdata.pnl_by_period(curve, "month")), 1)
+
+    def test_labels_are_readable_in_french(self):
+        self.assertEqual(viewdata.pnl_by_period(self.CURVE, "day")[0]["label"], "22/05")
+        self.assertEqual(viewdata.pnl_by_period(self.CURVE, "month")[0]["label"], "mai 2026")
+
+
+class TestPnlBars(unittest.TestCase):
+    def test_empty_periods_yield_empty_geometry(self):
+        self.assertEqual(viewdata.pnl_bars([]), {})
+
+    def test_scale_is_symmetric_around_zero(self):
+        """Une perte de 20 et un gain de 10 ne doivent pas produire des barres de même longueur :
+        sinon le graphe efface visuellement l'asymétrie entre gains et pertes."""
+        geo = viewdata.pnl_bars([{"key": "a", "label": "a", "value": 10.0},
+                                 {"key": "b", "label": "b", "value": -20.0}])
+        gain, loss = geo["bars"]
+        self.assertAlmostEqual(loss["height"] / gain["height"], 2.0, places=4)
+
+    def test_bars_sit_on_the_correct_side_of_the_zero_line(self):
+        geo = viewdata.pnl_bars([{"key": "a", "label": "a", "value": 5.0},
+                                 {"key": "b", "label": "b", "value": -5.0}])
+        gain, loss = geo["bars"]
+        self.assertTrue(gain["positive"])
+        self.assertAlmostEqual(gain["y"] + gain["height"], geo["zero_y"], places=4)
+        self.assertFalse(loss["positive"])
+        self.assertAlmostEqual(loss["y"], geo["zero_y"], places=4)
+
+    def test_zero_value_period_stays_visible(self):
+        geo = viewdata.pnl_bars([{"key": "a", "label": "a", "value": 0.0},
+                                 {"key": "b", "label": "b", "value": 9.0}])
+        self.assertGreater(geo["bars"][0]["height"], 0)
+
+    def test_bars_stay_inside_the_viewbox_and_do_not_overlap(self):
+        periods = [{"key": str(i), "label": str(i), "value": float(i - 20)} for i in range(41)]
+        geo = viewdata.pnl_bars(periods, width=640)
+        self.assertGreaterEqual(geo["bars"][0]["x"], 0)
+        self.assertLessEqual(geo["bars"][-1]["x"] + geo["bars"][-1]["width"], 640)
+        for previous, following in pairwise(geo["bars"]):
+            self.assertLessEqual(previous["x"] + previous["width"], following["x"] + 0.01)
+
+    def test_best_and_worst_are_reported_for_the_caption(self):
+        geo = viewdata.pnl_bars([{"key": "a", "label": "a", "value": 3.0},
+                                 {"key": "b", "label": "b", "value": -7.0},
+                                 {"key": "c", "label": "c", "value": 1.0}])
+        self.assertEqual(geo["best"]["label"], "a")
+        self.assertEqual(geo["worst"]["label"], "b")
+        self.assertAlmostEqual(geo["total"], -3.0)
 
 
 

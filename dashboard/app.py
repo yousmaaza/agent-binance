@@ -94,6 +94,8 @@ def _build_results_view(state, prices, cycles):
         "maker": maker,
         "kraken_error": prices[1],
         "weekly_note": analysis.weekly_note(by_period, cadence, maker),
+        "pnl_day": viewdata.pnl_bars(viewdata.pnl_by_period(financials.get("equity_curve") or [], "day")),
+        "pnl_month": viewdata.pnl_bars(viewdata.pnl_by_period(financials.get("equity_curve") or [], "month")),
     }
 
 
