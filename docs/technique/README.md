@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#454](pr-454-analyse-hebdo.md) | [M1] Analyse hebdomadaire rédigée par Claude dans le dashboard | 2026-08-29 |
 | [#451](pr-451-pnl-charts.md) | [M1] Graphe de PnL par jour/mois et grille d'état des cycles | 2026-08-29 |
 | [#449](pr-449-maker-abandons-delai.md) | [M1] /maker — afficher les abandons et corriger la précision du délai | 2026-08-29 |
 | [#443](pr-443-dashboard-maquette.md) | [M1] Aligner le dashboard sur la maquette validée et arrondir les prix | 2026-08-29 |
