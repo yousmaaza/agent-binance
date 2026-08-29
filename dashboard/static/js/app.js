@@ -1,9 +1,8 @@
-// Bascule d'onglets — sans framework, cohérent avec l'esprit léger du projet (#432).
-document.querySelectorAll(".tab-btn").forEach((btn) => {
+// Ouverture des explications de cycle (#442). Les onglets sont en CSS pur (radios .tabsel),
+// comme dans la maquette — pas de JS à charger pour naviguer entre eux.
+document.querySelectorAll(".why[data-dialog]").forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    const dlg = document.getElementById(btn.dataset.dialog);
+    if (dlg) dlg.showModal();
   });
 });

@@ -5,6 +5,7 @@ import os
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
+from itertools import pairwise
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "dashboard"))
@@ -156,6 +157,120 @@ class TestBuildCadenceBand(unittest.TestCase):
         cycles = [{"cycle_id": "c1", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed", "top_score": 0, "execution": {}}]
         band = viewdata.build_cadence_band(cycles)
         self.assertGreater(band[0]["height_pct"], 0)
+
+
+
+class TestFormatPrice(unittest.TestCase):
+    """#442 — Kraken renvoie des flottantes brutes, illisibles telles quelles."""
+
+    def test_rounds_large_price_to_two_decimals(self):
+        self.assertEqual(viewdata.format_price(706.4407567166553), "706.44")
+
+    def test_keeps_significant_digits_below_one(self):
+        self.assertEqual(viewdata.format_price(0.0920800000006901), "0.09208")
+        self.assertEqual(viewdata.format_price(0.0976048000007315), "0.097605")
+
+    def test_strips_trailing_zeros_below_one(self):
+        self.assertEqual(viewdata.format_price(0.05), "0.05")
+
+    def test_zero_does_not_become_empty(self):
+        self.assertEqual(viewdata.format_price(0), "0")
+
+    def test_none_is_not_displayed_as_a_number(self):
+        self.assertEqual(viewdata.format_price(None), "n/d")
+
+    def test_thousands_are_separated_for_readability(self):
+        self.assertEqual(viewdata.format_price(112345.678), "112\u202f345.68")
+
+
+class TestPositionAge(unittest.TestCase):
+    def test_hours_below_two_days(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        self.assertEqual(viewdata.position_age("2026-08-28T06:00:00+00:00", now), "6 h")
+
+    def test_days_beyond_two_days(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        self.assertEqual(viewdata.position_age("2026-08-22T12:00:00+00:00", now), "6 j")
+
+    def test_missing_date_yields_none(self):
+        self.assertIsNone(viewdata.position_age(None))
+
+
+class TestTrackGeometry(unittest.TestCase):
+    def test_places_price_between_stop_and_target(self):
+        pos = {"coin": "BTC", "entry_price": 100, "stop_price": 90, "tp_price": 110}
+        row = viewdata.build_position_row(pos, price=95)
+        self.assertAlmostEqual(row["track_now_pct"], 25.0)
+        self.assertAlmostEqual(row["track_entry_pct"], 50.0)
+
+    def test_clamps_price_beyond_the_target(self):
+        pos = {"coin": "BTC", "entry_price": 100, "stop_price": 90, "tp_price": 110}
+        row = viewdata.build_position_row(pos, price=130)
+        self.assertEqual(row["track_now_pct"], 100.0)
+
+    def test_no_geometry_when_stop_equals_target(self):
+        pos = {"coin": "BTC", "entry_price": 100, "stop_price": 100, "tp_price": 100}
+        row = viewdata.build_position_row(pos, price=100)
+        self.assertIsNone(row["track_now_pct"])
+
+    def test_no_geometry_without_current_price(self):
+        pos = {"coin": "BTC", "entry_price": 100, "stop_price": 90, "tp_price": 110}
+        row = viewdata.build_position_row(pos, price=None)
+        self.assertIsNone(row["track_now_pct"])
+
+
+class TestEquityCurveGeometry(unittest.TestCase):
+    def test_empty_curve_yields_empty_dict(self):
+        self.assertEqual(viewdata.equity_curve_geometry([]), {})
+
+    def test_polygon_closes_on_the_zero_line(self):
+        curve = [{"cumulative_pnl_usdc": -5.0}, {"cumulative_pnl_usdc": 5.0}]
+        geo = viewdata.equity_curve_geometry(curve, width=100, height=50, pad=5)
+        first, last = geo["polygon"].split(" ")[0], geo["polygon"].split(" ")[-1]
+        self.assertEqual(first.split(",")[1], f"{geo['zero_y']:.1f}")
+        self.assertEqual(last.split(",")[1], f"{geo['zero_y']:.1f}")
+
+    def test_zero_line_stays_inside_the_drawing_area(self):
+        # courbe entièrement négative : le zéro sort du domaine, il doit être ramené au bord
+        curve = [{"cumulative_pnl_usdc": -20.0}, {"cumulative_pnl_usdc": -10.0}]
+        geo = viewdata.equity_curve_geometry(curve, width=100, height=50, pad=5)
+        self.assertGreaterEqual(geo["zero_y"], 5)
+        self.assertLessEqual(geo["zero_y"], 45)
+
+    def test_final_value_is_the_last_point(self):
+        curve = [{"cumulative_pnl_usdc": 1.0}, {"cumulative_pnl_usdc": -11.87}]
+        self.assertEqual(viewdata.equity_curve_geometry(curve)["final_value"], -11.87)
+
+
+class TestCadenceGeometry(unittest.TestCase):
+    def test_bars_are_laid_out_left_to_right_without_overlap(self):
+        cycles = [
+            {"cycle_id": f"c{i}", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed",
+             "top_score": 5, "execution": {}}
+            for i in range(4)
+        ]
+        band = viewdata.build_cadence_band(cycles)
+        xs = [b["x"] for b in band]
+        self.assertEqual(xs, sorted(xs))
+        for previous, following in pairwise(band):
+            self.assertLessEqual(previous["x"] + previous["width"], following["x"] + 0.01)
+
+    def test_last_bar_stays_inside_the_viewbox(self):
+        cycles = [{"cycle_id": "c", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed",
+                   "top_score": 10, "execution": {}}]
+        band = viewdata.build_cadence_band(cycles)
+        self.assertLessEqual(band[-1]["x"] + band[-1]["width"], viewdata.CADENCE_VIEWBOX_WIDTH)
+
+    def test_summary_splits_idle_acted_and_failed_without_double_counting(self):
+        cycles = [
+            {"cycle_id": "a", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed", "top_score": 7, "execution": {"executed": 1}},
+            {"cycle_id": "b", "timestamp": "2026-08-28T06:00:00+00:00", "status": "error", "top_score": 0, "execution": {"executed": 1}},
+            {"cycle_id": "c", "timestamp": "2026-08-28T02:00:00+00:00", "status": "completed", "top_score": 2, "execution": {}},
+        ]
+        summary = viewdata.cadence_summary(viewdata.build_cadence_band(cycles))
+        self.assertEqual((summary["acted"], summary["failed"], summary["idle"]), (1, 1, 1))
+        self.assertEqual(summary["acted"] + summary["failed"] + summary["idle"], summary["total"])
+
 
 
 if __name__ == "__main__":

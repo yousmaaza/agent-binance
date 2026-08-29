@@ -75,5 +75,34 @@ class TestReliabilityByPeriod(unittest.TestCase):
         self.assertEqual(result["count_7d"], 1)
 
 
+
+class TestWeeklyNote(unittest.TestCase):
+    """#442 — bloc « note de la semaine » de la maquette : entièrement recalculé, jamais figé."""
+
+    def test_reports_closed_trades_of_the_week(self):
+        note = analysis.weekly_note(
+            {"0_7d": {"count": 7, "net_usdc": -22.97, "gross_usdc": -16.60, "fees_usdc": -6.37}},
+            [], {},
+        )
+        self.assertIn("7 trade(s)", note)
+        self.assertIn("-22.97", note)
+        self.assertIn("6.37", note)
+
+    def test_says_so_when_nothing_was_closed(self):
+        note = analysis.weekly_note({}, [], {})
+        self.assertIn("Aucun trade", note)
+
+    def test_counts_cycles_that_acted(self):
+        band = [{"has_action": True}, {"has_action": False}, {"has_action": True}]
+        note = analysis.weekly_note({}, band, {})
+        self.assertIn("2 cycle(s) sur les 3", note)
+
+    def test_mentions_maker_only_when_it_has_activity(self):
+        self.assertNotIn("maker", analysis.weekly_note({}, [], {"total": 0}))
+        note = analysis.weekly_note({}, [], {"total": 5, "fills": 5, "fallbacks": 0, "abandoned": 0})
+        self.assertIn("maker a servi 5 ordre(s)", note)
+
+
+
 if __name__ == "__main__":
     unittest.main()
