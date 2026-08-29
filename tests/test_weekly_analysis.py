@@ -160,6 +160,84 @@ class TestVerifyNumbers(unittest.TestCase):
         self.assertFalse(wa._verify_numbers(text, payload))
 
 
+def _realistic_payload(now=None):
+    """37 trades sur 30 jours (10 gagnants, 27 perdants -> win_rate ~27%), même ordre de
+    grandeur que l'audit qui a mesuré le contrôle initial (#453) : sert à la fois à mesurer la
+    couverture du garde-fou et à rejouer le scénario de fabrication démontré."""
+    now = now or datetime(2026, 8, 29, tzinfo=timezone.utc)
+    trades = [
+        _trade(coin=f"W{i}", pnl=round(1.0 + i * 0.2, 2), fees=0.1, days_ago=i, close_reason="tp_watcher")
+        for i in range(10)
+    ] + [
+        _trade(coin=f"L{i}", pnl=round(-0.8 - (i % 5) * 0.3, 2), fees=0.1, days_ago=i % 29, close_reason="sl_hit")
+        for i in range(27)
+    ]
+    cycles = [{"status": "completed", "executed": 1} for _ in range(20)] + [{"status": "error"} for _ in range(3)]
+    return wa._build_payload(
+        window={"days": 30, "widened": True, "trades": trades},
+        cycles=cycles, now=now, week_key="2026-W35",
+    )
+
+
+class TestPercentageGuardStrength(unittest.TestCase):
+    """Le garde-fou doit rester une contrainte réelle, pas décorative (#453 — audit post-review :
+    un produit croisé de toutes les paires de nombres laissait passer 89% des entiers 0-100 comme
+    pourcentage). Sans un test de force, rien n'empêche une future évolution de rouvrir la faille
+    — c'est ce qui s'est produit trois fois de suite sur le test #403."""
+
+    def test_integer_percentage_coverage_stays_low(self):
+        payload = _realistic_payload()
+        _, percentages = wa._allowed_numbers(payload)
+        accepted = sum(
+            1 for i in range(101)
+            if any(abs(i - p) <= wa._PCT_TOLERANCE for p in percentages)
+        )
+        coverage = accepted / 101
+        # Repère historique : le produit croisé initial acceptait 89% des entiers 0-100. Un
+        # catalogue de ratios nommés doit rester très en dessous, quel que soit le nombre de
+        # trades de la fenêtre (ici 37).
+        self.assertLess(coverage, 0.35, f"couverture des entiers 0-100 trop large : {coverage:.0%}")
+
+    def test_named_percentage_catalog_stays_bounded(self):
+        """Quelques dizaines de ratios nommés, pas des centaines (demande explicite de la review)."""
+        payload = _realistic_payload()
+        _, percentages = wa._allowed_numbers(payload)
+        self.assertLess(len(percentages), 50)
+
+
+class TestPercentageGuardRejectsFabrication(unittest.TestCase):
+    """Rejoue la démonstration de la review (#453) : un texte qui invente un taux de réussite
+    opposé à la réalité (26% réel) doit être rejeté dans son intégralité."""
+
+    def test_fabricated_win_rate_narrative_is_rejected(self):
+        payload = _realistic_payload()
+        text = (
+            "La performance s'améliore nettement : 64% des trades sont désormais gagnants "
+            "contre 29% le mois dernier, soit une progression de 35%."
+        )
+        self.assertFalse(wa._verify_numbers(text, payload))
+
+    def test_fabricated_success_rate_and_maker_coverage_is_rejected(self):
+        payload = _realistic_payload()
+        text = (
+            "Le taux de réussite atteint 73% ce mois-ci, en hausse de 41% sur la période, "
+            "et la stratégie maker couvre 88% des entrées."
+        )
+        self.assertFalse(wa._verify_numbers(text, payload))
+
+    def test_unrelated_money_amount_is_still_rejected(self):
+        payload = _realistic_payload()
+        text = "Le portefeuille a gagné 812.44 USDC cette semaine."
+        self.assertFalse(wa._verify_numbers(text, payload))
+
+    def test_true_win_rate_of_this_payload_is_accepted(self):
+        """Contre-épreuve : le vrai taux de réussite (10/37 ≈ 27%) doit, lui, passer."""
+        payload = _realistic_payload()
+        win_rate = round(payload["aggregate"]["wins"] / payload["aggregate"]["count"] * 100)
+        text = f"Le taux de réussite est de {win_rate}% sur la période."
+        self.assertTrue(wa._verify_numbers(text, payload))
+
+
 # ---------------------------------------------------------------------------
 # Point d'entrée complet : idempotence, élargissement, repli, absence de données
 # ---------------------------------------------------------------------------

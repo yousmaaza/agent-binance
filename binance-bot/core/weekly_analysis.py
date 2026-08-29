@@ -270,15 +270,70 @@ def _aggregate_values(payload: dict) -> list[float]:
     return values
 
 
+# Un « incident isolé » (cf. #453, exemple TRUMP) désigne les mouvements les plus marquants de
+# la période, pas un trade quelconque parmi la fenêtre — sinon le catalogue de ratios nommés
+# grossirait avec le nombre de trades et retomberait dans le même travers que le produit croisé.
+_NOTABLE_TRADES_COUNT = 3
+
+
+def _notable_trades(trades: list) -> list:
+    with_pnl = [t for t in trades if t.get("pnl_usdc") is not None]
+    return sorted(with_pnl, key=lambda t: abs(t["pnl_usdc"]), reverse=True)[:_NOTABLE_TRADES_COUNT]
+
+
+def _named_percentages(payload: dict) -> set[float]:
+    """Pourcentages autorisés dans le texte — uniquement des ratios nommables, pas un produit
+    croisé de toutes les paires de nombres (#453, durci après audit : le produit croisé
+    recouvrait ~90% des entiers 0-100, rendant le contrôle décoratif sur la moitié des chiffres
+    d'une analyse). Chaque valeur correspond à une grandeur désignable : taux de trades
+    gagnants/perdants, frais rapportés au brut, part de cycles avec ordre/en erreur, part des
+    mouvements les plus marquants dans le résultat net/brut — même catalogue pour la semaine
+    précédente. Le catalogue reste borné (quelques dizaines de valeurs) quel que soit le nombre
+    de trades de la fenêtre : un pourcentage qui n'en dérive pas n'a rien à faire dans le texte."""
+    values: set[float] = set()
+
+    def _rate_pair(part_a, part_b, total):
+        if not total:
+            return
+        if part_a is not None:
+            values.add(part_a / total * 100)
+        if part_b is not None:
+            values.add(part_b / total * 100)
+
+    def _share_of(agg: dict) -> None:
+        count = agg.get("count") or 0
+        _rate_pair(agg.get("wins"), agg.get("losses"), count)
+        gross = agg.get("gross_usdc")
+        if gross:
+            if agg.get("fees_usdc") is not None:
+                values.add(agg["fees_usdc"] / gross * 100)
+            if agg.get("net_usdc") is not None:
+                values.add(agg["net_usdc"] / gross * 100)
+
+    _share_of(payload.get("aggregate") or {})
+    _share_of((payload.get("previous_week") or {}).get("aggregate") or {})
+
+    cyc = payload.get("cycles") or {}
+    _rate_pair(cyc.get("with_trade"), cyc.get("errors"), cyc.get("total") or 0)
+
+    agg = payload.get("aggregate") or {}
+    gross, net = agg.get("gross_usdc"), agg.get("net_usdc")
+    for t in _notable_trades(payload.get("trades", [])):
+        pnl = t["pnl_usdc"]
+        if gross:
+            values.add(pnl / gross * 100)  # part de ce mouvement dans le résultat brut
+        if net:
+            values.add(pnl / net * 100)    # part de ce mouvement dans le résultat net (ex: #453, TRUMP)
+
+    rounded = {round(v, 2) for v in values}
+    return rounded | {round(abs(v), 2) for v in rounded}
+
+
 def _allowed_numbers(payload: dict) -> tuple[set[float], set[float]]:
     """Retourne (montants, pourcentages) — tolérances différentes : un pourcentage cité en
     prose est arrondi à l'entier, un montant ne devrait dévier que d'une erreur de flottant."""
     money = _base_numbers(payload)
     aggregates = _aggregate_values(payload)
-    trades = [
-        float(t["pnl_usdc"]) for t in payload.get("trades", [])
-        if t.get("pnl_usdc") is not None
-    ]
 
     for a in aggregates:
         for b in aggregates:
@@ -287,16 +342,7 @@ def _allowed_numbers(payload: dict) -> tuple[set[float], set[float]]:
             money.add(round(a + b, 2))
             money.add(round(a - b, 2))
 
-    percentages: set[float] = set()
-    for a in aggregates + trades:
-        for b in aggregates:
-            if b == 0 or a == b:
-                continue
-            pct = a / b * 100
-            percentages.add(round(pct, 2))
-            percentages.add(round(abs(pct), 2))
-
-    return money, percentages
+    return money, _named_percentages(payload)
 
 
 def _verify_numbers(text: str, payload: dict) -> bool:
