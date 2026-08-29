@@ -36,3 +36,7 @@ KRAKEN_CACHE_TTL_S = int(os.environ.get("DASHBOARD_KRAKEN_CACHE_TTL_S", "30"))
 DEFAULT_DISPLAY_TIMEZONE = "Europe/Paris"
 
 CYCLES_JOURNAL_LIMIT = int(os.environ.get("DASHBOARD_CYCLES_JOURNAL_LIMIT", "60"))
+
+# Profondeur de la grille des cycles (#450). 30 jours = 180 créneaux de 4 h : cohérent avec la
+# fiabilité 30 jours affichée juste à côté, et défilable sur mobile sans écraser les cases.
+CYCLE_GRID_DAYS = int(os.environ.get("DASHBOARD_CYCLE_GRID_DAYS", "30"))

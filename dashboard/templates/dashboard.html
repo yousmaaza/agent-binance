@@ -35,30 +35,6 @@
   {% endif %}
 </div>
 
-{% if cycles.cadence %}
-<div class="cadence pad">
-  <svg viewBox="0 0 {{ cs.viewbox_width }} {{ cs.viewbox_height }}" preserveAspectRatio="none"
-       style="height:64px" role="img"
-       aria-label="Cadence des {{ cs.total }} derniers cycles : {{ cs.acted }} ont donné lieu à une action, {{ cs.failed }} ont échoué, {{ cs.idle }} n'ont rien fait. La hauteur de chaque barre représente le meilleur score du cycle.">
-    <line x1="0" y1="{{ cs.threshold_y }}" x2="{{ cs.viewbox_width }}" y2="{{ cs.threshold_y }}"
-          stroke="currentColor" stroke-width="1" opacity=".28" stroke-dasharray="2 4"/>
-    {% for b in cycles.cadence %}
-      <rect class="tick" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}" rx="1"
-            {% if b.status == 'error' %}fill="var(--loss)" fill-opacity="1"
-            {% elif b.has_action %}fill="var(--gain)" fill-opacity="1"
-            {% else %}fill="currentColor" fill-opacity=".16"{% endif %}
-            ><title>{{ b.cycle_id }} — score {{ b.top_score }}/10 — {{ b.status }}</title></rect>
-    {% endfor %}
-  </svg>
-  <div class="cad-legend">
-    <span><i class="i-idle"></i>{{ cs.idle }} sans action</span>
-    <span><i class="i-act"></i>{{ cs.acted }} avec ordre</span>
-    <span><i class="i-dead"></i>{{ cs.failed }} en échec</span>
-    <span>— — seuil {{ cs.threshold }}/10</span>
-  </div>
-</div>
-{% endif %}
-
 <nav class="tabs">
   <label for="t1">Résultat</label>
   <label for="t2">Cycles</label>
@@ -100,6 +76,40 @@
     </figure>
     {% else %}
     <p class="empty">Pas encore assez de trades fermés pour tracer une courbe.</p>
+    {% endif %}
+
+    {% if results.pnl_day %}
+    <div class="pnl" data-pnl>
+      <div class="pnl-head">
+        <h3>Ce que chaque période a rapporté</h3>
+        <div class="gran" role="group" aria-label="Granularité du graphe">
+          <button type="button" class="on" data-gran="day">Jour</button>
+          <button type="button" data-gran="month">Mois</button>
+        </div>
+      </div>
+
+      {% for view, geo in [('day', results.pnl_day), ('month', results.pnl_month)] %}
+      <figure class="pnl-fig" data-view="{{ view }}" {% if view != 'day' %}hidden{% endif %}>
+        <svg viewBox="0 0 {{ geo.width }} {{ geo.height }}" role="img"
+             aria-label="PnL net par {{ 'jour' if view == 'day' else 'mois' }} sur {{ geo.bars|length }} période(s), de {{ geo.worst.value|round(2) }} à {{ geo.best.value|round(2) }} USDC.">
+          <line x1="{{ geo.pad }}" y1="{{ geo.zero_y }}" x2="{{ geo.width - geo.pad }}" y2="{{ geo.zero_y }}"
+                stroke="currentColor" stroke-width="1" opacity=".35"/>
+          {% for b in geo.bars %}
+          <rect class="pnl-bar" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}"
+                fill="{{ 'var(--gain)' if b.positive else 'var(--loss)' }}"
+                data-label="{{ b.label }}" data-value="{{ "%+.2f"|format(b.value) }}" tabindex="0"
+                role="listitem" aria-label="{{ b.label }} : {{ "%+.2f"|format(b.value) }} USDC"></rect>
+          {% endfor %}
+        </svg>
+        <figcaption>
+          {{ geo.bars|length }} {{ 'jour(s) avec au moins un trade clôturé' if view == 'day' else 'mois' }} ·
+          meilleur <b class="gain">{{ "%+.2f"|format(geo.best.value) }}</b> ({{ geo.best.label }}) ·
+          pire <b class="loss">{{ "%+.2f"|format(geo.worst.value) }}</b> ({{ geo.worst.label }})
+        </figcaption>
+      </figure>
+      {% endfor %}
+      <div class="pnl-tip" hidden aria-hidden="true"></div>
+    </div>
     {% endif %}
 
     <div class="facts">
@@ -205,6 +215,66 @@
 
 <!-- ============ onglet 2 : cycles ============ -->
 <div class="panel p-cycles pad">
+
+  {% set grid = cycles.grid %}
+  <section class="cgrid-sec">
+    <h2>État des cycles<em>{{ grid.days }} derniers jours</em></h2>
+    <p class="note">Le bot a rendez-vous toutes les 4 h. Chaque case est un rendez-vous —
+      tenu ou manqué. Un cycle qui ne démarre pas n'écrit rien en base : sans partir des
+      créneaux attendus, il resterait invisible.</p>
+
+    <div class="grid-wrap">
+      <table class="cgrid">
+        <caption class="visually-hidden">État de chaque créneau de 4 heures sur {{ grid.days }} jours</caption>
+        <tbody>
+          {% for slot_label in grid.slot_labels %}
+          {% set row = loop.index0 %}
+          <tr>
+            <th scope="row">{{ slot_label }}</th>
+            {% for col in grid.columns %}
+              {% set cell = col.cells[row] %}
+              {% if cell is none %}
+                <td class="c-void"></td>
+              {% else %}
+                <td class="c-{{ cell.state }}" tabindex="0"
+                    data-when="{{ cell.slot_local }}"
+                    data-state="{{ cell.state }}"
+                    {% if cell.state != 'missing' %}
+                    data-detail="score {{ cell.top_score }}/10 · {{ cell.duration_s }} s · {{ "%.2f"|format(cell.cost_usd) }} ${% if cell.executed or cell.pending %} · {{ cell.executed }} exécuté(s), {{ cell.pending }} en attente{% endif %}{% if cell.manual %} · lancé à la main{% endif %}"
+                    {% endif %}
+                    aria-label="{{ cell.slot_local }} — {{ cell.state }}"></td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          <tr class="cdates">
+            <th scope="row"></th>
+            {% for col in grid.columns %}
+              <td>{% if col.show_label %}<span>{{ col.label }}</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cgrid-tip" hidden aria-hidden="true"></div>
+
+    <div class="legend">
+      <span><i class="sw-action"></i>a passé un ordre</span>
+      <span><i class="sw-idle"></i>a tourné sans agir</span>
+      <span><i class="sw-error"></i>en échec</span>
+      <span><i class="sw-missing"></i>jamais démarré</span>
+    </div>
+
+    <div class="facts" style="margin-top:20px">
+      <div class="fact"><span>créneaux</span><b>{{ grid.total }}</b><i>sur {{ grid.days }} jours</i></div>
+      <div class="fact"><span>ont tourné</span><b>{{ grid.ran_pct if grid.ran_pct is not none else 'n/d' }} %</b>
+        <i>{{ grid.counts.missing }} jamais démarré(s)</i></div>
+      <div class="fact"><span>en échec</span><b class="{{ 'loss' if (grid.error_pct or 0) > 10 }}">{{ grid.error_pct if grid.error_pct is not none else 'n/d' }} %</b>
+        <i>{{ grid.counts.error }} sur {{ grid.ran }} lancés</i></div>
+      <div class="fact"><span>avec ordre</span><b class="gain">{{ grid.counts.action }}</b>
+        <i>{{ grid.counts.idle }} sans action</i></div>
+    </div>
+  </section>
 
   <section>
     <h2>Motifs de blocage<em>{{ cycles.blocking.total }} skips</em></h2>
