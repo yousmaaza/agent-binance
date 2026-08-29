@@ -5,6 +5,7 @@ import os
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
+from itertools import pairwise
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "dashboard"))
@@ -251,7 +252,7 @@ class TestCadenceGeometry(unittest.TestCase):
         band = viewdata.build_cadence_band(cycles)
         xs = [b["x"] for b in band]
         self.assertEqual(xs, sorted(xs))
-        for previous, following in zip(band, band[1:]):
+        for previous, following in pairwise(band):
             self.assertLessEqual(previous["x"] + previous["width"], following["x"] + 0.01)
 
     def test_last_bar_stays_inside_the_viewbox(self):
