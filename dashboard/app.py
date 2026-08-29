@@ -4,14 +4,18 @@
 Ne touche jamais à state/ ni n'écrit en base : c'est le bot (Phase 7) qui alimente Mongo."""
 import os
 
-from flask import Flask, redirect, render_template, request, session, url_for
-
 import analysis
 import settings
 import viewdata
 from auth import check_password, is_configured, login_required, safe_next_path
+from flask import Flask, redirect, render_template, request, session, url_for
 from kraken_client import KrakenUnavailable, get_prices
-from mongo_client import DashboardStateMissing, MongoUnavailable, get_dashboard_state, get_recent_cycles
+from mongo_client import (
+    DashboardStateMissing,
+    MongoUnavailable,
+    get_dashboard_state,
+    get_recent_cycles,
+)
 from timeutil import to_local
 
 app = Flask(__name__)
