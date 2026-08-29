@@ -3,7 +3,6 @@
 Séparé des routes Flask pour rester testable sans client HTTP : chaque fonction prend des
 dicts déjà lus (dashboard_state, cycles) et retourne des dicts/valeurs simples."""
 from datetime import datetime, timezone
-from typing import Optional
 
 from timeutil import parse_iso, to_local
 
@@ -29,7 +28,7 @@ def resolve_timezone(dashboard_state: dict, default_tz: str) -> str:
     return (dashboard_state.get("config") or {}).get("display_timezone") or default_tz
 
 
-def freshness(dashboard_state: dict, stale_threshold_minutes: int, now: Optional[datetime] = None) -> dict:
+def freshness(dashboard_state: dict, stale_threshold_minutes: int, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     updated_at = parse_iso(dashboard_state.get("updated_at"))
     age_min = (now - updated_at).total_seconds() / 60 if updated_at else None
@@ -87,7 +86,7 @@ def equity_curve_geometry(curve: list, width: int = 640, height: int = 150, pad:
     }
 
 
-def position_age(opened_at, now: Optional[datetime] = None) -> Optional[str]:
+def position_age(opened_at, now: datetime | None = None) -> str | None:
     """Âge de la position, comme dans la maquette (« 6 j »). None si la date d'ouverture manque."""
     dt = parse_iso(opened_at) if isinstance(opened_at, str) else opened_at
     if not dt:
@@ -97,7 +96,7 @@ def position_age(opened_at, now: Optional[datetime] = None) -> Optional[str]:
     return f"{hours:.0f} h" if hours < 48 else f"{hours / 24:.0f} j"
 
 
-def build_position_row(pos: dict, price: Optional[float], now: Optional[datetime] = None) -> dict:
+def build_position_row(pos: dict, price: float | None, now: datetime | None = None) -> dict:
     entry = pos.get("entry_price")
     stop = pos.get("stop_price")
     tp = pos.get("tp_price")

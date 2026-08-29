@@ -3,7 +3,6 @@
 les données changent."""
 from collections import Counter
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from timeutil import parse_iso
 
@@ -73,14 +72,14 @@ def weekly_note(by_period: dict, band: list, maker: dict) -> str:
     return " ".join(phrases)
 
 
-def _success_rate(cycles: list) -> Optional[float]:
+def _success_rate(cycles: list) -> float | None:
     if not cycles:
         return None
     ok = sum(1 for c in cycles if c.get("status") not in ("error",) and c.get("error_type") is None)
     return round(ok / len(cycles) * 100)
 
 
-def reliability_by_period(cycles: list, now: Optional[datetime] = None) -> dict:
+def reliability_by_period(cycles: list, now: datetime | None = None) -> dict:
     """Taux de cycles sans erreur sur 7j / 30j / au-delà, avec une phrase de tendance recalculée
     (jamais "la fiabilité progresse" en dur : ça se vérifie à chaque fois sur les deux fenêtres)."""
     now = now or datetime.now(timezone.utc)
