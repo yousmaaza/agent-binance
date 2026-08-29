@@ -55,9 +55,9 @@ def weekly_note(by_period: dict, band: list, maker: dict) -> str:
         phrases = ["Aucun trade clôturé sur les 7 derniers jours."]
     else:
         phrases = [
-            f"{count} trade(s) clôturé(s) pour un résultat net de "
-            f"{week.get('net_usdc', 0):+.2f} USDC "
-            f"({week.get('gross_usdc', 0):+.2f} brut, {abs(week.get('fees_usdc', 0)):.2f} de frais)."
+            (f"{count} trade(s) clôturé(s) pour un résultat net de "
+             f"{week.get('net_usdc', 0):+.2f} USDC "
+             f"({week.get('gross_usdc', 0):+.2f} brut, {abs(week.get('fees_usdc', 0)):.2f} de frais).")
         ]
 
     acted = sum(1 for b in band if b["has_action"])
