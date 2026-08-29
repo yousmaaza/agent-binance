@@ -1,13 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Connexion — Dashboard bot{% endblock %}
+{% block title %}Connexion — Relevé du bot{% endblock %}
 {% block body %}
 <main class="centered">
-  <form class="card login-card" method="post">
-    <h1>🔒 Dashboard du bot</h1>
+  <div class="notice">
+    <div class="kicker">Kraken · accès restreint</div>
+    <h1>Relevé du bot</h1>
+    <p>Cette page expose la valeur du portefeuille et les positions en cours.</p>
+    <form class="login-form" method="post">
+      <label for="password">Mot de passe</label>
+      <input type="password" id="password" name="password" autofocus required autocomplete="current-password">
+      <button type="submit">Entrer</button>
+    </form>
     {% if error %}<p class="error">{{ error }}</p>{% endif %}
-    <label for="password">Mot de passe</label>
-    <input type="password" id="password" name="password" autofocus required>
-    <button type="submit">Entrer</button>
-  </form>
+  </div>
 </main>
 {% endblock %}

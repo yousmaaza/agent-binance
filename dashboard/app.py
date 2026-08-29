@@ -12,9 +12,12 @@ import viewdata
 from auth import check_password, is_configured, login_required, safe_next_path
 from kraken_client import KrakenUnavailable, get_prices
 from mongo_client import DashboardStateMissing, MongoUnavailable, get_dashboard_state, get_recent_cycles
+from timeutil import to_local
 
 app = Flask(__name__)
 app.secret_key = settings.DASHBOARD_SECRET_KEY or "dev-insecure-key-set-DASHBOARD_SECRET_KEY"
+app.jinja_env.filters["price"] = viewdata.format_price
+app.jinja_env.filters["localtime"] = lambda dt, tz: to_local(dt, tz) if dt else "n/d"
 
 
 @app.before_request
@@ -75,18 +78,25 @@ def dashboard_home():
         cycles = []
         cycles_error = str(e)
 
+    by_period = financials.get("by_period") or {}
+    maker = viewdata.build_maker_summary(state.get("watchers") or {})
+    cadence = viewdata.build_cadence_band(cycles)
+
     results_view = {
         "financials": financials,
-        "periods": viewdata.build_periods_table(financials.get("by_period") or {}),
+        "periods": viewdata.build_periods_table(by_period),
         "equity_points": viewdata.equity_curve_points(financials.get("equity_curve") or []),
+        "equity": viewdata.equity_curve_geometry(financials.get("equity_curve") or []),
         "positions": viewdata.build_positions(open_positions, prices),
-        "maker": viewdata.build_maker_summary(state.get("watchers") or {}),
+        "maker": maker,
         "kraken_error": kraken_error,
+        "weekly_note": analysis.weekly_note(by_period, cadence, maker),
     }
 
     cycles_view = {
         "journal": [viewdata.build_cycle_row(c, tz_name) for c in cycles],
-        "cadence": viewdata.build_cadence_band(cycles),
+        "cadence": cadence,
+        "cadence_summary": viewdata.cadence_summary(cadence),
         "blocking": analysis.blocking_reasons(cycles),
         "reliability": analysis.reliability_by_period(cycles),
         "error": cycles_error,

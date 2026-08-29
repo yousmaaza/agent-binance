@@ -45,6 +45,34 @@ def blocking_reasons(cycles: list) -> dict:
     return {"breakdown": breakdown, "total": total, "comment": comment}
 
 
+def weekly_note(by_period: dict, band: list, maker: dict) -> str:
+    """Synthèse des 7 derniers jours, entièrement recalculée (#442) — la maquette affiche ce bloc
+    et sa formulation doit rester vraie quand les chiffres changent."""
+    week = by_period.get("0_7d") or {}
+    count = week.get("count") or 0
+
+    if not count:
+        phrases = ["Aucun trade clôturé sur les 7 derniers jours."]
+    else:
+        phrases = [
+            f"{count} trade(s) clôturé(s) pour un résultat net de "
+            f"{week.get('net_usdc', 0):+.2f} USDC "
+            f"({week.get('gross_usdc', 0):+.2f} brut, {abs(week.get('fees_usdc', 0)):.2f} de frais)."
+        ]
+
+    acted = sum(1 for b in band if b["has_action"])
+    if band:
+        phrases.append(f"{acted} cycle(s) sur les {len(band)} derniers ont donné lieu à un ordre.")
+
+    if maker.get("total"):
+        phrases.append(
+            f"La stratégie maker a servi {maker['fills']} ordre(s), "
+            f"avec {maker['fallbacks']} repli(s) au marché et {maker['abandoned']} abandon(s)."
+        )
+
+    return " ".join(phrases)
+
+
 def _success_rate(cycles: list) -> Optional[float]:
     if not cycles:
         return None
