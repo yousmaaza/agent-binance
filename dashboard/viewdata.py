@@ -230,6 +230,23 @@ def build_periods_table(by_period: dict) -> list:
     ]
 
 
+def build_weekly_analysis_view(doc: dict | None, fallback_text: str, tz_name: str) -> dict:
+    """Bloc « Note de la semaine » (#453) : l'analyse rédigée par Claude si elle existe et a
+    passé le contrôle numérique, sinon le repli déterministe — jamais l'un pour l'autre sans
+    le dire (le lecteur doit toujours savoir lequel des deux il lit)."""
+    if not doc or not doc.get("text"):
+        return {"is_fallback": True, "text": fallback_text, "generated_at": None}
+
+    dt = parse_iso(doc.get("generated_at"))
+    return {
+        "is_fallback": False,
+        "text": doc["text"],
+        "generated_at": to_local(dt, tz_name) if dt else None,
+        "window_days": doc.get("window_days"),
+        "window_widened": doc.get("window_widened", False),
+    }
+
+
 def build_maker_summary(watchers: dict) -> dict:
     mw = watchers.get("maker_watcher") or {}
     fills = mw.get("total_fills", 0) or 0

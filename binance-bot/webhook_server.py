@@ -22,11 +22,13 @@ from core.lock import release_lock
 from core.maker_watcher import maker_watcher_loop
 from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
-from core.timing import fmt_local, next_4h_slot
+from core.timing import fmt_local, next_4h_slot, next_weekly_slot
 from core.tp_watcher import tp_watcher_loop
+from core.weekly_analysis import run_weekly_analysis
 from orchestration.runner import run_trade_workflow, run_position_check_workflow
 
 NEXT_AUTO_TRADE = None
+NEXT_WEEKLY_ANALYSIS = None
 
 
 def fmt_next() -> str:
@@ -48,10 +50,11 @@ def _check_and_run_scheduled(next_time, slot_fn, workflow_fn, label, fmt_next_fn
 
 
 def main_loop():
-    global NEXT_AUTO_TRADE
+    global NEXT_AUTO_TRADE, NEXT_WEEKLY_ANALYSIS
 
     tg_post("deleteWebhook", {})
     NEXT_AUTO_TRADE = next_4h_slot()
+    NEXT_WEEKLY_ANALYSIS = next_weekly_slot()
     offset = get_offset()
 
     from core.env import TRADE_PROMPT, POSITION_PROMPT  # noqa: F401 — vérifie que les prompts sont bien chargés
@@ -84,6 +87,9 @@ def main_loop():
         try:
             NEXT_AUTO_TRADE = _check_and_run_scheduled(
                 NEXT_AUTO_TRADE, next_4h_slot, run_trade_workflow, "Auto-trade", fmt_local
+            )
+            NEXT_WEEKLY_ANALYSIS = _check_and_run_scheduled(
+                NEXT_WEEKLY_ANALYSIS, next_weekly_slot, run_weekly_analysis, "Analyse hebdo", fmt_local
             )
 
             data = tg_post("getUpdates", {

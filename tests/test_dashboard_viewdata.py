@@ -127,6 +127,40 @@ class TestBuildMakerSummary(unittest.TestCase):
         self.assertEqual(summary["capital_immobilise"], 0)
 
 
+class TestBuildWeeklyAnalysisView(unittest.TestCase):
+    """#453 — l'analyse rédigée si elle existe et a passé le contrôle, sinon le repli signalé."""
+
+    def test_missing_document_falls_back_with_flag(self):
+        view = viewdata.build_weekly_analysis_view(None, "Note déterministe.", "Europe/Paris")
+        self.assertTrue(view["is_fallback"])
+        self.assertEqual(view["text"], "Note déterministe.")
+        self.assertIsNone(view["generated_at"])
+
+    def test_document_without_text_falls_back(self):
+        view = viewdata.build_weekly_analysis_view({"_id": "2026-W35"}, "Note déterministe.", "Europe/Paris")
+        self.assertTrue(view["is_fallback"])
+
+    def test_valid_document_is_not_flagged_as_fallback(self):
+        doc = {
+            "text": "Semaine calme, rien de notable.",
+            "generated_at": "2026-08-24T00:10:00+00:00",
+            "window_days": 7,
+            "window_widened": False,
+        }
+        view = viewdata.build_weekly_analysis_view(doc, "Note déterministe.", "Europe/Paris")
+        self.assertFalse(view["is_fallback"])
+        self.assertEqual(view["text"], doc["text"])
+        self.assertEqual(view["window_days"], 7)
+        self.assertFalse(view["window_widened"])
+        self.assertIn("02:10", view["generated_at"])  # UTC+2 (été, Europe/Paris)
+
+    def test_widened_window_is_carried_through(self):
+        doc = {"text": "Peu de trades.", "generated_at": "2026-08-24T00:10:00+00:00",
+               "window_days": 30, "window_widened": True}
+        view = viewdata.build_weekly_analysis_view(doc, "Note déterministe.", "Europe/Paris")
+        self.assertTrue(view["window_widened"])
+
+
 class TestBuildCycleRow(unittest.TestCase):
     def test_flags_action_when_executed_or_pending(self):
         cycle = {"cycle_id": "c1", "timestamp": "2026-08-28T10:00:00+00:00", "status": "completed",

@@ -15,6 +15,7 @@ from mongo_client import (
     MongoUnavailable,
     get_cycles_for_grid,
     get_dashboard_state,
+    get_latest_weekly_analysis,
     get_recent_cycles,
 )
 from timeutil import to_local
@@ -88,12 +89,20 @@ def _load_grid_cycles():
         return []
 
 
-def _build_results_view(state, prices, cycles):
+def _load_weekly_analysis():
+    try:
+        return get_latest_weekly_analysis()
+    except MongoUnavailable:
+        return None
+
+
+def _build_results_view(state, prices, cycles, tz_name):
     open_positions = state.get("open_positions") or []
     financials = state.get("financials") or {}
     by_period = financials.get("by_period") or {}
     maker = viewdata.build_maker_summary(state.get("watchers") or {})
     cadence = viewdata.build_cadence_band(cycles)
+    weekly_note = analysis.weekly_note(by_period, cadence, maker)
 
     return {
         "financials": financials,
@@ -103,7 +112,8 @@ def _build_results_view(state, prices, cycles):
         "positions": viewdata.build_positions(open_positions, prices[0]),
         "maker": maker,
         "kraken_error": prices[1],
-        "weekly_note": analysis.weekly_note(by_period, cadence, maker),
+        "weekly_note": weekly_note,
+        "weekly_analysis": viewdata.build_weekly_analysis_view(_load_weekly_analysis(), weekly_note, tz_name),
         "pnl_day": viewdata.pnl_bars(viewdata.pnl_by_period(financials.get("equity_curve") or [], "day")),
         "pnl_month": viewdata.pnl_bars(viewdata.pnl_by_period(financials.get("equity_curve") or [], "month")),
     }
@@ -140,7 +150,7 @@ def dashboard_home():
     prices = _load_prices(coins)
     cycles, cycles_error = _load_cycles()
 
-    results_view = _build_results_view(state, prices, cycles)
+    results_view = _build_results_view(state, prices, cycles, tz_name)
     cycles_view = _build_cycles_view(cycles, cycles_error, tz_name)
 
     return render_template(

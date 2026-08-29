@@ -90,3 +90,18 @@ def _fetch_cycles_for_grid(limit: int) -> list:
 
 def get_cycles_for_grid(limit: int) -> list:
     return cache.get_or_set(f"grid:{limit}", settings.CYCLES_CACHE_TTL_S, lambda: _fetch_cycles_for_grid(limit))
+
+
+def _fetch_latest_weekly_analysis() -> Optional[dict]:
+    db = _db()
+    try:
+        return db.weekly_analysis.find_one(sort=[("generated_at", -1)])
+    except PyMongoError as e:
+        raise MongoUnavailable(str(e)) from e
+
+
+def get_latest_weekly_analysis() -> Optional[dict]:
+    """Analyse hebdomadaire rédigée la plus récente (#453), ou None si jamais générée."""
+    return cache.get_or_set(
+        "weekly_analysis:latest", settings.DASHBOARD_STATE_CACHE_TTL_S, _fetch_latest_weekly_analysis,
+    )
