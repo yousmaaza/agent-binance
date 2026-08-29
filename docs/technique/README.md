@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-28 (PR #434) |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-29 (PR #449) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#449](pr-449-maker-abandons-delai.md) | [M1] /maker — afficher les abandons et corriger la précision du délai | 2026-08-29 |
 | [#443](pr-443-dashboard-maquette.md) | [M1] Aligner le dashboard sur la maquette validée et arrondir les prix | 2026-08-29 |
 | [#436](pr-436-fermer-redirection-ouverte.md) | [BUG] Fermer la redirection ouverte sur next du login dashboard | 2026-08-28 |
 | [#434](pr-434-dashboard-railway.md) | [M1] Dashboard web du bot hébergé sur Railway | 2026-08-28 |

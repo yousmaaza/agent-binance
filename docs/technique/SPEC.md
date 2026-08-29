@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-08-28 (PR #429)
+> **Dernière mise à jour** : 2026-08-29 (PR #449)
 > **Commit** : (HEAD)
 
 ---
@@ -164,7 +164,11 @@ webhook_server.py (process principal)
 | `_bloc_positions()` | commands/perf.py:177 | Bloc 3 — Positions : ouvertes/fermées, décomposition SL / TP Watcher / Profit Phase 0, série consécutive en cours (Win/Loss streak) |
 | `_bloc_watcher()` | commands/perf.py:231 | Bloc 4 — TP Watcher : total_ticks, total_sales, ventes 24h/7j, USDC réalisés. Fallback "État inconnu" si `tp_watcher_state.json` absent |
 | `run_eval()` | commands/eval.py:11 | Handler `/eval` : rapport hebdomadaire synthétique (fiabilité cycles, performance, coût abonnement vs API, risque) — accepte `period_days` optionnel (défaut 7) |
-| `run_maker()` | commands/maker.py:174 | Handler `/maker` : suivi watcher d'ordres LIMIT maker en 3 blocs (santé, ordres en cours, efficacité cumulée) — lecture seule, répond < 5s, aucun appel réseau |
+| `run_maker()` | commands/maker.py:234 | Handler `/maker` : suivi watcher d'ordres LIMIT maker en 3 blocs (santé, ordres en cours, efficacité cumulée) — lecture seule, répond < 5s, aucun appel réseau |
+| `_fmt_seconds_precise()` | commands/maker.py:41 | Formate un flottant de secondes en chaîne "Ns", jamais tronqué à la minute (#430) — dédié aux métriques de délai de remplissage maker |
+| `_format_watcher_funnel()` | commands/maker.py:147 | Calcule et affiche les 3 issues du funnel watcher (remplis/replis marché/abandonnés) à partir de `state` avec pourcentages — population distincte de `trade_history` (#430) |
+| `_format_health_section()` | commands/maker.py:51 | Formate le bloc santé du watcher : paramétrisé avec `state` depuis Phase 2 (#430), affiche `total_abandoned` dans cumul |
+| `_format_efficiency_section()` | commands/maker.py:176 | Formate le bloc efficacité cumulée : paramétrisé avec `state`, utilise `_fmt_seconds_precise()` pour délai médian, ajoute tendance 7j avec garde-fou échantillon (#430) |
 | `_trades_section()` | commands/eval.py:32 | Analyse `trade_history.json` pour extraction win rate, PnL net, ratio gain/perte sur la période cutoff |
 | `_cycles_and_cost_section()` | commands/eval.py:73 | Interroge MongoDB `cycles` pour taux complétude + ventilation coût abonnement proratisé vs surcoût API réel |
 | `_risk_section()` | commands/eval.py:112 | Comptabilise les positions ouvertes sans stop-loss (`protection_failed`) dans `trade_history.json` |
@@ -367,6 +371,7 @@ webhook_server.py (process principal)
 
 | PR | Date | Changement clé |
 |---|---|---|
+| [#449](pr-449-maker-abandons-delai.md) | 2026-08-29 | [M1] /maker — afficher les abandons et corriger la précision du délai (#430) : ajout `total_abandoned` dans bloc santé du watcher (cumul abandons côté `maker_watcher_state.json`), nouveau helper `_fmt_seconds_precise()` pour délai médian en secondes sans troncature (ex : 110s vs 1min), refactoring `_format_health_section()` et `_format_efficiency_section()` paramétrés par `state`, nouvelle fonction `_format_watcher_funnel()` affichant funnel watcher 3 issues (remplis/replis/abandonnés) distinct de `trade_history`, tendance 7j taux remplissage avec garde-fou effectif minimal (5 trades), tests : 10 nouveaux couvrant critères #430 + dégradations, suite 339/339 PASS |
 | [#443](pr-443-dashboard-maquette.md) | 2026-08-29 | [M1] Dashboard — Portage du design de la maquette + arrondi des prix (#442) : CSS 267 lignes portées (polices Archivo/IBM Plex Mono/Source Serif 4, palette gain/perte/attente, thèmes clair+sombre), onglets en CSS pur (radios `.tabsel`, zéro JS), courbe d'équité + aire + ligne zéro en SVG, piste stop→cible par position, synthèse semaine recalculée dynamiquement ; nouvelles fonctions `weekly_note()`, `format_price()`, `equity_curve_geometry()`, `cadence_summary()` + 5 helpers refactoring dans `app.py` ; type hints Python 3.10+ (`T | None` au lieu de `Optional[T]`) ; 24 tests nouveaux, 95/95 tests PASS (71 existants) ; dashboard aligné sur maquette « Relevé du bot » validée, prêt pour déploiement Railway |
 | [#436](pr-436-fermer-redirection-ouverte.md) | 2026-08-28 | [BUG] Fermer la redirection ouverte sur next du login dashboard (#435) : ajout fonction `safe_next_path(value)` dans `dashboard/auth.py` validant les chemins de redirection POST-login via `urllib.parse.urlsplit()` — n'accepte que chemins relatifs internes (commencent `/`, pas `//`/`/\`, sans schéma ni netloc), retombée sur `dashboard_home` si rejeté ; tests : 7 unitaires + 4 intégration, suite 307/307 PASS (296 existants + 11 nouveaux) ; dashboard pas encore en prod (IP MongoDB Atlas à configurer), faille fermée preventivamente |
 | [#434](pr-434-dashboard-railway.md) | 2026-08-28 | [M1] Dashboard web du bot hébergé sur Railway : app Flask indépendante (`dashboard/`) avec 3 onglets (Résultats P&L brut/frais/net + courbe d'équité SVG, Cycles journal motifs blocage + fiabilité 7/30j, Réglages), lecture seule MongoDB + Kraken API publique (urllib stdlib), cache TTL process-local (60s Mongo, 30s Kraken), auth password simple, responsif mobile, 60 tests unitaires nouveaux, déploiement Procfile + Nixpacks sur Railway, IP sortante statique + whitelist MongoDB Atlas à configurer côté utilisateur ; extension Phase 7 : expose `display_timezone` dans `_CONFIG_KEYS` pour fuseau d'affichage ; zéro dépendance ajoutée au `requirements.txt` racine (Flask/gunicorn/pymongo isolés dans `dashboard/requirements.txt`) ; suite 296/296 tests PASS (236 existants + 60 nouveaux) |
