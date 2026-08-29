@@ -1,199 +1,385 @@
 {% extends "base.html" %}
-{% block title %}Dashboard du bot{% endblock %}
+{% block title %}Relevé du bot{% endblock %}
 {% block body %}
-<header class="topbar">
-  <h1>📊 Bot de trading</h1>
-  <a class="logout" href="{{ url_for('logout') }}">Déconnexion</a>
+{% set g = results.financials.global or {} %}
+{% set cs = cycles.cadence_summary %}
+
+<input type="radio" name="tab" id="t1" class="tabsel" checked>
+<input type="radio" name="tab" id="t2" class="tabsel">
+<input type="radio" name="tab" id="t3" class="tabsel">
+
+<div class="sheet">
+
+<header class="masthead pad">
+  <div class="kicker">
+    <span>Kraken · relevé du {{ fresh.updated_at | localtime(tz_name) }}</span>
+    <a href="{{ url_for('logout') }}">Déconnexion</a>
+  </div>
+  <h1>Relevé du bot</h1>
+  <p class="standfirst">
+    Le bot a dégagé <b>{{ "%+.2f"|format(g.gross_usdc or 0) }} USDC</b> de plus-value brute
+    et payé <b>{{ "%.2f"|format(g.fees_usdc or 0) }} USDC</b> de frais.
+    Il reste <b>{{ "%+.2f"|format(g.net_usdc or 0) }} USDC</b> sur {{ g.count or 0 }} trades fermés.
+  </p>
 </header>
 
-<div class="freshness {{ 'stale' if fresh.is_stale else 'ok' }}">
-  {% if fresh.age_minutes is not none %}
-    Dernière mise à jour : {{ "%.0f"|format(fresh.age_minutes) }} min
-    {% if fresh.is_stale %}
-      — ⚠️ donnée périmée (dernier cycle : {{ fresh.cycle_status or "inconnu" }}). Un cycle a peut-être
-      échoué avant d'atteindre la Phase 7 : vérifie les logs de la VPS.
-    {% else %}
-      — cycle {{ fresh.cycle_id }} ({{ fresh.cycle_status }})
-    {% endif %}
+<div class="pad freshness {{ 'stale' if fresh.is_stale else '' }}">
+  {% if fresh.age_minutes is none %}
+    Horodatage illisible — donnée à considérer comme périmée.
+  {% elif fresh.is_stale %}
+    Mise à jour il y a <b>{{ "%.0f"|format(fresh.age_minutes) }} min</b> — donnée périmée
+    (dernier cycle : {{ fresh.cycle_status or "inconnu" }}). Un cycle a peut-être échoué avant
+    la Phase 7 : vérifier les logs de la VPS.
   {% else %}
-    ⚠️ Horodatage de mise à jour illisible — donnée à considérer comme périmée.
+    Mise à jour il y a {{ "%.0f"|format(fresh.age_minutes) }} min · cycle {{ fresh.cycle_id }} ({{ fresh.cycle_status }})
   {% endif %}
 </div>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="resultat">Résultat</button>
-  <button class="tab-btn" data-tab="cycles">Cycles</button>
-  <button class="tab-btn" data-tab="reglages">Réglages</button>
+  <label for="t1">Résultat</label>
+  <label for="t2">Cycles</label>
+  <label for="t3">Réglages</label>
 </nav>
 
-<main>
-  <section id="tab-resultat" class="tab-panel active">
-    {% set g = results.financials.global %}
-    <div class="card">
-      <h2>Résultat net</h2>
-      <p class="chain">
-        Brut <span class="num">{{ "%.2f"|format(g.gross_usdc or 0) }}</span>
-        → frais <span class="num neg">-{{ "%.2f"|format(g.fees_usdc or 0) }}</span>
-        → net <span class="num {{ 'pos' if (g.net_usdc or 0) >= 0 else 'neg' }}">{{ "%+.2f"|format(g.net_usdc or 0) }} USDC</span>
-      </p>
-      <p class="sub">{{ g.wins or 0 }}W / {{ g.losses or 0 }}L sur {{ g.count or 0 }} trades fermés
-        {% if g.trades_without_fees %}· {{ g.trades_without_fees }} sans frais connus{% endif %}</p>
+<!-- ============ onglet 1 : résultat ============ -->
+<div class="panel p-stats pad">
 
-      {% if results.equity_points %}
-      <svg class="equity-curve" viewBox="0 0 300 80" preserveAspectRatio="none">
-        <polyline points="{{ results.equity_points }}" fill="none" stroke="currentColor" stroke-width="2"/>
-      </svg>
-      {% else %}
-      <p class="sub">Pas encore assez de trades fermés pour tracer une courbe.</p>
-      {% endif %}
+  <section>
+    <div class="weekly">
+      <h3>Note de la semaine
+        {% if results.weekly_analysis.is_fallback %}
+          <em>repli automatique — analyse indisponible</em>
+        {% else %}
+          <em>{{ results.weekly_analysis.window_days }} derniers jours{% if results.weekly_analysis.window_widened %} (élargie){% endif %} · générée le {{ results.weekly_analysis.generated_at }}</em>
+        {% endif %}
+      </h3>
+      <p>{{ results.weekly_analysis.text }}</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ce qu'il reste<em>brut, frais, net</em></h2>
+    <div class="eq">
+      <div class="eq-t"><span>brut</span><b class="{{ 'gain' if (g.gross_usdc or 0) >= 0 else 'loss' }}">{{ "%+.2f"|format(g.gross_usdc or 0) }}</b></div>
+      <div class="eq-op">−</div>
+      <div class="eq-t"><span>frais</span><b class="wait">{{ "%.2f"|format(g.fees_usdc or 0) }}</b></div>
+      <div class="eq-op">=</div>
+      <div class="eq-t res"><span>net</span><b class="{{ 'gain' if (g.net_usdc or 0) >= 0 else 'loss' }}">{{ "%+.2f"|format(g.net_usdc or 0) }}</b></div>
     </div>
 
-    <div class="card">
-      <h2>Par période</h2>
-      <table class="periods">
-        <thead><tr><th>Période</th><th>Brut</th><th>Frais</th><th>Net</th><th>Trades</th></tr></thead>
+    {% if results.equity %}
+    {% set eq = results.equity %}
+    <figure>
+      <svg viewBox="0 0 {{ eq.width }} {{ eq.height }}" role="img"
+           aria-label="Gain net cumulé sur les {{ g.count or 0 }} trades fermés, terminant à {{ "%.2f"|format(eq.final_value) }} USDC.">
+        <line x1="{{ eq.pad }}" y1="{{ eq.zero_y }}" x2="{{ eq.width - eq.pad }}" y2="{{ eq.zero_y }}"
+              stroke="currentColor" stroke-width="1" opacity=".3" stroke-dasharray="2 4"/>
+        <polygon points="{{ eq.polygon }}" fill="{{ 'var(--gain)' if eq.final_value >= 0 else 'var(--loss)' }}" fill-opacity=".1"/>
+        <polyline points="{{ eq.polyline }}" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+      <figcaption>Gain net cumulé, trade après trade. La ligne pointillée marque l'équilibre.</figcaption>
+    </figure>
+    {% else %}
+    <p class="empty">Pas encore assez de trades fermés pour tracer une courbe.</p>
+    {% endif %}
+
+    {% if results.pnl_day %}
+    <div class="pnl" data-pnl>
+      <div class="pnl-head">
+        <h3>Ce que chaque période a rapporté</h3>
+        <div class="gran" role="group" aria-label="Granularité du graphe">
+          <button type="button" class="on" data-gran="day">Jour</button>
+          <button type="button" data-gran="month">Mois</button>
+        </div>
+      </div>
+
+      {% for view, geo in [('day', results.pnl_day), ('month', results.pnl_month)] %}
+      <figure class="pnl-fig" data-view="{{ view }}" {% if view != 'day' %}hidden{% endif %}>
+        <svg viewBox="0 0 {{ geo.width }} {{ geo.height }}" role="img"
+             aria-label="PnL net par {{ 'jour' if view == 'day' else 'mois' }} sur {{ geo.bars|length }} période(s), de {{ geo.worst.value|round(2) }} à {{ geo.best.value|round(2) }} USDC.">
+          <line x1="{{ geo.pad }}" y1="{{ geo.zero_y }}" x2="{{ geo.width - geo.pad }}" y2="{{ geo.zero_y }}"
+                stroke="currentColor" stroke-width="1" opacity=".35"/>
+          {% for b in geo.bars %}
+          <rect class="pnl-bar" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}"
+                fill="{{ 'var(--gain)' if b.positive else 'var(--loss)' }}"
+                data-label="{{ b.label }}" data-value="{{ "%+.2f"|format(b.value) }}" tabindex="0"
+                role="listitem" aria-label="{{ b.label }} : {{ "%+.2f"|format(b.value) }} USDC"></rect>
+          {% endfor %}
+        </svg>
+        <figcaption>
+          {{ geo.bars|length }} {{ 'jour(s) avec au moins un trade clôturé' if view == 'day' else 'mois' }} ·
+          meilleur <b class="gain">{{ "%+.2f"|format(geo.best.value) }}</b> ({{ geo.best.label }}) ·
+          pire <b class="loss">{{ "%+.2f"|format(geo.worst.value) }}</b> ({{ geo.worst.label }})
+        </figcaption>
+      </figure>
+      {% endfor %}
+      <div class="pnl-tip" hidden aria-hidden="true"></div>
+    </div>
+    {% endif %}
+
+    <div class="facts">
+      <div class="fact">
+        <span>gagnants</span>
+        <b>{{ (100 * (g.wins or 0) / g.count)|round|int if g.count else 0 }} %</b>
+        <i>{{ g.wins or 0 }}W / {{ g.losses or 0 }}L, net de frais</i>
+      </div>
+      <div class="fact">
+        <span>frais</span>
+        <b class="wait">{{ (100 * (g.fees_usdc or 0) / g.gross_usdc)|round|int if g.gross_usdc else 0 }} %</b>
+        <i>du gain brut</i>
+      </div>
+      <div class="fact">
+        <span>positions</span>
+        <b>{{ results.positions|length }}<small>/{{ settings.max_open_positions or '?' }}</small></b>
+        <i>{{ results.maker.pending_count }} en attente</i>
+      </div>
+      <div class="fact">
+        <span>cycles ok</span>
+        <b>{{ cycles.reliability.rate_30d if cycles.reliability.rate_30d is not none else 'n/d' }} %</b>
+        <i>{{ cs.failed }} échec(s) / {{ cs.total }}</i>
+      </div>
+    </div>
+    {% if g.trades_without_fees %}
+    <p class="warn">{{ g.trades_without_fees }} trade(s) sans frais connus — le net est donc optimiste.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Par période<em>brut, frais, net</em></h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Période</th><th class="num">Brut</th><th class="num">Frais</th><th class="num">Net</th><th class="num">Trades</th></tr></thead>
         <tbody>
         {% for p in results.periods %}
           <tr>
             <td>{{ p.label }}</td>
-            <td>{{ "%.2f"|format(p.gross_usdc or 0) }}</td>
-            <td>-{{ "%.2f"|format(p.fees_usdc or 0) }}</td>
-            <td class="{{ 'pos' if (p.net_usdc or 0) >= 0 else 'neg' }}">{{ "%+.2f"|format(p.net_usdc or 0) }}</td>
-            <td>{{ p.count or 0 }}</td>
+            <td class="num">{{ "%+.2f"|format(p.gross_usdc or 0) }}</td>
+            <td class="num">−{{ "%.2f"|format(p.fees_usdc or 0) }}</td>
+            <td class="num {{ 'gain' if (p.net_usdc or 0) >= 0 else 'loss' }}">{{ "%+.2f"|format(p.net_usdc or 0) }}</td>
+            <td class="num mut">{{ p.count or 0 }}</td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
-
-    <div class="card">
-      <h2>Positions ouvertes ({{ results.positions|length }})</h2>
-      {% if results.kraken_error %}
-      <p class="warning">⚠️ Prix courants indisponibles (API Kraken injoignable) — affichage des
-        prix d'entrée uniquement. Détail : {{ results.kraken_error }}</p>
-      {% endif %}
-      {% if not results.positions %}
-        <p class="sub">Aucune position ouverte.</p>
-      {% endif %}
-      {% for pos in results.positions %}
-        <div class="position">
-          <div class="position-head">
-            <strong>{{ pos.coin }}</strong>
-            <span class="{{ 'maker' if pos.maker_or_taker == 'maker' else 'taker' }}">{{ pos.maker_or_taker or '?' }}</span>
-          </div>
-          <div class="position-grid">
-            <div>Entrée <b>{{ pos.entry_price }}</b></div>
-            <div>Courant
-              <b>{{ pos.current_price if pos.current_price is not none else 'n/d' }}</b>
-              {% if pos.unrealized_pnl_pct is not none %}
-                <span class="{{ 'pos' if pos.unrealized_pnl_pct >= 0 else 'neg' }}">({{ "%+.1f"|format(pos.unrealized_pnl_pct) }}%)</span>
-              {% endif %}
-            </div>
-            <div>Stop <b>{{ pos.stop_price }}</b>
-              {% if pos.distance_to_stop_pct is not none %}<span class="sub">({{ "%.1f"|format(pos.distance_to_stop_pct) }}% de marge)</span>{% endif %}
-            </div>
-            <div>Cible <b>{{ pos.tp_price }}</b>
-              {% if pos.distance_to_target_pct is not none %}<span class="sub">({{ "%.1f"|format(pos.distance_to_target_pct) }}% restant)</span>{% endif %}
-            </div>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-
-    <div class="card">
-      <h2>Stratégie maker</h2>
-      {% set m = results.maker %}
-      <p>En attente : <b>{{ m.pending_count }}</b> ordre(s) · capital immobilisé
-        <b>{{ "%.2f"|format(m.capital_immobilise) }} USDC</b></p>
-      {% if m.total %}
-      <p>Servies en maker : <b>{{ m.fill_pct }}%</b> ({{ m.fills }}/{{ m.total }})
-        · repli marché {{ m.fallbacks }} · abandonnées {{ m.abandoned }}</p>
-      {% else %}
-      <p class="sub">Pas encore de données du maker watcher.</p>
-      {% endif %}
-    </div>
   </section>
 
-  <section id="tab-cycles" class="tab-panel">
-    <div class="card">
-      <h2>Cadence des cycles</h2>
-      <div class="cadence-band">
-        {% for c in cycles.cadence %}
-          <div class="cadence-bar {{ 'action' if c.has_action else '' }} {{ 'error' if c.status == 'error' else '' }}"
-               style="height: {{ c.height_pct }}%" title="{{ c.cycle_id }} — {{ c.status }}"></div>
-        {% endfor %}
+  <section>
+    <h2>Positions ouvertes<em>{{ results.positions|length }} en cours</em></h2>
+    {% if results.kraken_error %}
+      <p class="warn">Prix courants indisponibles (API Kraken injoignable) — seuls les prix d'entrée sont affichés.</p>
+    {% endif %}
+    {% if not results.positions %}
+      <p class="empty">Aucune position ouverte.</p>
+    {% endif %}
+    {% for pos in results.positions %}
+      <div class="hold">
+        <div class="hold-h">
+          <span class="tick-n">{{ pos.coin }}</span>
+          {% if pos.unrealized_pnl_pct is not none %}
+            <span class="pct {{ 'gain' if pos.unrealized_pnl_pct >= 0 else 'loss' }}">{{ "%+.1f"|format(pos.unrealized_pnl_pct) }} %</span>
+          {% endif %}
+          <span class="age">{{ pos.age_label or '' }}{% if pos.maker_or_taker %} · entrée {{ pos.maker_or_taker }}{% endif %}</span>
+        </div>
+        {% if pos.track_now_pct is not none %}
+        <div class="track">
+          <div class="fill" style="width:{{ "%.1f"|format(pos.track_now_pct) }}%"></div>
+          {% if pos.track_entry_pct is not none %}
+          <div class="ent" style="left:{{ "%.1f"|format(pos.track_entry_pct) }}%"></div>
+          {% endif %}
+          <div class="now" style="left:{{ "%.1f"|format(pos.track_now_pct) }}%"></div>
+        </div>
+        {% endif %}
+        <div class="hold-f">
+          <span>stop <b>{{ pos.stop_price | price }}</b>{% if pos.distance_to_stop_pct is not none %} ({{ "%.1f"|format(pos.distance_to_stop_pct) }} % de marge){% endif %}</span>
+          <span>achat <b>{{ pos.entry_price | price }}</b></span>
+          <span>marché <b>{{ pos.current_price | price }}</b></span>
+          <span>cible <b>{{ pos.tp_price | price }}</b>{% if pos.distance_to_target_pct is not none %} ({{ "%.1f"|format(pos.distance_to_target_pct) }} % restant){% endif %}</span>
+        </div>
       </div>
+    {% endfor %}
+  </section>
+
+  <section>
+    <h2>Stratégie maker<em>entrées en ordre limite</em></h2>
+    {% set m = results.maker %}
+    <div class="lines">
+      <div class="line"><span>Ordres en attente</span><b>{{ m.pending_count }}</b></div>
+      <div class="line"><span>Capital immobilisé</span><b>{{ "%.2f"|format(m.capital_immobilise) }} USDC</b></div>
+      {% if m.total %}
+      <div class="line"><span>Servies en maker</span><b class="gain">{{ m.fill_pct }} % ({{ m.fills }}/{{ m.total }})</b></div>
+      <div class="line"><span>Repli au marché</span><b>{{ m.fallbacks }}</b></div>
+      <div class="line"><span>Abandonnées</span><b>{{ m.abandoned }}</b></div>
+      {% endif %}
+    </div>
+    {% if not m.total %}
+    <p class="empty">Pas encore de données du maker watcher.</p>
+    {% endif %}
+  </section>
+</div>
+
+<!-- ============ onglet 2 : cycles ============ -->
+<div class="panel p-cycles pad">
+
+  {% set grid = cycles.grid %}
+  <section class="cgrid-sec">
+    <h2>État des cycles<em>{{ grid.days }} derniers jours</em></h2>
+    <p class="note">Le bot a rendez-vous toutes les 4 h. Chaque case est un rendez-vous —
+      tenu ou manqué. Un cycle qui ne démarre pas n'écrit rien en base : sans partir des
+      créneaux attendus, il resterait invisible.</p>
+
+    <div class="grid-wrap">
+      <table class="cgrid">
+        <caption class="visually-hidden">État de chaque créneau de 4 heures sur {{ grid.days }} jours</caption>
+        <tbody>
+          {% for slot_label in grid.slot_labels %}
+          {% set row = loop.index0 %}
+          <tr>
+            <th scope="row">{{ slot_label }}</th>
+            {% for col in grid.columns %}
+              {% set cell = col.cells[row] %}
+              {% if cell is none %}
+                <td class="c-void"></td>
+              {% else %}
+                <td class="c-{{ cell.state }}" tabindex="0"
+                    data-when="{{ cell.slot_local }}"
+                    data-state="{{ cell.state }}"
+                    {% if cell.state != 'missing' %}
+                    data-detail="score {{ cell.top_score }}/10 · {{ cell.duration_s }} s · {{ "%.2f"|format(cell.cost_usd) }} ${% if cell.executed or cell.pending %} · {{ cell.executed }} exécuté(s), {{ cell.pending }} en attente{% endif %}{% if cell.manual %} · lancé à la main{% endif %}"
+                    {% endif %}
+                    aria-label="{{ cell.slot_local }} — {{ cell.state }}"></td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          <tr class="cdates">
+            <th scope="row"></th>
+            {% for col in grid.columns %}
+              <td>{% if col.show_label %}<span>{{ col.label }}</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cgrid-tip" hidden aria-hidden="true"></div>
+
+    <div class="legend">
+      <span><i class="sw-action"></i>a passé un ordre</span>
+      <span><i class="sw-idle"></i>a tourné sans agir</span>
+      <span><i class="sw-error"></i>en échec</span>
+      <span><i class="sw-missing"></i>jamais démarré</span>
     </div>
 
-    <div class="card">
-      <h2>Motifs de blocage</h2>
-      <p>{{ cycles.blocking.comment }}</p>
-      {% for b in cycles.blocking.breakdown %}
-        <div class="bar-row">
-          <span>{{ b.label }}</span>
-          <div class="bar-track"><div class="bar-fill" style="width: {{ b.pct }}%"></div></div>
-          <span class="sub">{{ b.count }} ({{ b.pct }}%)</span>
-        </div>
-      {% endfor %}
-    </div>
-
-    <div class="card">
-      <h2>Fiabilité par période</h2>
-      <p>{{ cycles.reliability.comment }}</p>
-      <p class="sub">7 jours : {{ cycles.reliability.rate_7d if cycles.reliability.rate_7d is not none else 'n/d' }}%
-        ({{ cycles.reliability.count_7d }} cycles) · 30 jours : {{ cycles.reliability.rate_30d if cycles.reliability.rate_30d is not none else 'n/d' }}%
-        ({{ cycles.reliability.count_30d }} cycles)</p>
-    </div>
-
-    <div class="card">
-      <h2>Journal des cycles</h2>
-      {% if cycles.error %}<p class="warning">⚠️ {{ cycles.error }}</p>{% endif %}
-      {% for c in cycles.journal %}
-        <div class="cycle-entry status-{{ c.status }}">
-          <div class="cycle-head">
-            <span class="badge">{{ c.status }}</span>
-            <span>{{ c.local_time }}</span>
-            <span>score {{ c.top_score }}/10</span>
-            <span>{{ c.executed }} exécuté(s) · {{ c.pending }} en attente · {{ c.skipped }} skip(s)</span>
-            {% if c.explanation_fr %}
-            <button type="button" onclick="document.getElementById('dlg-{{ c.cycle_id }}').showModal()">Explication</button>
-            {% endif %}
-          </div>
-          {% if c.decisions %}
-          <details>
-            <summary>Détail par coin ({{ c.decisions|length }})</summary>
-            <ul class="decisions">
-              {% for d in c.decisions %}
-                <li><b>{{ d.coin }}</b> — score {{ d.score }}/10 — {{ d.decision }}
-                  {% if d.reason %} · {{ d.reason }}{% endif %}</li>
-              {% endfor %}
-            </ul>
-          </details>
-          {% endif %}
-          {% if c.explanation_fr %}
-          <dialog id="dlg-{{ c.cycle_id }}">
-            <p>{{ c.explanation_fr }}</p>
-            <button type="button" onclick="document.getElementById('dlg-{{ c.cycle_id }}').close()">Fermer</button>
-          </dialog>
-          {% endif %}
-        </div>
-      {% endfor %}
+    <div class="facts" style="margin-top:20px">
+      <div class="fact"><span>créneaux</span><b>{{ grid.total }}</b><i>sur {{ grid.days }} jours</i></div>
+      <div class="fact"><span>ont tourné</span><b>{{ grid.ran_pct if grid.ran_pct is not none else 'n/d' }} %</b>
+        <i>{{ grid.counts.missing }} jamais démarré(s)</i></div>
+      <div class="fact"><span>en échec</span><b class="{{ 'loss' if (grid.error_pct or 0) > 10 }}">{{ grid.error_pct if grid.error_pct is not none else 'n/d' }} %</b>
+        <i>{{ grid.counts.error }} sur {{ grid.ran }} lancés</i></div>
+      <div class="fact"><span>avec ordre</span><b class="gain">{{ grid.counts.action }}</b>
+        <i>{{ grid.counts.idle }} sans action</i></div>
     </div>
   </section>
 
-  <section id="tab-reglages" class="tab-panel">
-    <div class="card">
-      <h2>Configuration active</h2>
-      <table class="settings">
+  <section>
+    <h2>Motifs de blocage<em>{{ cycles.blocking.total }} skips</em></h2>
+    <p class="note">{{ cycles.blocking.comment }}</p>
+    {% if cycles.blocking.breakdown %}
+    {% set top = cycles.blocking.breakdown[0].count %}
+    <div class="rows" style="margin-top:18px">
+      {% for b in cycles.blocking.breakdown %}
+        <div class="row">
+          <span>{{ b.label|capitalize }}</span>
+          <span class="bar"><b style="width:{{ (100 * b.count / top)|round|int }}%"></b></span>
+          <span class="v">{{ b.count }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Fiabilité<em>cycles sans erreur</em></h2>
+    <p class="note">{{ cycles.reliability.comment }}</p>
+    <div class="lines" style="margin-top:14px">
+      <div class="line"><span>7 derniers jours</span><b>{{ cycles.reliability.rate_7d if cycles.reliability.rate_7d is not none else 'n/d' }} % <span class="mut">sur {{ cycles.reliability.count_7d }} cycles</span></b></div>
+      <div class="line"><span>30 derniers jours</span><b>{{ cycles.reliability.rate_30d if cycles.reliability.rate_30d is not none else 'n/d' }} % <span class="mut">sur {{ cycles.reliability.count_30d }} cycles</span></b></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Journal des cycles<em>{{ cycles.journal|length }} derniers</em></h2>
+    {% if cycles.error %}<p class="warn">{{ cycles.error }}</p>{% endif %}
+    <div class="cycs">
+      {% for c in cycles.journal %}
+      <article class="cyc">
+        <div class="cyc-top">
+          <time>{{ c.local_time }}</time>
+          <span class="topsc {{ 'hit' if (c.top_score or 0) >= cs.threshold }}">{{ c.top_score or 0 }}<i>/10</i></span>
+          <span class="dec {{ 'gain' if c.executed else 'flat' }}">
+            {%- if c.executed %}{{ c.executed }} ordre(s) passé(s)
+            {%- elif c.pending %}{{ c.pending }} en attente
+            {%- else %}aucune position{% endif -%}
+          </span>
+          <span class="state {{ 'ko' if c.status == 'error' else 'ok' }}">{{ 'échec' if c.status == 'error' else 'ok' }}</span>
+        </div>
+        {% if c.explanation_fr %}
+        <div class="cyc-acts">
+          <button type="button" class="why" data-dialog="dlg-{{ c.cycle_id }}">Lire l'explication</button>
+        </div>
+        {% endif %}
+        {% if c.decisions %}
+        <details>
+          <summary>Détail par coin<i>{{ c.decisions|length }} analysés</i></summary>
+          <ul class="coins">
+            {% for d in c.decisions %}
+            <li>
+              <b class="cn">{{ d.coin }}</b>
+              <span class="sc {{ 'hit' if (d.score or 0) >= cs.threshold }}">{{ d.score or 0 }}<i>/10</i></span>
+              <span class="sig">{{ d.decision }}</span>
+              {% if d.reason or d.skip_detail %}<span class="cr">{{ d.reason or d.skip_detail }}</span>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% else %}
+        <details><summary>Détail par coin<i>non enregistré</i></summary>
+          <p class="empty" style="padding-bottom:8px">Ce cycle n'a pas publié le détail par coin.</p>
+        </details>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<!-- ============ onglet 3 : réglages ============ -->
+<div class="panel p-config pad">
+  <section>
+    <h2>Configuration active<em>telle que publiée par le bot</em></h2>
+    <div class="scroll">
+      <table>
         <tbody>
         {% for key, value in settings.items() %}
-          <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+          <tr><td class="mono">{{ key }}</td><td class="num">{{ value }}</td></tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
   </section>
-</main>
+</div>
+
+<footer class="pad">Lecture seule · données publiées par le bot en fin de cycle · heure {{ tz_name }}</footer>
+</div>
+
+{% for c in cycles.journal if c.explanation_fr %}
+<dialog class="modal" id="dlg-{{ c.cycle_id }}">
+  <form method="dialog"><button class="x" aria-label="Fermer">×</button></form>
+  <h4>Cycle du {{ c.local_time }}<span>score {{ c.top_score or 0 }}/10 · {{ c.executed }} exécuté(s) · {{ c.skipped }} skip(s)</span></h4>
+  <p>{{ c.explanation_fr }}</p>
+</dialog>
+{% endfor %}
 
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 {% endblock %}

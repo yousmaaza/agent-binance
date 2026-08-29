@@ -1,4 +1,5 @@
 """Accès MongoDB : connexion lazy, lecture/écriture des cycles."""
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from loguru import logger
@@ -55,6 +56,44 @@ class MongoRepository:
         except Exception as e:
             logger.error(f"MongoDB find_last_cycle erreur : {e}")
             return None
+
+    def find_cycles_since(self, since: datetime) -> List[Dict]:
+        """Cycles dont le timestamp est >= since — pour le résumé de cycles de l'analyse hebdo (#453)."""
+        db = self._db()
+        if db is None:
+            return []
+        try:
+            return list(
+                db.cycles.find(
+                    {"timestamp": {"$gte": since.isoformat()}},
+                    {"execution": 1, "executed": 1, "status": 1, "error_type": 1, "timestamp": 1},
+                ),
+            )
+        except Exception as e:
+            logger.error(f"MongoDB find_cycles_since erreur : {e}")
+            return []
+
+    def find_weekly_analysis(self, week_key: str) -> Optional[Dict]:
+        """Document existant pour cette semaine ISO, ou None — clé d'idempotence de #453."""
+        db = self._db()
+        if db is None:
+            return None
+        try:
+            return db.weekly_analysis.find_one({"_id": week_key})
+        except Exception as e:
+            logger.error(f"MongoDB find_weekly_analysis erreur : {e}")
+            return None
+
+    def save_weekly_analysis(self, doc: Dict) -> bool:
+        db = self._db()
+        if db is None:
+            return False
+        try:
+            db.weekly_analysis.update_one({"_id": doc["_id"]}, {"$set": doc}, upsert=True)
+            return True
+        except Exception as e:
+            logger.error(f"MongoDB save_weekly_analysis erreur : {e}")
+            return False
 
     def get_api_costs(self, limit: int = 5) -> List[Dict]:
         db = self._db()

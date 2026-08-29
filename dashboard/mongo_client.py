@@ -69,3 +69,39 @@ def _fetch_recent_cycles(limit: int) -> list:
 
 def get_recent_cycles(limit: int) -> list:
     return cache.get_or_set(f"cycles:{limit}", settings.CYCLES_CACHE_TTL_S, lambda: _fetch_recent_cycles(limit))
+
+
+# La grille couvre 30 jours, soit ~180 cycles : on n'en lit que l'ossature, sans les décisions
+# ni l'explication rédigée, qui pèsent l'essentiel du document (#450).
+_GRID_PROJECTION = {
+    "cycle_id": 1, "timestamp": 1, "status": 1, "error_type": 1, "trigger": 1,
+    "top_score": 1, "execution": 1, "executed": 1, "pending": 1,
+    "duration_s": 1, "duration_seconds": 1, "api_cost_usd": 1,
+}
+
+
+def _fetch_cycles_for_grid(limit: int) -> list:
+    db = _db()
+    try:
+        return list(db.cycles.find({}, _GRID_PROJECTION, sort=[("timestamp", -1)]).limit(limit))
+    except PyMongoError as e:
+        raise MongoUnavailable(str(e)) from e
+
+
+def get_cycles_for_grid(limit: int) -> list:
+    return cache.get_or_set(f"grid:{limit}", settings.CYCLES_CACHE_TTL_S, lambda: _fetch_cycles_for_grid(limit))
+
+
+def _fetch_latest_weekly_analysis() -> Optional[dict]:
+    db = _db()
+    try:
+        return db.weekly_analysis.find_one(sort=[("generated_at", -1)])
+    except PyMongoError as e:
+        raise MongoUnavailable(str(e)) from e
+
+
+def get_latest_weekly_analysis() -> Optional[dict]:
+    """Analyse hebdomadaire rédigée la plus récente (#453), ou None si jamais générée."""
+    return cache.get_or_set(
+        "weekly_analysis:latest", settings.DASHBOARD_STATE_CACHE_TTL_S, _fetch_latest_weekly_analysis,
+    )

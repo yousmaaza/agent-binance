@@ -95,6 +95,19 @@ class TestHealthBlock(MakerCommandTestCase):
         self.assertIn("🔴 Erreur", out)
         self.assertIn("boom", out)
 
+    def test_cumul_line_shows_total_abandoned(self):
+        """Critère #430 : total_abandoned doit apparaître dans le bloc Cumul, à côté de
+        remplis/replis marché, sans les fusionner."""
+        self._write(self.watcher_state_path, {
+            "last_tick": _iso(5), "status": "ok", "last_error": None,
+            "orders_checked": 0, "total_ticks": 24583, "total_fills": 5, "total_fallbacks": 0,
+            "total_abandoned": 2,
+        })
+        out = maker.run_maker()
+        self.assertIn("5 remplis", out)
+        self.assertIn("0 replis marché", out)
+        self.assertIn("2 abandonné(s)", out)
+
 
 class TestPendingOrdersBlock(MakerCommandTestCase):
     def test_no_pending_file_shows_no_orders(self):
@@ -191,7 +204,19 @@ class TestEfficiencyBlock(MakerCommandTestCase):
             {"coin": "XRP", "maker_or_taker": "taker", "date": _iso(3600), "entry_fee_usdc": 0.6},
         ])
         out = maker.run_maker()
-        self.assertIn("Délai médian de remplissage : 1min", out)
+        self.assertIn("Délai médian de remplissage : 60s", out)
+
+    def test_median_fill_delay_is_precise_to_the_second_not_truncated_to_minute(self):
+        """Critère #430 : échantillon réel 94/105/110/141/405 -> médiane 110s, pas "1min"."""
+        seconds_samples = [94, 105, 110, 141, 405]
+        self._write(self.history_path, [
+            {"coin": f"C{i}", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.1,
+             "maker_fill_seconds": s}
+            for i, s in enumerate(seconds_samples)
+        ])
+        out = maker.run_maker()
+        self.assertIn("Délai médian de remplissage : 110s", out)
+        self.assertNotIn("Délai médian de remplissage : 1min", out)
 
     def test_missing_maker_fill_seconds_shows_not_available(self):
         """Piège : trades maker antérieurs à ce ticket, sans maker_fill_seconds persisté."""
@@ -212,6 +237,106 @@ class TestEfficiencyBlock(MakerCommandTestCase):
         ])
         out = maker.run_maker()
         self.assertIn("0.30 USDC", out)
+
+    def test_watcher_funnel_shows_fills_fallbacks_abandoned_on_shared_denominator(self):
+        """Critère #430 (retour coordinateur) : les 3 issues du funnel watcher (fills,
+        fallbacks, abandonnés) partagent le même dénominateur et sont affichées ensemble,
+        distinctement du taux de remplissage issu de trade_history."""
+        self._write(self.watcher_state_path, {
+            "last_tick": _iso(5), "status": "ok", "last_error": None,
+            "orders_checked": 0, "total_ticks": 100, "total_fills": 5, "total_fallbacks": 1,
+            "total_abandoned": 2,
+        })
+        self._write(self.history_path, [
+            {"coin": "ETH", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.3,
+             "maker_fill_seconds": 30},
+        ])
+        out = maker.run_maker()
+        # total_fills=5, total_fallbacks=1, total_abandoned=2 -> 8 tentatives (dénominateur commun)
+        self.assertIn("8 tentative(s)", out)
+        self.assertIn("Remplis 62% (5)", out)
+        self.assertIn("Replis marché 12% (1)", out)
+        self.assertIn("Abandonnés 25% (2)", out)
+
+    def test_watcher_funnel_not_available_when_watcher_state_absent(self):
+        """État dégradé #430 : fichier maker_watcher_state.json absent -> pas de crash, n/d."""
+        self._write(self.history_path, [
+            {"coin": "ETH", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.3,
+             "maker_fill_seconds": 30},
+        ])
+        out = maker.run_maker()
+        self.assertIn("Funnel watcher (compteurs internes) : n/d", out)
+
+    def test_watcher_funnel_shown_even_without_classified_trades(self):
+        """Le risque principal (abandons) doit rester visible même si aucun trade n'est encore
+        classé dans trade_history (ex : tous les ordres tentés ont été abandonnés)."""
+        self._write(self.watcher_state_path, {
+            "last_tick": _iso(5), "status": "ok", "last_error": None,
+            "orders_checked": 0, "total_ticks": 10, "total_fills": 0, "total_fallbacks": 0,
+            "total_abandoned": 3,
+        })
+        out = maker.run_maker()
+        self.assertIn("Pas encore de données", out)
+        self.assertIn("Abandonnés 100% (3)", out)
+        self.assertIn("3 tentative(s)", out)
+
+    def test_watcher_reset_does_not_imply_strategy_collapsed(self):
+        """Scénario signalé par le coordinateur : maker_watcher_state.json remis à zéro (fichier
+        perdu/corrompu, cf. core/maker_watcher.py::_write_watcher_state) alors que trade_history
+        contient déjà de nombreux fills. Le funnel watcher (dénominateur propre, 1 seule
+        tentative depuis la réinitialisation) affiche honnêtement 100% d'abandon sur son propre
+        échantillon, mais reste clairement étiqueté et ne doit jamais être lu comme représentatif
+        de toute la vie du bot — le taux de remplissage réel, basé sur les 20 trades historiques,
+        est affiché séparément avec son propre effectif."""
+        self._write(self.watcher_state_path, {
+            "last_tick": _iso(5), "status": "ok", "last_error": None,
+            "orders_checked": 0, "total_ticks": 1, "total_fills": 0, "total_fallbacks": 0,
+            "total_abandoned": 1,
+        })
+        self._write(self.history_path, [
+            {"coin": f"C{i}", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.1,
+             "maker_fill_seconds": 100}
+            for i in range(20)
+        ])
+        out = maker.run_maker()
+        self.assertIn("Abandonnés 100% (1)", out)
+        self.assertIn("1 tentative(s)", out)
+        self.assertIn("remis à zéro si l'état est perdu", out)
+        self.assertIn("sur 20 trade(s) classé(s)", out)
+        self.assertIn("100% (depuis le début", out)
+
+    def test_trend_7d_shows_insufficient_sample_message_below_threshold(self):
+        """Ticket #430 : échantillon 7j trop petit (< 5) -> message honnête, pas de chiffre trompeur."""
+        self._write(self.history_path, [
+            {"coin": "ETH", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.3,
+             "maker_fill_seconds": 30},
+            {"coin": "SOL", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.3,
+             "maker_fill_seconds": 90},
+        ])
+        out = maker.run_maker()
+        self.assertIn("Tendance 7j : échantillon insuffisant (2 trade(s) classé(s))", out)
+        self.assertIn("pas de tendance fiable", out)
+
+    def test_trend_7d_computed_when_sample_reaches_threshold(self):
+        self._write(self.history_path, [
+            {"coin": f"C{i}", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.1,
+             "maker_fill_seconds": 60}
+            for i in range(5)
+        ])
+        out = maker.run_maker()
+        self.assertIn("Tendance 7j : 100% de remplissage (sur 5 trade(s))", out)
+
+    def test_trend_7d_excludes_trades_older_than_7_days(self):
+        recent = [{
+            "coin": f"M{i}", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.1,
+            "maker_fill_seconds": 60,
+        } for i in range(4)]
+        old = [{
+            "coin": "OLD", "maker_or_taker": "taker", "date": _iso(15 * 86400), "entry_fee_usdc": 0.6,
+        }]
+        self._write(self.history_path, recent + old)
+        out = maker.run_maker()
+        self.assertIn("Tendance 7j : échantillon insuffisant (4 trade(s) classé(s))", out)
 
 
 class TestRunMakerRespondsQuickly(unittest.TestCase):

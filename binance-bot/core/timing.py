@@ -16,6 +16,22 @@ def next_4h_slot() -> datetime:
     return nxt
 
 
+def next_weekly_slot(now: datetime | None = None) -> datetime:
+    """Prochain lundi 00:10 UTC (analyse hebdomadaire #453, 5 min après le cycle 00:05)."""
+    now = now or datetime.now(timezone.utc)
+    days_until_monday = (7 - now.weekday()) % 7
+    nxt = (now + timedelta(days=days_until_monday)).replace(hour=0, minute=10, second=0, microsecond=0)
+    if nxt <= now:
+        nxt += timedelta(days=7)
+    return nxt
+
+
+def iso_week_key(dt: datetime) -> str:
+    """Clé de semaine ISO, ex: '2026-W35' — sert d'identifiant d'idempotence (#453)."""
+    year, week, _ = dt.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
 def next_1h_slot() -> datetime:
     """Prochain slot horaire à :05 UTC, en sautant les slots 4h (00:05, 04:05, 08:05, 12:05, 16:05, 20:05)."""
     now = datetime.now(timezone.utc)

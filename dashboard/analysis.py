@@ -3,7 +3,6 @@
 les données changent."""
 from collections import Counter
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from timeutil import parse_iso
 
@@ -45,14 +44,42 @@ def blocking_reasons(cycles: list) -> dict:
     return {"breakdown": breakdown, "total": total, "comment": comment}
 
 
-def _success_rate(cycles: list) -> Optional[float]:
+def weekly_note(by_period: dict, band: list, maker: dict) -> str:
+    """Synthèse des 7 derniers jours, entièrement recalculée (#442) — la maquette affiche ce bloc
+    et sa formulation doit rester vraie quand les chiffres changent."""
+    week = by_period.get("0_7d") or {}
+    count = week.get("count") or 0
+
+    if not count:
+        phrases = ["Aucun trade clôturé sur les 7 derniers jours."]
+    else:
+        phrases = [
+            (f"{count} trade(s) clôturé(s) pour un résultat net de "
+             f"{week.get('net_usdc', 0):+.2f} USDC "
+             f"({week.get('gross_usdc', 0):+.2f} brut, {abs(week.get('fees_usdc', 0)):.2f} de frais).")
+        ]
+
+    acted = sum(1 for b in band if b["has_action"])
+    if band:
+        phrases.append(f"{acted} cycle(s) sur les {len(band)} derniers ont donné lieu à un ordre.")
+
+    if maker.get("total"):
+        phrases.append(
+            f"La stratégie maker a servi {maker['fills']} ordre(s), "
+            f"avec {maker['fallbacks']} repli(s) au marché et {maker['abandoned']} abandon(s)."
+        )
+
+    return " ".join(phrases)
+
+
+def _success_rate(cycles: list) -> float | None:
     if not cycles:
         return None
     ok = sum(1 for c in cycles if c.get("status") not in ("error",) and c.get("error_type") is None)
     return round(ok / len(cycles) * 100)
 
 
-def reliability_by_period(cycles: list, now: Optional[datetime] = None) -> dict:
+def reliability_by_period(cycles: list, now: datetime | None = None) -> dict:
     """Taux de cycles sans erreur sur 7j / 30j / au-delà, avec une phrase de tendance recalculée
     (jamais "la fiabilité progresse" en dur : ça se vérifie à chaque fois sur les deux fenêtres)."""
     now = now or datetime.now(timezone.utc)

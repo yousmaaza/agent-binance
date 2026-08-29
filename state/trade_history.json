@@ -2420,5 +2420,32 @@
     "pnl_gross_pct": -0.2897,
     "pnl_pct": -1.188,
     "close_reason": "signal_sell_score2"
+  },
+  {
+    "trade_id": "80c08301",
+    "date": "2026-08-29T08:12:20.679812+00:00",
+    "coin": "TRUMP",
+    "side": "BUY",
+    "signal_score": 4,
+    "entry_price": 2.743000013782337,
+    "stop_price": 2.551,
+    "tp_price": 2.907580014609277,
+    "quantity": 39.90615,
+    "risk_usdc": 8.6294,
+    "entry_order_id": "OC5M64-MEQ2T-LWFIKW",
+    "sl_order_txid": "ORZZ6E-QAU2W-54SRUW",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.32839,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 99.651427,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
