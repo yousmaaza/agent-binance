@@ -144,6 +144,35 @@ def _fill_rate_pct(trades: list) -> float | None:
 _MIN_TREND_SAMPLE = 5
 
 
+def _format_watcher_funnel(state: dict | None) -> list[str]:
+    """Fills/fallbacks/abandoned partagent le même dénominateur (compteurs cumulés de
+    maker_watcher_state.json) : affichés ensemble pour sommer à ~100%, jamais mélangés avec
+    les stats issues de trade_history (retour coordinateur #430).
+
+    Population distincte de trade_history : ces compteurs repartent de zéro si le fichier
+    d'état est perdu/corrompu (core/maker_watcher.py::_write_watcher_state, except
+    FileNotFoundError/JSONDecodeError/KeyError), contrairement à trade_history qui ne se
+    réinitialise jamais — d'où le label explicite pour ne pas laisser croire à un effondrement
+    de la stratégie après une simple perte de fichier."""
+    total_fills = (state or {}).get("total_fills", 0)
+    total_fallbacks = (state or {}).get("total_fallbacks", 0)
+    total_abandoned = (state or {}).get("total_abandoned", 0)
+    total_attempts = total_fills + total_fallbacks + total_abandoned
+
+    if not total_attempts:
+        return ["  Funnel watcher (compteurs internes) : n/d (aucune tentative enregistrée)"]
+
+    fills_pct = total_fills / total_attempts * 100
+    fallbacks_pct = total_fallbacks / total_attempts * 100
+    abandoned_pct = total_abandoned / total_attempts * 100
+    return [
+        f"  Funnel watcher (compteurs internes, remis à zéro si l'état est perdu — "
+        f"{total_attempts} tentative(s)) :",
+        f"    Remplis {fills_pct:.0f}% ({total_fills}) / Replis marché {fallbacks_pct:.0f}% ({total_fallbacks}) "
+        f"/ Abandonnés {abandoned_pct:.0f}% ({total_abandoned})",
+    ]
+
+
 def _format_efficiency_section(state: dict | None) -> list[str]:
     history = _load_json(_HISTORY_PATH, [])
     lines = ["\n📈 <b>Efficacité cumulée</b>"]
@@ -152,18 +181,9 @@ def _format_efficiency_section(state: dict | None) -> list[str]:
     # exclus : ne jamais les compter à tort comme taker.
     classified = [t for t in history if t.get("maker_or_taker") in ("maker", "taker")]
 
-    total_fills = (state or {}).get("total_fills", 0)
-    total_fallbacks = (state or {}).get("total_fallbacks", 0)
-    total_abandoned = (state or {}).get("total_abandoned", 0)
-    total_attempts = total_fills + total_fallbacks + total_abandoned
-
     if not classified:
         lines.append("  Pas encore de données (aucun trade classé maker/taker).")
-        if total_attempts:
-            abandon_rate = total_abandoned / total_attempts * 100
-            lines.append(f"  Taux d'abandon : {abandon_rate:.0f}% ({total_abandoned} sur {total_attempts} tentative(s))")
-        else:
-            lines.append("  Taux d'abandon : n/d (aucune tentative enregistrée)")
+        lines.extend(_format_watcher_funnel(state))
         return lines
 
     cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -172,13 +192,10 @@ def _format_efficiency_section(state: dict | None) -> list[str]:
     rate_today = _fill_rate_pct(today_trades)
     rate_all = _fill_rate_pct(classified)
     rate_today_str = f"{rate_today:.0f}%" if rate_today is not None else "n/d"
-    lines.append(f"  Taux de remplissage maker : {rate_today_str} (24h) / {rate_all:.0f}% (depuis le début)")
-
-    if total_attempts:
-        abandon_rate = total_abandoned / total_attempts * 100
-        lines.append(f"  Taux d'abandon : {abandon_rate:.0f}% ({total_abandoned} sur {total_attempts} tentative(s))")
-    else:
-        lines.append("  Taux d'abandon : n/d (aucune tentative enregistrée)")
+    lines.append(
+        f"  Taux de remplissage maker (historique trades) : {rate_today_str} (24h) / "
+        f"{rate_all:.0f}% (depuis le début, sur {len(classified)} trade(s) classé(s))"
+    )
 
     fees_avoided = sum(
         t["entry_fee_usdc"] for t in classified
@@ -210,6 +227,7 @@ def _format_efficiency_section(state: dict | None) -> list[str]:
             f"vs {rate_all:.0f}% depuis le début"
         )
 
+    lines.extend(_format_watcher_funnel(state))
     return lines
 
 

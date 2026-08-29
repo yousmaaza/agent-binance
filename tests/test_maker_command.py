@@ -238,9 +238,10 @@ class TestEfficiencyBlock(MakerCommandTestCase):
         out = maker.run_maker()
         self.assertIn("0.30 USDC", out)
 
-    def test_abandon_rate_shown_on_same_plane_as_fill_rate(self):
-        """Critère #430 : le taux d'abandon apparaît dans le bloc Efficacité, avec effectif,
-        sans être confondu avec le taux de remplissage (source distincte : watcher state)."""
+    def test_watcher_funnel_shows_fills_fallbacks_abandoned_on_shared_denominator(self):
+        """Critère #430 (retour coordinateur) : les 3 issues du funnel watcher (fills,
+        fallbacks, abandonnés) partagent le même dénominateur et sont affichées ensemble,
+        distinctement du taux de remplissage issu de trade_history."""
         self._write(self.watcher_state_path, {
             "last_tick": _iso(5), "status": "ok", "last_error": None,
             "orders_checked": 0, "total_ticks": 100, "total_fills": 5, "total_fallbacks": 1,
@@ -251,19 +252,22 @@ class TestEfficiencyBlock(MakerCommandTestCase):
              "maker_fill_seconds": 30},
         ])
         out = maker.run_maker()
-        # total_abandoned=2 sur total_fills+total_fallbacks+total_abandoned=8 tentatives -> 25%
-        self.assertIn("Taux d'abandon : 25% (2 sur 8 tentative(s))", out)
+        # total_fills=5, total_fallbacks=1, total_abandoned=2 -> 8 tentatives (dénominateur commun)
+        self.assertIn("8 tentative(s)", out)
+        self.assertIn("Remplis 62% (5)", out)
+        self.assertIn("Replis marché 12% (1)", out)
+        self.assertIn("Abandonnés 25% (2)", out)
 
-    def test_abandon_rate_not_available_when_watcher_state_absent(self):
+    def test_watcher_funnel_not_available_when_watcher_state_absent(self):
         """État dégradé #430 : fichier maker_watcher_state.json absent -> pas de crash, n/d."""
         self._write(self.history_path, [
             {"coin": "ETH", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.3,
              "maker_fill_seconds": 30},
         ])
         out = maker.run_maker()
-        self.assertIn("Taux d'abandon : n/d", out)
+        self.assertIn("Funnel watcher (compteurs internes) : n/d", out)
 
-    def test_abandon_rate_shown_even_without_classified_trades(self):
+    def test_watcher_funnel_shown_even_without_classified_trades(self):
         """Le risque principal (abandons) doit rester visible même si aucun trade n'est encore
         classé dans trade_history (ex : tous les ordres tentés ont été abandonnés)."""
         self._write(self.watcher_state_path, {
@@ -273,7 +277,33 @@ class TestEfficiencyBlock(MakerCommandTestCase):
         })
         out = maker.run_maker()
         self.assertIn("Pas encore de données", out)
-        self.assertIn("Taux d'abandon : 100% (3 sur 3 tentative(s))", out)
+        self.assertIn("Abandonnés 100% (3)", out)
+        self.assertIn("3 tentative(s)", out)
+
+    def test_watcher_reset_does_not_imply_strategy_collapsed(self):
+        """Scénario signalé par le coordinateur : maker_watcher_state.json remis à zéro (fichier
+        perdu/corrompu, cf. core/maker_watcher.py::_write_watcher_state) alors que trade_history
+        contient déjà de nombreux fills. Le funnel watcher (dénominateur propre, 1 seule
+        tentative depuis la réinitialisation) affiche honnêtement 100% d'abandon sur son propre
+        échantillon, mais reste clairement étiqueté et ne doit jamais être lu comme représentatif
+        de toute la vie du bot — le taux de remplissage réel, basé sur les 20 trades historiques,
+        est affiché séparément avec son propre effectif."""
+        self._write(self.watcher_state_path, {
+            "last_tick": _iso(5), "status": "ok", "last_error": None,
+            "orders_checked": 0, "total_ticks": 1, "total_fills": 0, "total_fallbacks": 0,
+            "total_abandoned": 1,
+        })
+        self._write(self.history_path, [
+            {"coin": f"C{i}", "maker_or_taker": "maker", "date": _iso(3600), "entry_fee_usdc": 0.1,
+             "maker_fill_seconds": 100}
+            for i in range(20)
+        ])
+        out = maker.run_maker()
+        self.assertIn("Abandonnés 100% (1)", out)
+        self.assertIn("1 tentative(s)", out)
+        self.assertIn("remis à zéro si l'état est perdu", out)
+        self.assertIn("sur 20 trade(s) classé(s)", out)
+        self.assertIn("100% (depuis le début", out)
 
     def test_trend_7d_shows_insufficient_sample_message_below_threshold(self):
         """Ticket #430 : échantillon 7j trop petit (< 5) -> message honnête, pas de chiffre trompeur."""
