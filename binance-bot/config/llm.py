@@ -20,6 +20,18 @@ CLAUDE_CLI_FLAGS = [
 ]
 
 
+# Flags pour l'appel Claude de l'analyse hebdomadaire (#453) : pas de tool use (données déjà
+# dans le prompt) -> --output-format json (résultat + coût en un seul objet, pas de streaming).
+WEEKLY_ANALYSIS_CLI_FLAGS = [
+    "--print",
+    "--output-format", "json",
+    "--dangerously-skip-permissions",
+    "--model", "claude-sonnet-4-6",
+]
+
+WEEKLY_ANALYSIS_TIMEOUT_S = 120
+
+
 def get_configured_model() -> str:
     """Extrait le modèle configuré depuis CLAUDE_CLI_FLAGS."""
     try:

@@ -46,8 +46,14 @@
 
   <section>
     <div class="weekly">
-      <h3>Note de la semaine<em>7 derniers jours</em></h3>
-      <p>{{ results.weekly_note }}</p>
+      <h3>Note de la semaine
+        {% if results.weekly_analysis.is_fallback %}
+          <em>repli automatique — analyse indisponible</em>
+        {% else %}
+          <em>{{ results.weekly_analysis.window_days }} derniers jours{% if results.weekly_analysis.window_widened %} (élargie){% endif %} · générée le {{ results.weekly_analysis.generated_at }}</em>
+        {% endif %}
+      </h3>
+      <p>{{ results.weekly_analysis.text }}</p>
     </div>
   </section>
 

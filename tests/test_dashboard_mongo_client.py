@@ -101,5 +101,37 @@ class TestGetRecentCycles(TestMongoClientBase):
                 mongo_client.get_recent_cycles(60)
 
 
+class TestGetLatestWeeklyAnalysis(TestMongoClientBase):
+    """#453 — plus récent document weekly_analysis, ou None si jamais généré."""
+
+    def test_returns_most_recent_document(self):
+        doc = {"_id": "2026-W35", "text": "Semaine calme.", "generated_at": "2026-08-24T00:10:00+00:00"}
+        mock_db = MagicMock()
+        mock_db.weekly_analysis.find_one.return_value = doc
+        mock_client = MagicMock()
+        mock_client.__getitem__ = MagicMock(return_value=mock_db)
+        with patch("mongo_client.MongoClient", return_value=mock_client):
+            self.assertEqual(mongo_client.get_latest_weekly_analysis(), doc)
+        mock_db.weekly_analysis.find_one.assert_called_once_with(sort=[("generated_at", -1)])
+
+    def test_returns_none_when_never_generated(self):
+        mock_db = MagicMock()
+        mock_db.weekly_analysis.find_one.return_value = None
+        mock_client = MagicMock()
+        mock_client.__getitem__ = MagicMock(return_value=mock_db)
+        with patch("mongo_client.MongoClient", return_value=mock_client):
+            self.assertIsNone(mongo_client.get_latest_weekly_analysis())
+
+    def test_connection_error_raises_mongo_unavailable(self):
+        from pymongo.errors import ServerSelectionTimeoutError
+        mock_db = MagicMock()
+        mock_db.weekly_analysis.find_one.side_effect = ServerSelectionTimeoutError("timeout")
+        mock_client = MagicMock()
+        mock_client.__getitem__ = MagicMock(return_value=mock_db)
+        with patch("mongo_client.MongoClient", return_value=mock_client):
+            with self.assertRaises(mongo_client.MongoUnavailable):
+                mongo_client.get_latest_weekly_analysis()
+
+
 if __name__ == "__main__":
     unittest.main()
