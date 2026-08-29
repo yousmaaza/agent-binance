@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#443](pr-443-dashboard-maquette.md) | [M1] Aligner le dashboard sur la maquette validée et arrondir les prix | 2026-08-29 |
 | [#436](pr-436-fermer-redirection-ouverte.md) | [BUG] Fermer la redirection ouverte sur next du login dashboard | 2026-08-28 |
 | [#434](pr-434-dashboard-railway.md) | [M1] Dashboard web du bot hébergé sur Railway | 2026-08-28 |
 | [#433](pr-433-dashboard-state-mongo.md) | [M1] Publier l'état du bot dans MongoDB pour le dashboard | 2026-08-28 |
