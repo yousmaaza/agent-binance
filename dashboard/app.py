@@ -46,54 +46,57 @@ def logout():
     return redirect(url_for("login"))
 
 
-@app.route("/")
-@login_required
-def dashboard_home():
+def _load_state():
     try:
-        state = get_dashboard_state()
+        return get_dashboard_state(), None
     except MongoUnavailable as e:
-        return render_template("degraded.html", kind="mongo_unavailable", detail=str(e))
+        return None, ("mongo_unavailable", str(e))
     except DashboardStateMissing as e:
-        return render_template("degraded.html", kind="state_missing", detail=str(e))
+        return None, ("state_missing", str(e))
 
-    tz_name = viewdata.resolve_timezone(state, settings.DEFAULT_DISPLAY_TIMEZONE)
-    fresh = viewdata.freshness(state, settings.STALE_THRESHOLD_MINUTES)
 
-    open_positions = state.get("open_positions") or []
-    coins = [p["coin"] for p in open_positions if p.get("coin")]
-    kraken_error = None
+def _load_prices(coins):
     prices = {}
+    kraken_error = None
     if coins:
         try:
             prices = get_prices(coins)
         except KrakenUnavailable as e:
             kraken_error = str(e)
+    return prices, kraken_error
 
-    financials = state.get("financials") or {}
 
+def _load_cycles():
     try:
         cycles = get_recent_cycles(settings.CYCLES_JOURNAL_LIMIT)
-        cycles_error = None
+        return cycles, None
     except MongoUnavailable as e:
-        cycles = []
-        cycles_error = str(e)
+        return [], str(e)
 
+
+def _build_results_view(state, prices, cycles):
+    open_positions = state.get("open_positions") or []
+    financials = state.get("financials") or {}
     by_period = financials.get("by_period") or {}
     maker = viewdata.build_maker_summary(state.get("watchers") or {})
     cadence = viewdata.build_cadence_band(cycles)
 
-    results_view = {
+    return {
         "financials": financials,
         "periods": viewdata.build_periods_table(by_period),
         "equity_points": viewdata.equity_curve_points(financials.get("equity_curve") or []),
         "equity": viewdata.equity_curve_geometry(financials.get("equity_curve") or []),
-        "positions": viewdata.build_positions(open_positions, prices),
+        "positions": viewdata.build_positions(open_positions, prices[0]),
         "maker": maker,
-        "kraken_error": kraken_error,
+        "kraken_error": prices[1],
         "weekly_note": analysis.weekly_note(by_period, cadence, maker),
     }
 
-    cycles_view = {
+
+def _build_cycles_view(cycles, cycles_error, tz_name):
+    cadence = viewdata.build_cadence_band(cycles)
+
+    return {
         "journal": [viewdata.build_cycle_row(c, tz_name) for c in cycles],
         "cadence": cadence,
         "cadence_summary": viewdata.cadence_summary(cadence),
@@ -101,6 +104,26 @@ def dashboard_home():
         "reliability": analysis.reliability_by_period(cycles),
         "error": cycles_error,
     }
+
+
+@app.route("/")
+@login_required
+def dashboard_home():
+    state, state_error = _load_state()
+    if state_error:
+        kind, detail = state_error
+        return render_template("degraded.html", kind=kind, detail=detail)
+
+    tz_name = viewdata.resolve_timezone(state, settings.DEFAULT_DISPLAY_TIMEZONE)
+    fresh = viewdata.freshness(state, settings.STALE_THRESHOLD_MINUTES)
+
+    open_positions = state.get("open_positions") or []
+    coins = [p["coin"] for p in open_positions if p.get("coin")]
+    prices = _load_prices(coins)
+    cycles, cycles_error = _load_cycles()
+
+    results_view = _build_results_view(state, prices, cycles)
+    cycles_view = _build_cycles_view(cycles, cycles_error, tz_name)
 
     return render_template(
         "dashboard.html",
