@@ -459,5 +459,147 @@ class TestDateLabelSpacing(unittest.TestCase):
 
 
 
+
+class TestSaleTriggerAndAnomaly(unittest.TestCase):
+    """#455 — qui a vendu, et la sortie a-t-elle suivi le plan."""
+
+    def test_trigger_read_from_close_reason_not_from_time(self):
+        """Le déclencheur vient du motif : sur 15 ventes du TP watcher, 6 tombaient dans une
+        fenêtre de cycle par coïncidence — un rattachement par horodatage serait faux 40 % du
+        temps, d'où le refus de le déduire."""
+        self.assertEqual(viewdata.sale_trigger("tp_watcher")[0], "watcher")
+        self.assertEqual(viewdata.sale_trigger("sl_hit")[0], "kraken")
+        self.assertEqual(viewdata.sale_trigger("signal_sell_score3")[0], "cycle")
+        self.assertEqual(viewdata.sale_trigger("manual_sell_ios")[0], "manuel")
+
+    def test_unknown_reason_is_named_not_guessed(self):
+        self.assertEqual(viewdata.sale_trigger(None)[0], "inconnu")
+        self.assertEqual(viewdata.sale_trigger("quelque_chose_de_neuf")[0], "inconnu")
+
+    def test_target_reached_but_sold_by_something_else_is_flagged(self):
+        # cas réel : ADA du 21/08, cible franchie mais vendue par le signal
+        trade = {"tp_price": 0.203448, "exit_price": 0.207202, "close_reason": "signal_sell_score2"}
+        self.assertIn("TP n'a pas déclenché", viewdata.sale_anomaly(trade))
+
+    def test_profit_taking_below_target_is_not_an_anomaly(self):
+        """La prise de profit de Phase 0 sort volontairement avant la cible."""
+        trade = {"tp_price": 120.0, "exit_price": 105.0, "close_reason": "profit_target_phase0"}
+        self.assertIsNone(viewdata.sale_anomaly(trade))
+
+    def test_tp_sale_far_below_target_is_flagged(self):
+        trade = {"tp_price": 67240.5, "exit_price": 62484.4, "close_reason": "tp_watcher_cycle"}
+        self.assertIn("sous la cible", viewdata.sale_anomaly(trade))
+
+    def test_tiny_slippage_on_tp_is_not_an_anomaly(self):
+        trade = {"tp_price": 603.811, "exit_price": 603.798, "close_reason": "tp_watcher"}
+        self.assertIsNone(viewdata.sale_anomaly(trade))
+
+    def test_missing_reason_blames_nobody(self):
+        """Sans motif enregistré, on ne peut reprocher la sortie à aucun mécanisme."""
+        trade = {"tp_price": 10.0, "exit_price": 12.0, "close_reason": None}
+        self.assertIsNone(viewdata.sale_anomaly(trade))
+
+
+class TestSalesWindow(unittest.TestCase):
+    NOW = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
+
+    def _trades(self):
+        return [
+            {"exit_date": "2026-09-02T10:00:00+00:00"},   # 1 jour
+            {"exit_date": "2026-08-20T10:00:00+00:00"},   # 14 jours
+            {"exit_date": "2026-06-01T10:00:00+00:00"},   # ~94 jours
+        ]
+
+    def test_window_keeps_only_recent_sales(self):
+        self.assertEqual(len(viewdata.filter_sales_window(self._trades(), "7j", self.NOW)), 1)
+        self.assertEqual(len(viewdata.filter_sales_window(self._trades(), "30j", self.NOW)), 2)
+        self.assertEqual(len(viewdata.filter_sales_window(self._trades(), "180j", self.NOW)), 3)
+
+    def test_tout_keeps_everything(self):
+        self.assertEqual(len(viewdata.filter_sales_window(self._trades(), "tout", self.NOW)), 3)
+
+    def test_unknown_key_does_not_silently_empty_the_list(self):
+        self.assertEqual(len(viewdata.filter_sales_window(self._trades(), "n_importe_quoi", self.NOW)), 3)
+
+    def test_sale_without_exit_date_is_dropped_from_a_window(self):
+        self.assertEqual(viewdata.filter_sales_window([{"coin": "X"}], "30j", self.NOW), [])
+
+
+class TestBuildSalesView(unittest.TestCase):
+    TRADES = [
+        {"coin": "SOL", "entry_date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00",
+         "hold_hours": 52.0, "entry_price": 100.0, "exit_price": 104.0, "tp_price": 104.0, "quantity": 1.0,
+         "pnl_gross_usdc": 4.0, "fees_usdc": 1.0, "pnl_usdc": 3.0, "close_reason": "tp_watcher",
+         "maker_or_taker": "maker", "fees_estimated": False},
+        {"coin": "ADA", "entry_date": "2026-08-20T08:00:00+00:00", "exit_date": "2026-08-21T08:00:00+00:00",
+         "hold_hours": 24.0, "entry_price": 0.2, "exit_price": 0.19, "tp_price": 0.22, "quantity": 100.0,
+         "pnl_gross_usdc": -1.0, "fees_usdc": 0.5, "pnl_usdc": -1.5, "close_reason": "sl_hit",
+         "maker_or_taker": None, "fees_estimated": True},
+    ]
+
+    def test_totals_carry_their_effectif(self):
+        view = viewdata.build_sales_view(self.TRADES, "UTC")
+        self.assertEqual(view["totals"]["count"], 2)
+        self.assertEqual(view["totals"]["wins"], 1)
+        self.assertAlmostEqual(view["totals"]["net"], 1.5)
+
+    def test_quality_counts_estimated_fees(self):
+        view = viewdata.build_sales_view(self.TRADES, "UTC")
+        self.assertEqual(view["quality"]["estimated"], 1)
+        self.assertEqual(view["quality"]["reliable"], 1)
+
+    def test_triggers_split_cycle_from_outside(self):
+        view = viewdata.build_sales_view(self.TRADES, "UTC")
+        by_key = {t["key"]: t["n"] for t in view["triggers"]}
+        self.assertEqual(by_key, {"watcher": 1, "kraken": 1})
+
+    def test_suspect_row_is_excluded_from_amounts_but_kept_in_net(self):
+        """Un prix de sortie impossible creusait 42,57 USDC d'écart entre « retiré − investi »
+        et le brut déclaré (#455). Il sort des montants, jamais du résultat."""
+        corrupt = {**self.TRADES[1], "coin": "SYN", "entry_price": 0.34, "exit_price": 0.55,
+                   "quantity": 200.0, "pnl_usdc": -1.17, "tp_price": 0.39}
+        view = viewdata.build_sales_view([self.TRADES[0], corrupt], "UTC")
+        self.assertEqual(view["totals"]["excluded_from_amounts"], 1)
+        self.assertAlmostEqual(view["totals"]["invested"], 100.0)   # SOL seul
+        self.assertAlmostEqual(view["totals"]["net"], 3.0 - 1.17)   # SYN compte quand même
+
+    def test_amounts_are_coherent_with_gross(self):
+        view = viewdata.build_sales_view(self.TRADES, "UTC")
+        t = view["totals"]
+        self.assertAlmostEqual(t["proceeds"] - t["invested"], t["gross"], places=2)
+
+    def test_empty_list_yields_empty_view_without_crashing(self):
+        view = viewdata.build_sales_view([], "UTC")
+        self.assertEqual(view["rows"], [])
+        self.assertEqual(view["totals"], {})
+
+    def test_local_dates_use_the_display_timezone(self):
+        view = viewdata.build_sales_view(self.TRADES, "Europe/Paris")
+        self.assertEqual(view["rows"][0]["exit_local"], "27/08")
+
+    def test_every_reason_seen_in_production_has_a_label(self):
+        """Un motif non cartographié s'affiche brut dans le journal — c'est ainsi que
+        signal_sell_score1 et tp_watcher_cycle ont été repérés. Ce test fige la liste connue."""
+        for raw in ("sl_hit", "stop_hit", "sl", "tp_watcher", "tp_watcher_cycle",
+                    "profit_target_phase0", "signal_sell_score1", "signal_sell_score2",
+                    "signal_sell_score3", "protection_exhausted", "manual_sell_ios",
+                    "oco_not_found", "oco_filled_detected"):
+            self.assertIn(raw, viewdata.CLOSE_REASON_LABELS, raw)
+            self.assertIn(raw, viewdata.SALE_TRIGGERS, raw)
+
+    def test_unmapped_reason_shows_raw_rather_than_hiding(self):
+        self.assertEqual(viewdata.close_reason_label("motif_inedit"), "motif_inedit")
+        self.assertEqual(viewdata.close_reason_label(None), viewdata.UNKNOWN_REASON)
+
+    def test_close_reasons_with_several_names_are_grouped(self):
+        """sl_hit, stop_hit et sl sont le même événement : les compter séparément
+        fragmenterait le total des stops."""
+        trades = [{**self.TRADES[1], "close_reason": r} for r in ("sl_hit", "stop_hit", "sl")]
+        view = viewdata.build_sales_view(trades, "UTC")
+        self.assertEqual([r["label"] for r in view["reasons"]], ["stop touché"])
+        self.assertEqual(view["reasons"][0]["n"], 3)
+
+
+
 if __name__ == "__main__":
     unittest.main()
