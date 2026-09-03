@@ -524,13 +524,8 @@ def filter_sales_window(closed_trades: list, key: str, now: datetime | None = No
     return kept
 
 
-def build_sales_view(closed_trades: list, tz_name: str) -> dict:
-    """Agrégats de l'onglet Ventes. Tout chiffre est accompagné de son effectif : sur 87 ventes
-    dont un tiers porte des frais estimés, une moyenne sans son n induirait en erreur."""
-    rows = build_sales_rows(closed_trades, tz_name)
-    if not rows:
-        return {"rows": [], "reasons": [], "totals": {}, "quality": {}, "durations": {}}
-
+def _build_reasons_breakdown(rows: list) -> list:
+    """Agrégation par motif de clôture avec calcul des médians de durée."""
     by_reason: dict = {}
     for row in rows:
         bucket = by_reason.setdefault(row["reason_label"], {"n": 0, "net": 0.0, "fees": 0.0, "holds": []})
@@ -549,40 +544,65 @@ def build_sales_view(closed_trades: list, tz_name: str) -> dict:
     extent = max((abs(r["net"]) for r in reasons), default=0) or 1.0
     for reason in reasons:
         reason["bar_pct"] = round(abs(reason["net"]) / extent * 50, 1)
+    return reasons
 
+
+def _build_totals(rows: list) -> dict:
+    """Calcul des montants et statistiques globales."""
     net = sum(r.get("pnl_usdc") or 0 for r in rows)
     gross = sum(r.get("pnl_gross_usdc") or 0 for r in rows)
     fees = sum(r.get("fees_usdc") or 0 for r in rows)
     wins = [r for r in rows if r["is_win"]]
+    return {
+        "count": len(rows), "net": round(net, 2), "gross": round(gross, 2),
+        "fees": round(fees, 2), "wins": len(wins),
+        "win_pct": round(len(wins) / len(rows) * 100),
+        "fees_pct_of_gross": round(fees / abs(gross) * 100) if gross else None,
+        "invested": round(sum(r["invested"] or 0 for r in rows if not r["suspect"]), 2),
+        "proceeds": round(sum(r["proceeds"] or 0 for r in rows if not r["suspect"]), 2),
+        "excluded_from_amounts": sum(1 for r in rows if r["suspect"]),
+    }
+
+
+def _build_durations(rows: list, reasons: list) -> dict:
+    """Calcul des durées de maintien par catégorie."""
+    return {
+        "wins": _median([r["hold_hours"] for r in rows if r["is_win"] and r["hold_hours"] is not None]),
+        "losses": _median([r["hold_hours"] for r in rows if not r["is_win"] and r["hold_hours"] is not None]),
+        "by_reason": {r["label"]: r["median_hold"] for r in reasons},
+    }
+
+
+def _build_quality(rows: list) -> dict:
+    """Classement de la qualité des données de frais."""
+    return {
+        "estimated": sum(1 for r in rows if r.get("fees_estimated")),
+        "missing_fees": sum(1 for r in rows if r.get("fees_usdc") is None),
+        "suspect": sum(1 for r in rows if r["suspect"]),
+        "reliable": sum(1 for r in rows if r.get("fees_usdc") is not None and not r.get("fees_estimated")),
+    }
+
+
+def build_sales_view(closed_trades: list, tz_name: str) -> dict:
+    """Agrégats de l'onglet Ventes. Tout chiffre est accompagné de son effectif : sur 87 ventes
+    dont un tiers porte des frais estimés, une moyenne sans son n induirait en erreur."""
+    rows = build_sales_rows(closed_trades, tz_name)
+    if not rows:
+        return {"rows": [], "reasons": [], "totals": {}, "quality": {}, "durations": {}}
+
+    reasons = _build_reasons_breakdown(rows)
+    totals = _build_totals(rows)
+    durations = _build_durations(rows, reasons)
+    quality = _build_quality(rows)
 
     return {
         "rows": rows,
         "reasons": reasons,
-        "totals": {
-            "count": len(rows), "net": round(net, 2), "gross": round(gross, 2),
-            "fees": round(fees, 2), "wins": len(wins),
-            "win_pct": round(len(wins) / len(rows) * 100),
-            "fees_pct_of_gross": round(fees / abs(gross) * 100) if gross else None,
-            # Les montants investi/retiré excluent les ventes au prix douteux : un seul
-            # enregistrement corrompu creusait un écart de 42,57 USDC entre « retiré − investi »
-            # et le brut déclaré, rendant la ligne de totaux incohérente à l'œil nu (#455).
-            "invested": round(sum(r["invested"] or 0 for r in rows if not r["suspect"]), 2),
-            "proceeds": round(sum(r["proceeds"] or 0 for r in rows if not r["suspect"]), 2),
-            "excluded_from_amounts": sum(1 for r in rows if r["suspect"]),
-        },
-        "durations": {
-            "wins": _median([r["hold_hours"] for r in rows if r["is_win"] and r["hold_hours"] is not None]),
-            "losses": _median([r["hold_hours"] for r in rows if not r["is_win"] and r["hold_hours"] is not None]),
-            "by_reason": {r["label"]: r["median_hold"] for r in reasons},
-        },
+        "totals": totals,
+        "durations": durations,
         "triggers": _by_trigger(rows),
         "anomalies": [r for r in rows if r["anomaly"]],
-        "quality": {
-            "estimated": sum(1 for r in rows if r.get("fees_estimated")),
-            "missing_fees": sum(1 for r in rows if r.get("fees_usdc") is None),
-            "suspect": sum(1 for r in rows if r["suspect"]),
-            "reliable": sum(1 for r in rows if r.get("fees_usdc") is not None and not r.get("fees_estimated")),
-        },
+        "quality": quality,
     }
 
 
