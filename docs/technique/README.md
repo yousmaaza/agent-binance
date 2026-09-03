@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-08-29 (PR #451) |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-03 (PR #456) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#456](pr-456-onglet-ventes-historique-sorties.md) | [M1] Onglet Ventes — historique des sorties dans le dashboard | 2026-09-03 |
 | [#454](pr-454-analyse-hebdo.md) | [M1] Analyse hebdomadaire rédigée par Claude dans le dashboard | 2026-08-29 |
 | [#451](pr-451-pnl-charts.md) | [M1] Graphe de PnL par jour/mois et grille d'état des cycles | 2026-08-29 |
 | [#449](pr-449-maker-abandons-delai.md) | [M1] /maker — afficher les abandons et corriger la précision du délai | 2026-08-29 |
