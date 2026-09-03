@@ -2509,5 +2509,32 @@
     "pnl_gross_pct": -2.0442,
     "pnl_pct": -2.9319,
     "close_reason": "signal_sell_score2"
+  },
+  {
+    "trade_id": "355206a5",
+    "date": "2026-09-03T20:13:18.266555+00:00",
+    "coin": "SOL",
+    "side": "BUY",
+    "signal_score": 7,
+    "entry_price": 105.37000044109037,
+    "stop_price": 96.15,
+    "tp_price": 111.6922004675558,
+    "quantity": 0.84019062,
+    "risk_usdc": 8.486799999999999,
+    "entry_order_id": "O647RA-PCZJQ-YYLNMC",
+    "sl_order_txid": "OUR3JQ-SCLM5-YQRBS6",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.265593,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 110.030111,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
