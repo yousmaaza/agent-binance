@@ -131,12 +131,15 @@ tr.cdates span{
 .tabs label:hover{color:var(--ink-2)}
 #t1:focus-visible~.sheet .tabs label[for=t1],
 #t2:focus-visible~.sheet .tabs label[for=t2],
-#t3:focus-visible~.sheet .tabs label[for=t3]{outline:2px solid var(--ink);outline-offset:-3px}
+#t3:focus-visible~.sheet .tabs label[for=t3],
+#t4:focus-visible~.sheet .tabs label[for=t4]{outline:2px solid var(--ink);outline-offset:-3px}
 #t1:checked~.sheet .tabs label[for=t1],
 #t2:checked~.sheet .tabs label[for=t2],
-#t3:checked~.sheet .tabs label[for=t3]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+#t3:checked~.sheet .tabs label[for=t3],
+#t4:checked~.sheet .tabs label[for=t4]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
 .panel{display:none}
-#t1:checked~.sheet .p-stats,#t2:checked~.sheet .p-cycles,#t3:checked~.sheet .p-config{display:block}
+#t1:checked~.sheet .p-stats,#t2:checked~.sheet .p-cycles,
+#t3:checked~.sheet .p-config,#t4:checked~.sheet .p-sales{display:block}
 
 /* ---------- sections réglées ---------- */
 section{padding-top:26px;padding-bottom:26px;border-bottom:1px solid var(--rule)}
@@ -327,3 +330,42 @@ footer{padding:24px 0 40px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 .login-form button:hover{opacity:.88}
 .login-form button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .error{color:var(--loss);font-family:"IBM Plex Mono",monospace;font-size:12px;margin:12px 0 0}
+
+/* ---------- onglet Ventes (#455) ---------- */
+.srow{display:grid;grid-template-columns:132px 1fr 68px 34px;align-items:center;gap:12px;font-size:13.5px}
+.strack{height:11px;position:relative;
+  background:linear-gradient(var(--rule),var(--rule)) center/1px 100% no-repeat}
+.strack b{position:absolute;top:0;height:100%;display:block}
+.strack b.pos{background:var(--gain)} .strack b.neg{background:var(--loss)}
+.sval{font-family:"IBM Plex Mono",monospace;font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+@media(max-width:620px){.srow{grid-template-columns:98px 1fr 62px 26px;gap:8px}}
+
+table.sales{font-size:12.5px}
+table.sales td{padding:7px 10px 7px 0;white-space:nowrap}
+table.sales tr.suspect td{opacity:.7}
+table.sales tr.totaux td{border-bottom:1px solid var(--rule-2);font-weight:600;padding-bottom:9px}
+table.sales tr.totaux .mut{font-weight:400}
+/* .num met padding-right:0 pour une colonne numérique en fin de tableau ; ici « Net » est
+   suivi de « Motif » et les deux se touchaient (retour de review) */
+table.sales .num{padding-right:14px}
+table.sales th:last-child,table.sales td:last-child{padding-right:0}
+.wfilter{display:flex;flex-wrap:wrap;gap:0;margin:14px 0 4px}
+.wfilter a{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);border:1px solid var(--rule-2);padding:5px 11px;
+  text-decoration:none}
+.wfilter a + a{border-left:none}
+.wfilter a:hover{color:var(--ink)}
+.wfilter a.on{color:var(--sheet);background:var(--ink);border-color:var(--ink)}
+.wfilter a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.pill-m{font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--gain);
+  border:1px solid var(--gain);padding:0 4px;font-weight:400}
+.flag{font-family:"IBM Plex Mono",monospace;font-size:9px;padding:0 4px;margin-left:5px;
+  border:1px solid var(--wait);color:var(--wait);white-space:nowrap}
+.flag.bad{border-color:var(--loss);color:var(--loss)}
+
+.trig{font-family:"IBM Plex Mono",monospace;font-size:9.5px;padding:1px 5px;border:1px solid var(--rule-2);white-space:nowrap}
+.trig-cycle{border-color:var(--ink-3);color:var(--ink-2)}
+.trig-watcher{border-color:var(--gain);color:var(--gain)}
+.trig-kraken{border-color:var(--loss);color:var(--loss)}
+.trig-manuel{border-color:var(--wait);color:var(--wait)}
+.trig-inconnu{opacity:.55}

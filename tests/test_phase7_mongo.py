@@ -393,5 +393,68 @@ class TestDashboardStateWatchersAndConfig(unittest.TestCase):
         self.assertEqual(set_doc["config"]["display_timezone"], "Europe/Paris")
 
 
+
+class TestClosedTradesProjection(unittest.TestCase):
+    """#455 — la liste des ventes publiée pour l'onglet Ventes du dashboard."""
+
+    def _module(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(root, "binance-bot", "core", "phases", "phase7_mongo.py")
+        src_text = open(path).read()
+        start = src_text.index("CLOSED_TRADES_LIMIT")
+        end = src_text.index("def _build_dashboard_state")
+        sys.path.insert(0, os.path.join(root, "binance-bot"))
+        from core.timing import parse_dt
+        ns = {"parse_dt": parse_dt}
+        exec(compile(src_text[start:end], "p7_closed", "exec"), ns)  # noqa: S102
+        return ns
+
+    def test_projects_the_fields_the_dashboard_needs(self):
+        ns = self._module()
+        rows = ns["_closed_trades"]([{
+            "coin": "SOL", "date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00",
+            "entry_price": 100.0, "exit_price": 104.0, "tp_price": 104.2, "stop_price": 99.0,
+            "quantity": 1.0, "pnl_gross_usdc": 4.0, "fees_usdc": 1.0, "pnl_usdc": 3.0,
+            "close_reason": "tp_watcher", "maker_or_taker": "maker", "fees_estimated": True,
+            "entry_order_id": "SECRET", "sl_order_txid": "SECRET",
+        }])
+        row = rows[0]
+        for field in ("coin", "entry_date", "exit_date", "hold_hours", "entry_price", "exit_price",
+                      "tp_price", "stop_price", "quantity", "pnl_gross_usdc", "fees_usdc",
+                      "pnl_usdc", "close_reason", "maker_or_taker", "fees_estimated"):
+            self.assertIn(field, row, field)
+        # projection etroite : pas d'identifiants d'ordres
+        self.assertNotIn("entry_order_id", row)
+        self.assertNotIn("sl_order_txid", row)
+
+    def test_hold_hours_computed_from_the_two_dates(self):
+        ns = self._module()
+        rows = ns["_closed_trades"]([{
+            "date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00"}])
+        self.assertAlmostEqual(rows[0]["hold_hours"], 52.0)
+
+    def test_missing_date_does_not_crash(self):
+        ns = self._module()
+        rows = ns["_closed_trades"]([{"coin": "X", "exit_date": None}])
+        self.assertIsNone(rows[0]["hold_hours"])
+
+    def test_most_recent_first_and_bounded(self):
+        """Le document Mongo ne doit pas grossir indéfiniment avec l'historique."""
+        ns = self._module()
+        trades = [{"coin": f"C{i}", "exit_date": f"2026-01-{i % 28 + 1:02d}T00:00:00+00:00"}
+                  for i in range(500)]
+        rows = ns["_closed_trades"](trades, limit=10)
+        self.assertEqual(len(rows), 10)
+        dates = [r["exit_date"] for r in rows]
+        self.assertEqual(dates, sorted(dates, reverse=True))
+
+    def test_fees_estimated_is_always_a_boolean(self):
+        """Masquer qu'un frais est estimé donnerait au net une précision qu'il n'a pas."""
+        ns = self._module()
+        rows = ns["_closed_trades"]([{"coin": "A"}, {"coin": "B", "fees_estimated": True}])
+        self.assertEqual({r["fees_estimated"] for r in rows}, {False, True})
+
+
+
 if __name__ == "__main__":
     unittest.main()

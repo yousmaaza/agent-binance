@@ -4,9 +4,10 @@
 {% set g = results.financials.global or {} %}
 {% set cs = cycles.cadence_summary %}
 
-<input type="radio" name="tab" id="t1" class="tabsel" checked>
+<input type="radio" name="tab" id="t1" class="tabsel"{{ " checked" if active_tab != "ventes" else "" }}>
 <input type="radio" name="tab" id="t2" class="tabsel">
 <input type="radio" name="tab" id="t3" class="tabsel">
+<input type="radio" name="tab" id="t4" class="tabsel"{{ " checked" if active_tab == "ventes" else "" }}>
 
 <div class="sheet">
 
@@ -38,6 +39,7 @@
 <nav class="tabs">
   <label for="t1">Résultat</label>
   <label for="t2">Cycles</label>
+  <label for="t4">Ventes</label>
   <label for="t3">Réglages</label>
 </nav>
 
@@ -368,6 +370,158 @@
       </table>
     </div>
   </section>
+</div>
+
+<!-- ============ onglet 4 : ventes ============ -->
+<div class="panel p-sales pad">
+{% set s = sales %}
+{% if not s.published %}
+  <section>
+    <h2>Ventes<em>en attente de publication</em></h2>
+    <p class="empty">Le bot ne publie pas encore l'historique des ventes. Le champ apparaîtra
+      au premier cycle suivant le redéploiement de la VPS.</p>
+  </section>
+{% elif not s.rows %}
+  <section>
+    <h2>Ventes<em>aucune</em></h2>
+    <p class="empty">Aucune position clôturée pour l'instant.</p>
+  </section>
+{% else %}
+  {% set t = s.totals %}
+  <section>
+    <h2>Ce que les ventes ont donné<em>{{ t.count }} sorties</em></h2>
+    <div class="wfilter">
+      {% for key, label, _days in s.windows %}
+      <a href="?tab=ventes&periode={{ key }}" class="{{ 'on' if s.window == key }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <div class="facts">
+      <div class="fact"><span>ventes</span><b>{{ t.count }}</b><i>{{ t.wins }} gagnantes ({{ t.win_pct }} %)</i></div>
+      <div class="fact"><span>brut</span><b class="{{ 'gain' if t.gross >= 0 else 'loss' }}">{{ "%+.2f"|format(t.gross) }}</b><i>avant frais</i></div>
+      <div class="fact"><span>frais</span><b class="wait">−{{ "%.2f"|format(t.fees) }}</b>
+        <i>{% if t.fees_pct_of_gross is not none %}{{ t.fees_pct_of_gross }} % du brut{% else %}brut nul{% endif %}</i></div>
+      <div class="fact"><span>net</span><b class="{{ 'gain' if t.net >= 0 else 'loss' }}">{{ "%+.2f"|format(t.net) }}</b><i>après frais</i></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ce que chaque sortie rapporte<em>net, par motif</em></h2>
+    <div class="rows" style="margin-top:6px">
+      {% for r in s.reasons %}
+      <div class="srow">
+        <span>{{ r.label }}</span>
+        <span class="strack"><b class="{{ 'pos' if r.net >= 0 else 'neg' }}"
+          style="width:{{ r.bar_pct }}%;{{ 'left:50%' if r.net >= 0 else 'right:50%' }}"></b></span>
+        <span class="sval {{ 'gain' if r.net >= 0 else 'loss' }}">{{ "%+.2f"|format(r.net) }}</span>
+        <span class="v">{{ r.n }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2>Durée de détention<em>médianes</em></h2>
+    <div class="facts">
+      <div class="fact"><span>gagnantes</span><b>{{ s.durations.wins if s.durations.wins is not none else 'n/d' }} h</b><i>médiane</i></div>
+      <div class="fact"><span>perdantes</span><b>{{ s.durations.losses if s.durations.losses is not none else 'n/d' }} h</b><i>médiane</i></div>
+      {% for label in ['stop touché', 'cible atteinte'] %}
+        {% set d = s.durations.by_reason.get(label) %}
+        <div class="fact"><span>{{ label }}</span><b>{{ d if d is not none else 'n/d' }} h</b><i>médiane</i></div>
+      {% endfor %}
+    </div>
+    <p class="note">L'écart de durée ne vient pas du résultat mais du <b>mécanisme de sortie</b> :
+      une position qui va au stop met bien plus longtemps à s'y rendre, et le capital reste
+      immobilisé pendant que la thèse se dégrade.</p>
+  </section>
+
+  {% set q = s.quality %}
+  {% if q.estimated or q.missing_fees or q.suspect %}
+  <section>
+    <h2>Fiabilité des données<em>{{ q.reliable }} / {{ t.count }} sûres</em></h2>
+    <p class="warn">
+      {% if q.estimated %}{{ q.estimated }} vente(s) portent des frais <b>estimés</b>, pas relevés chez Kraken — marquées <code>est.</code> ci-dessous. Le net global en dépend.{% endif %}
+      {% if q.missing_fees %} {{ q.missing_fees }} vente(s) n'ont aucune donnée de frais.{% endif %}
+      {% if q.suspect %} {{ q.suspect }} vente(s) ont un prix de sortie qui contredit leur résultat enregistré — le résultat fait foi, pas le prix.{% endif %}
+    </p>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Qui a déclenché la vente<em>net par déclencheur</em></h2>
+    <div class="facts">
+      {% for tr in s.triggers %}
+      <div class="fact">
+        <span>{{ tr.label }}</span>
+        <b class="{{ 'gain' if tr.net >= 0 else 'loss' }}">{{ tr.n }}</b>
+        <i>{{ "%+.2f"|format(tr.net) }} USDC</i>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="note">Le déclencheur se lit dans le motif de clôture, pas dans l'horodatage : un
+      watcher qui vend pendant qu'un cycle tourne n'a rien à voir avec ce cycle. Les ventes
+      <b>hors cycle</b> — stop exécuté chez Kraken, TP watcher — sont celles sur lesquelles le
+      bot n'a pas la main au moment de la sortie.</p>
+  </section>
+
+  {% if s.anomalies %}
+  <section>
+    <h2>Sorties qui n'ont pas suivi le plan<em>{{ s.anomalies|length }}</em></h2>
+    <div class="lines">
+      {% for a in s.anomalies %}
+      <div class="line">
+        <span><b class="cn">{{ a.coin }}</b> <span class="mut">{{ a.exit_local }}</span> — {{ a.anomaly }}</span>
+        <b class="{{ 'gain' if a.is_win else 'loss' }}">{{ "%+.2f"|format(a.pnl_usdc or 0) }}</b>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="note">Ces écarts se déduisent des seules données enregistrées : une cible franchie
+      alors qu'un autre mécanisme a vendu, ou une sortie estampillée TP nettement sous sa cible.
+      La prise de profit de Phase 0 sort volontairement avant la cible — elle n'est pas comptée ici.</p>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Le journal<em>{{ s.rows|length }} ventes</em></h2>
+    <div class="scroll">
+      <table class="sales">
+        <thead><tr>
+          <th>Coin</th><th>Entrée</th><th>Sortie</th><th class="num">Durée</th>
+          <th class="num">Investi</th><th class="num">Retiré</th>
+          <th class="num">Brut</th><th class="num">Frais</th><th class="num">Net</th>
+          <th>Motif</th><th>Déclencheur</th>
+        </tr></thead>
+        <tbody>
+          <tr class="totaux">
+            <td class="cn">Total</td>
+            <td colspan="2" class="mut">{{ s.rows|length }} ventes{% if t.excluded_from_amounts %} · {{ t.excluded_from_amounts }} exclue(s) des montants{% endif %}</td>
+            <td class="num mut">—</td>
+            <td class="num">{{ "%.2f"|format(t.invested) }}</td>
+            <td class="num">{{ "%.2f"|format(t.proceeds) }}</td>
+            <td class="num {{ 'gain' if t.gross >= 0 else 'loss' }}">{{ "%+.2f"|format(t.gross) }}</td>
+            <td class="num wait">−{{ "%.2f"|format(t.fees) }}</td>
+            <td class="num {{ 'gain' if t.net >= 0 else 'loss' }}">{{ "%+.2f"|format(t.net) }}</td>
+            <td colspan="2"></td>
+          </tr>
+        {% for r in s.rows %}
+          <tr{% if r.suspect %} class="suspect"{% endif %}>
+            <td class="cn">{{ r.coin }}{% if r.maker_or_taker == 'maker' %} <span class="pill-m">maker</span>{% endif %}</td>
+            <td class="mut">{{ r.entry_local }}</td>
+            <td class="mut">{{ r.exit_local }}</td>
+            <td class="num">{{ r.hold_label }}</td>
+            <td class="num">{% if r.invested is not none %}{{ "%.2f"|format(r.invested) }}{% else %}—{% endif %}</td>
+            <td class="num">{% if r.proceeds is not none %}{{ "%.2f"|format(r.proceeds) }}{% else %}—{% endif %}</td>
+            <td class="num">{% if r.pnl_gross_usdc is not none %}{{ "%+.2f"|format(r.pnl_gross_usdc) }}{% else %}—{% endif %}</td>
+            <td class="num">{% if r.fees_usdc is not none %}−{{ "%.2f"|format(r.fees_usdc) }}{% if r.fees_estimated %}<span class="flag">est.</span>{% endif %}{% else %}—{% endif %}</td>
+            <td class="num {{ 'gain' if r.is_win else 'loss' }}">{{ "%+.2f"|format(r.pnl_usdc or 0) }}</td>
+            <td class="mut">{{ r.reason_label }}{% if r.suspect %}<span class="flag bad" title="{{ r.suspect }}">douteux</span>{% endif %}</td>
+            <td class="mut"><span class="trig trig-{{ r.trigger }}" title="{{ r.trigger_detail }}">{{ r.trigger }}</span>{% if r.anomaly %}<span class="flag bad" title="{{ r.anomaly }}">écart</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
 </div>
 
 <footer class="pad">Lecture seule · données publiées par le bot en fin de cycle · heure {{ tz_name }}</footer>

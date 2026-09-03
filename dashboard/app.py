@@ -152,12 +152,25 @@ def dashboard_home():
 
     results_view = _build_results_view(state, prices, cycles, tz_name)
     cycles_view = _build_cycles_view(cycles, cycles_error, tz_name)
+    # Fenêtre et onglet actif viennent de l'URL : un filtre côté serveur garantit que le bandeau,
+    # les motifs et le journal portent tous sur la même période, et l'onglet survit au rechargement.
+    window = request.args.get("periode", "tout")
+    active_tab = request.args.get("tab", "resultat")
+    sales_view = viewdata.build_sales_view(
+        viewdata.filter_sales_window(state.get("closed_trades") or [], window), tz_name)
+    sales_view["window"] = window
+    sales_view["windows"] = viewdata.SALES_WINDOWS
+    # Le champ n'existe qu'après redéploiement de la VPS (#455) : distinguer « pas encore
+    # publié » de « aucune vente », qui appellent des messages différents.
+    sales_view["published"] = "closed_trades" in state
 
     return render_template(
         "dashboard.html",
         fresh=fresh,
         results=results_view,
         cycles=cycles_view,
+        sales=sales_view,
+        active_tab=active_tab,
         settings=state.get("config") or {},
         tz_name=tz_name,
     )

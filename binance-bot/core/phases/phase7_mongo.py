@@ -154,6 +154,44 @@ def _equity_curve(closed: list) -> list:
     return curve
 
 
+CLOSED_TRADES_LIMIT = 200  # borne le document : 87 ventes en 4 mois, la marge est large
+
+
+def _closed_trades(closed: list, limit: int = CLOSED_TRADES_LIMIT) -> list:
+    """Les ventes récentes, pour l'onglet Ventes du dashboard (#455).
+
+    Projection volontairement étroite : le dashboard n'a pas besoin des identifiants d'ordres
+    ni des prix de stop. Les indicateurs de fiabilité (`fees_estimated`, frais absents) sont
+    transmis tels quels — masquer qu'un frais est estimé donnerait au net une précision qu'il
+    n'a pas."""
+    rows = []
+    for trade in closed:
+        exited = parse_dt(trade.get("exit_date"))
+        entered = parse_dt(trade.get("date"))
+        rows.append({
+            "coin": trade.get("coin"),
+            "entry_date": trade.get("date"),
+            "exit_date": trade.get("exit_date"),
+            "hold_hours": round((exited - entered).total_seconds() / 3600, 1)
+            if exited and entered else None,
+            "entry_price": trade.get("entry_price"),
+            "exit_price": trade.get("exit_price"),
+            # cible et stop : nécessaires pour détecter une sortie qui n'a pas suivi le plan
+            # (cible franchie sans que le TP déclenche, sortie TP sous sa cible) — #455
+            "tp_price": trade.get("tp_price"),
+            "stop_price": trade.get("stop_price"),
+            "quantity": trade.get("quantity"),
+            "pnl_gross_usdc": trade.get("pnl_gross_usdc"),
+            "fees_usdc": trade.get("fees_usdc"),
+            "pnl_usdc": trade.get("pnl_usdc"),
+            "close_reason": trade.get("close_reason"),
+            "maker_or_taker": trade.get("maker_or_taker"),
+            "fees_estimated": bool(trade.get("fees_estimated")),
+        })
+    rows.sort(key=lambda r: r.get("exit_date") or "", reverse=True)
+    return rows[:limit]
+
+
 def _build_dashboard_state(cycle_id: str, cycle_status: str) -> dict:
     history = _load_json(TRADE_HISTORY_PATH, [])
     if not isinstance(history, list):
@@ -169,6 +207,7 @@ def _build_dashboard_state(cycle_id: str, cycle_status: str) -> dict:
         "cycle_id": cycle_id,
         "cycle_status": cycle_status,
         "open_positions": _open_positions(history),
+        "closed_trades": _closed_trades(closed),
         "financials": _financials(closed),
         "watchers": {
             "maker_watcher": _load_json(MAKER_WATCHER_STATE_PATH, {}),

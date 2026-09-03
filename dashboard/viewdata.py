@@ -436,3 +436,223 @@ def cadence_summary(band: list) -> dict:
         "idle": len(band) - acted - failed,
         "threshold": CADENCE_SCORE_THRESHOLD,
     }
+
+
+# ---------------------------------------------------------------------------
+# Onglet Ventes (#455)
+# ---------------------------------------------------------------------------
+
+# Le même événement arrive sous plusieurs noms selon le chemin de code : les compter
+# séparément fragmenterait le total des stops et le sous-estimerait.
+CLOSE_REASON_LABELS = {
+    "sl_hit": "stop touché", "stop_hit": "stop touché", "sl": "stop touché",
+    "tp_watcher": "cible atteinte", "tp_watcher_cycle": "cible atteinte",
+    "profit_target_phase0": "cible de profit",
+    "signal_sell_score1": "signal retombé", "signal_sell_score2": "signal retombé",
+    "signal_sell_score3": "signal retombé",
+    "protection_exhausted": "protection épuisée", "manual_sell_ios": "vente manuelle",
+    "oco_not_found": "OCO introuvable", "oco_filled_detected": "OCO déjà exécuté",
+}
+UNKNOWN_REASON = "non renseignée"
+
+
+def close_reason_label(raw) -> str:
+    return CLOSE_REASON_LABELS.get(raw, UNKNOWN_REASON if not raw else str(raw))
+
+
+def _suspect_exit(trade: dict) -> str | None:
+    """Un prix de sortie qui impliquerait un gain alors que le résultat enregistré est une perte
+    ne peut pas être vrai (#455). Cas connu : SYN 38515bab, stop « déclenché » au-dessus du prix
+    d'entrée. On signale sans corriger — c'est le prix qui est faux, pas le résultat."""
+    entry, exit_price = trade.get("entry_price"), trade.get("exit_price")
+    quantity, net = trade.get("quantity"), trade.get("pnl_usdc")
+    if None in (entry, exit_price, quantity, net):
+        return None
+    if (exit_price - entry) * quantity > 1 and net < 0:
+        return "prix de sortie incohérent avec le résultat enregistré"
+    return None
+
+
+def build_sales_rows(closed_trades: list, tz_name: str) -> list:
+    rows = []
+    for trade in closed_trades or []:
+        entered, exited = parse_iso(trade.get("entry_date")), parse_iso(trade.get("exit_date"))
+        rows.append({
+            **trade,
+            "reason_label": close_reason_label(trade.get("close_reason")),
+            "entry_local": to_local(entered, tz_name, fmt="%d/%m") if entered else "—",
+            "exit_local": to_local(exited, tz_name, fmt="%d/%m") if exited else "—",
+            "hold_label": _hold_label(trade.get("hold_hours")),
+            "suspect": _suspect_exit(trade),
+            "is_win": (trade.get("pnl_usdc") or 0) > 0,
+            # montants en USDC : c'est ce qui est sorti et rentré du portefeuille, plus
+            # parlant que le prix unitaire du coin (retour de review #455)
+            "invested": (trade.get("quantity") or 0) * trade.get("entry_price")
+            if trade.get("entry_price") is not None else None,
+            "proceeds": (trade.get("quantity") or 0) * trade.get("exit_price")
+            if trade.get("exit_price") is not None else None,
+            "trigger": sale_trigger(trade.get("close_reason"))[0],
+            "trigger_detail": sale_trigger(trade.get("close_reason"))[1],
+            "anomaly": sale_anomaly(trade),
+        })
+    return rows
+
+
+def _hold_label(hours) -> str:
+    if hours is None:
+        return "—"
+    return f"{hours:.0f} h" if hours < 48 else f"{hours / 24:.0f} j"
+
+
+SALES_WINDOWS = [("7j", "1 semaine", 7), ("30j", "1 mois", 30),
+                 ("90j", "3 mois", 90), ("180j", "6 mois", 180), ("tout", "tout", None)]
+
+
+def filter_sales_window(closed_trades: list, key: str, now: datetime | None = None) -> list:
+    """Restreint les ventes à une fenêtre. Le filtre s'applique **avant** les agrégats : les
+    totaux, les motifs et les durées portent tous sur la même période, sinon le bandeau
+    contredirait le journal juste en dessous."""
+    days = next((d for k, _, d in SALES_WINDOWS if k == key), None)
+    if days is None:
+        return closed_trades
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=days)
+    kept = []
+    for trade in closed_trades or []:
+        exited = parse_iso(trade.get("exit_date"))
+        if exited is not None and exited >= cutoff:
+            kept.append(trade)
+    return kept
+
+
+def build_sales_view(closed_trades: list, tz_name: str) -> dict:
+    """Agrégats de l'onglet Ventes. Tout chiffre est accompagné de son effectif : sur 87 ventes
+    dont un tiers porte des frais estimés, une moyenne sans son n induirait en erreur."""
+    rows = build_sales_rows(closed_trades, tz_name)
+    if not rows:
+        return {"rows": [], "reasons": [], "totals": {}, "quality": {}, "durations": {}}
+
+    by_reason: dict = {}
+    for row in rows:
+        bucket = by_reason.setdefault(row["reason_label"], {"n": 0, "net": 0.0, "fees": 0.0, "holds": []})
+        bucket["n"] += 1
+        bucket["net"] += row.get("pnl_usdc") or 0
+        bucket["fees"] += row.get("fees_usdc") or 0
+        if row.get("hold_hours") is not None:
+            bucket["holds"].append(row["hold_hours"])
+
+    reasons = sorted(
+        ({"label": label, "n": b["n"], "net": round(b["net"], 2),
+          "fees": round(b["fees"], 2), "median_hold": _median(b["holds"])}
+         for label, b in by_reason.items()),
+        key=lambda r: r["net"],
+    )
+    extent = max((abs(r["net"]) for r in reasons), default=0) or 1.0
+    for reason in reasons:
+        reason["bar_pct"] = round(abs(reason["net"]) / extent * 50, 1)
+
+    net = sum(r.get("pnl_usdc") or 0 for r in rows)
+    gross = sum(r.get("pnl_gross_usdc") or 0 for r in rows)
+    fees = sum(r.get("fees_usdc") or 0 for r in rows)
+    wins = [r for r in rows if r["is_win"]]
+
+    return {
+        "rows": rows,
+        "reasons": reasons,
+        "totals": {
+            "count": len(rows), "net": round(net, 2), "gross": round(gross, 2),
+            "fees": round(fees, 2), "wins": len(wins),
+            "win_pct": round(len(wins) / len(rows) * 100),
+            "fees_pct_of_gross": round(fees / abs(gross) * 100) if gross else None,
+            # Les montants investi/retiré excluent les ventes au prix douteux : un seul
+            # enregistrement corrompu creusait un écart de 42,57 USDC entre « retiré − investi »
+            # et le brut déclaré, rendant la ligne de totaux incohérente à l'œil nu (#455).
+            "invested": round(sum(r["invested"] or 0 for r in rows if not r["suspect"]), 2),
+            "proceeds": round(sum(r["proceeds"] or 0 for r in rows if not r["suspect"]), 2),
+            "excluded_from_amounts": sum(1 for r in rows if r["suspect"]),
+        },
+        "durations": {
+            "wins": _median([r["hold_hours"] for r in rows if r["is_win"] and r["hold_hours"] is not None]),
+            "losses": _median([r["hold_hours"] for r in rows if not r["is_win"] and r["hold_hours"] is not None]),
+            "by_reason": {r["label"]: r["median_hold"] for r in reasons},
+        },
+        "triggers": _by_trigger(rows),
+        "anomalies": [r for r in rows if r["anomaly"]],
+        "quality": {
+            "estimated": sum(1 for r in rows if r.get("fees_estimated")),
+            "missing_fees": sum(1 for r in rows if r.get("fees_usdc") is None),
+            "suspect": sum(1 for r in rows if r["suspect"]),
+            "reliable": sum(1 for r in rows if r.get("fees_usdc") is not None and not r.get("fees_estimated")),
+        },
+    }
+
+
+def _median(values: list):
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return round(ordered[middle])
+    return round((ordered[middle - 1] + ordered[middle]) / 2)
+
+
+# Qui a réellement déclenché la vente (#455, retour de review). Le motif de clôture le dit de
+# façon fiable ; l'horodatage non — un tp_watcher tombe dans une fenêtre de cycle 6 fois sur 15
+# par simple coïncidence, ce qui rendrait tout rattachement déduit faux dans 40 % des cas.
+SALE_TRIGGERS = {
+    "profit_target_phase0": ("cycle", "Phase 0 d'un cycle — seuil de profit atteint"),
+    "signal_sell_score1": ("cycle", "pendant un cycle — signal retombé"),
+    "signal_sell_score2": ("cycle", "pendant un cycle — signal retombé"),
+    "signal_sell_score3": ("cycle", "pendant un cycle — signal retombé"),
+    "protection_exhausted": ("cycle", "Phase 0 d'un cycle — protection épuisée"),
+    "oco_not_found": ("cycle", "Phase 0 d'un cycle — OCO introuvable"),
+    "oco_filled_detected": ("cycle", "Phase 0 d'un cycle — OCO déjà exécuté"),
+    "tp_watcher": ("watcher", "TP watcher, hors cycle"),
+    "tp_watcher_cycle": ("watcher", "TP watcher, hors cycle"),
+    "sl_hit": ("kraken", "ordre stop exécuté chez Kraken, hors cycle"),
+    "stop_hit": ("kraken", "ordre stop exécuté chez Kraken, hors cycle"),
+    "sl": ("kraken", "ordre stop exécuté chez Kraken, hors cycle"),
+    "manual_sell_ios": ("manuel", "vente déclenchée à la main"),
+}
+TRIGGER_LABELS = {"cycle": "cycle", "watcher": "watcher", "kraken": "stop Kraken",
+                  "manuel": "manuel", "inconnu": "inconnu"}
+# La prise de profit sort volontairement avant la cible : ce n'est pas un manquement du watcher.
+_EARLY_BY_DESIGN = {"profit_target_phase0"}
+
+
+def sale_trigger(raw) -> tuple[str, str]:
+    return SALE_TRIGGERS.get(raw, ("inconnu", "motif de clôture non enregistré"))
+
+
+def sale_anomaly(trade: dict) -> str | None:
+    """Écarts entre ce que la vente aurait dû faire et ce qu'elle a fait (#455).
+
+    Deux cas se lisent dans les données stockées, sans OHLC : une cible franchie alors qu'un
+    autre mécanisme a vendu — le TP watcher aurait dû sortir en premier — et une sortie estampillée
+    TP nettement sous la cible."""
+    tp, exit_price = trade.get("tp_price"), trade.get("exit_price")
+    reason = trade.get("close_reason")
+    if tp is None or exit_price is None or not tp:
+        return None
+    kind, _ = sale_trigger(reason)
+
+    if exit_price >= tp and kind not in ("watcher",) and reason not in _EARLY_BY_DESIGN:
+        if kind == "inconnu":
+            return None  # motif absent : on ne peut rien reprocher à personne
+        return "cible franchie, mais la vente vient d'ailleurs — le TP n'a pas déclenché"
+
+    if kind == "watcher" and exit_price < tp * 0.99:
+        return f"vendu {abs(exit_price - tp) / tp * 100:.1f} % sous la cible annoncée"
+    return None
+
+
+def _by_trigger(rows: list) -> list:
+    """Répartition des ventes par déclencheur, avec le net que chacun a produit."""
+    buckets: dict = {}
+    for row in rows:
+        b = buckets.setdefault(row["trigger"], {"n": 0, "net": 0.0})
+        b["n"] += 1
+        b["net"] += row.get("pnl_usdc") or 0
+    out = [{"key": k, "label": TRIGGER_LABELS.get(k, k), "n": v["n"], "net": round(v["net"], 2)}
+           for k, v in buckets.items()]
+    return sorted(out, key=lambda t: -t["n"])
