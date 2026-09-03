@@ -2275,12 +2275,17 @@
     "entry_order_id": "OFL3C3-HLPWR-STU4JZ",
     "sl_order_txid": "OTMMDH-S2EUD-2XRG5E",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
-    "pnl_usdc": null,
-    "pnl_pct": null,
-    "entry_fee_usdc": 0.799874611
+    "status": "closed",
+    "exit_price": 721.0868152191193,
+    "exit_date": "2026-09-03T14:50:02.068753+00:00Z",
+    "pnl_usdc": 1.1475253319999865,
+    "pnl_pct": 0.8607789140438613,
+    "entry_fee_usdc": 0.799874611,
+    "exit_fee_usdc": 0.816457757,
+    "fees_usdc": 1.6163323680000001,
+    "pnl_gross_usdc": 2.7638576999999867,
+    "pnl_gross_pct": 2.0732182229313794,
+    "close_reason": "tp_watcher"
   },
   {
     "trade_id": "e253323e",
