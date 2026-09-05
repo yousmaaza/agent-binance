@@ -8,9 +8,14 @@ from loguru import logger
 
 from core.env import PROJECT_DIR
 from core.lock import acquire_lock, is_locked, release_lock
+from core.maker_exit_watcher import (
+    attempt_maker_exit,
+    load_maker_exit_pending_orders,
+    save_maker_exit_pending_orders,
+)
 from core.state_manager import load_trade_history, save_trade_history
 from core.telegram import send_telegram
-from core.trade_helpers import binance as _cli, compute_net_pnl
+from core.trade_helpers import binance as _cli, _load_config, compute_net_pnl
 
 _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "tp_watcher_state.json")
 
@@ -52,6 +57,11 @@ def _tp_watcher_tick():
     if is_locked():
         return
 
+    cfg = _load_config()
+    maker_exit_enabled = cfg.get("maker_exit_enabled", True)
+    exit_pending = load_maker_exit_pending_orders() if maker_exit_enabled else []
+    exit_pending_ids = {p["trade_id"] for p in exit_pending}
+
     history = load_trade_history()
     changed = False
     tick_status = "ok"
@@ -61,6 +71,10 @@ def _tp_watcher_tick():
 
     for pos in history:
         if pos.get("status") != "open":
+            continue
+        # Sortie maker déjà en cours de chasse (#390) -> ne pas redéclencher tant qu'elle n'est
+        # pas résolue par core/maker_exit_watcher.py.
+        if pos.get("trade_id") in exit_pending_ids:
             continue
         coin = pos.get("coin")
         tp_price = pos.get("tp_price")
@@ -90,6 +104,14 @@ def _tp_watcher_tick():
         logger.info(f"[TP Watcher] {coin} TP atteint : {current_price:.4f} >= {float(tp_price):.4f}")
         acquire_lock()
         try:
+            if maker_exit_enabled:
+                new_pending = attempt_maker_exit(pos, "tp_watcher", cfg)
+                changed = True
+                if new_pending:
+                    exit_pending.append(new_pending)
+                    save_maker_exit_pending_orders(exit_pending)
+                continue
+
             entry_price = float(pos.get("entry_price", 0))
             sl_txid = pos.get("sl_order_txid")
 

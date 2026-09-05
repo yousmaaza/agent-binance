@@ -14,6 +14,11 @@ import time
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
+from core.maker_exit_watcher import (  # noqa: E402
+    attempt_maker_exit,
+    load_maker_exit_pending_orders,
+    save_maker_exit_pending_orders,
+)
 from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
@@ -27,9 +32,17 @@ min_profit = cfg.get("min_profit_pct_take", 5.0)
 # fee_round_trip_pct : estimation du coût aller-retour, pour évaluer le profit latent net plutôt
 # que brut (#411) — le frais de sortie réel n'est connu qu'après le SELL MARKET.
 fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
+# maker_exit_enabled (#390) : même traitement que tp_watcher.py — sortie LIMIT post-only suivie
+# par core/maker_exit_watcher.py plutôt que SELL MARKET direct.
+maker_exit_enabled = cfg.get("maker_exit_enabled", True)
+exit_pending = load_maker_exit_pending_orders() if maker_exit_enabled else []
+exit_pending_ids = {p["trade_id"] for p in exit_pending}
 
 for pos in history:
     if pos.get("status") != "open":
+        continue
+    # Sortie maker déjà en cours de chasse (#390) -> ne pas redéclencher.
+    if pos.get("trade_id") in exit_pending_ids:
         continue
     coin = pos.get("coin")
     entry_price = float(pos.get("entry_price", 0))
@@ -50,6 +63,13 @@ for pos in history:
     pnl_pct_net_est = pnl_pct - fee_round_trip_pct * 100
 
     if pnl_pct_net_est >= min_profit:
+        if maker_exit_enabled:
+            new_pending = attempt_maker_exit(pos, "profit_target_phase0", cfg, notify=tg)
+            if new_pending:
+                exit_pending.append(new_pending)
+                save_maker_exit_pending_orders(exit_pending)
+            _save_trade_history_atomic(history)
+            continue
         try:
             # Annuler les ordres actifs sur la paire avant SELL MARKET
             open_data = json.loads(binance("open-orders", "-o", "json"))
