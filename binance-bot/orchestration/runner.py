@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 
+from loguru import logger
+
 from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
 from core.env import KRAKEN_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, POSITION_PROMPT, get_cycle_phases_log_path
 from core.lock import acquire_lock, is_locked, release_lock
@@ -26,6 +28,9 @@ CLAUDE_PROCESS_TIMEOUT_S = 3600  # 1h max par cycle — tuer le processus si dé
 # Marge au-delà de maker_exit_timeout_seconds avant de forcer le démarrage d'un cycle malgré
 # une chasse de sortie maker toujours en cours (#461).
 _MAKER_EXIT_WAIT_MARGIN_S = 60
+# Ordres résidus déjà alertés (#461) : un ordre bloqué (échec query-orders persistant, thread
+# watcher mort) ne doit générer qu'une seule alerte, pas une par poll tant qu'il traîne.
+_STALE_MAKER_EXIT_ALERTED_TXIDS: set[str] = set()
 
 
 @dataclass
@@ -86,19 +91,79 @@ def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None
     )
 
 
+def _maker_exit_stale_alert(pending: dict, age_s: float, threshold_s: float) -> None:
+    """Alerte une seule fois par ordre (#461) : un résidu détecté est un signe d'incident côté
+    watcher (query-orders en échec persistant, thread mort sur une exception non couverte), pas
+    un état à re-signaler à chaque poll."""
+    txid = pending.get("txid", "?")
+    if txid in _STALE_MAKER_EXIT_ALERTED_TXIDS:
+        return
+    _STALE_MAKER_EXIT_ALERTED_TXIDS.add(txid)
+    coin = pending.get("coin", "?")
+    msg = (f"Ordre de sortie maker résidu {coin} ({txid}) : âgé de {age_s:.0f}s > "
+           f"{threshold_s:.0f}s — le watcher semble bloqué, vérifier "
+           "state/maker_exit_watcher_state.json")
+    logger.warning(f"[Cycle Wait] {msg}")
+    send_telegram(f"⚠️ {msg}")
+
+
+def _active_maker_exit_orders(threshold_s: float) -> list:
+    """Ordres de state/maker_exit_pending_orders.json dont l'âge reste cohérent avec une chasse
+    active (#461). Au-delà de threshold_s, ce n'est plus une chasse mais un résidu — un ordre
+    bloqué côté watcher (échec query-orders persistant, thread mort) — qui ne doit pas retarder
+    indéfiniment le démarrage des cycles. placed_at illisible -> traité comme actif par prudence,
+    faute de pouvoir juger son âge."""
+    now = datetime.now(timezone.utc)
+    active = []
+    for pending in load_maker_exit_pending_orders():
+        try:
+            age_s = (now - datetime.fromisoformat(pending["placed_at"])).total_seconds()
+        except (KeyError, ValueError, TypeError):
+            active.append(pending)
+            continue
+        if age_s > threshold_s:
+            _maker_exit_stale_alert(pending, age_s, threshold_s)
+        else:
+            active.append(pending)
+    return active
+
+
 def _wait_for_maker_exit_chase() -> None:
-    """Retarde le démarrage d'un cycle tant qu'une chasse de sortie maker est en cours (#461).
+    """Retarde le démarrage d'un cycle tant qu'une chasse de sortie maker active est en cours
+    (#461).
 
     Une position sans stop (chasse en cours, cf. maker_exit_watcher.py) prime sur le démarrage
     d'un nouveau cycle : sans cette attente, le cycle pose le verrou et le watcher ne peut plus
     s'exécuter pour sortir la position ou lui reposer un stop. Borné à
-    maker_exit_timeout_seconds + marge — au-delà, le cycle démarre quand même plutôt que
-    d'attendre indéfiniment.
+    maker_exit_timeout_seconds + marge — au-delà, un ordre n'est plus considéré comme une chasse
+    active mais comme un résidu (cf. _active_maker_exit_orders) et le cycle démarre quand même
+    plutôt que d'attendre indéfiniment un watcher potentiellement bloqué.
+
+    Journalise l'entrée en attente, la résolution et la sortie par borne atteinte — sans cette
+    trace, un cycle démarré en retard est indiscernable d'un cycle normal dans daemon.log.
     """
     cfg = _load_config()
     poll_s = cfg.get("maker_tick_seconds", 20)
-    deadline = time.monotonic() + cfg.get("maker_exit_timeout_seconds", 600) + _MAKER_EXIT_WAIT_MARGIN_S
-    while load_maker_exit_pending_orders() and time.monotonic() < deadline:
+    threshold_s = cfg.get("maker_exit_timeout_seconds", 600) + _MAKER_EXIT_WAIT_MARGIN_S
+    started = time.monotonic()
+    deadline = started + threshold_s
+    logged_start = False
+
+    while True:
+        pending = _active_maker_exit_orders(threshold_s)
+        if not pending:
+            if logged_start:
+                logger.info(f"[Cycle Wait] Chasse de sortie maker résolue après "
+                            f"{time.monotonic() - started:.0f}s — démarrage du cycle")
+            return
+        if not logged_start:
+            logger.info(f"[Cycle Wait] {len(pending)} chasse(s) de sortie maker en cours — "
+                        f"attente avant démarrage du cycle (borne {threshold_s:.0f}s)")
+            logged_start = True
+        if time.monotonic() >= deadline:
+            logger.warning(f"[Cycle Wait] Borne atteinte ({threshold_s:.0f}s) — démarrage du "
+                            "cycle malgré une chasse de sortie maker toujours en cours")
+            return
         time.sleep(poll_s)
 
 
