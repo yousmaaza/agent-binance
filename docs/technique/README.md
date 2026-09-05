@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#460](pr-460-garde-fou-dates.md) | [BUG] Le garde-fou de l'analyse hebdo rejetait les dates | 2026-09-05 |
 | [#457](pr-457-extend-maker-exit-strategy.md) | [M1] Étendre la stratégie maker aux sorties de position | 2026-09-05 |
 | [#456](pr-456-onglet-ventes-historique-sorties.md) | [M1] Onglet Ventes — historique des sorties dans le dashboard | 2026-09-03 |
 | [#454](pr-454-analyse-hebdo.md) | [M1] Analyse hebdomadaire rédigée par Claude dans le dashboard | 2026-08-29 |
