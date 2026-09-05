@@ -29,7 +29,9 @@ def _fake_cli(*args, **_kwargs):
 
 
 class TestTpWatcherFeeCapture(unittest.TestCase):
-    """Le champ fee de la réponse query-orders du SELL est déduit du PnL net (#382)."""
+    """Le champ fee de la réponse query-orders du SELL est déduit du PnL net (#382).
+
+    maker_exit_enabled: false (#390) -> comportement de vente au marché inchangé."""
 
     def test_pnl_usdc_net_of_entry_and_exit_fees(self):
         pos = {
@@ -44,6 +46,7 @@ class TestTpWatcherFeeCapture(unittest.TestCase):
              patch("core.tp_watcher.release_lock"), \
              patch("core.tp_watcher.send_telegram"), \
              patch("core.tp_watcher._write_watcher_state"), \
+             patch("core.tp_watcher._load_config", return_value={"maker_exit_enabled": False}), \
              patch("core.tp_watcher.load_trade_history", return_value=history), \
              patch("core.tp_watcher.save_trade_history") as mock_save, \
              patch("core.tp_watcher._cli", side_effect=_fake_cli):
@@ -58,6 +61,71 @@ class TestTpWatcherFeeCapture(unittest.TestCase):
         self.assertAlmostEqual(pos["entry_fee_usdc"], 0.5)
         self.assertAlmostEqual(pos["exit_fee_usdc"], 0.7)
         self.assertEqual(pos["close_reason"], "tp_watcher")
+
+
+class TestTpWatcherMakerExitHandoff(unittest.TestCase):
+    """#390 : quand maker_exit_enabled (défaut), le TP watcher ne vend plus au marché — il
+    délègue à attempt_maker_exit() et enregistre le résultat dans
+    state/maker_exit_pending_orders.json plutôt que de fermer la position lui-même."""
+
+    def test_tp_reached_hands_off_to_maker_exit_instead_of_market_sell(self):
+        pos = {
+            "trade_id": "T1", "coin": "ETH", "status": "open",
+            "entry_price": 1000, "quantity": 1, "tp_price": 1100,
+            "entry_fee_usdc": 0.5, "sl_order_txid": "SLTX0", "stop_price": 950.0,
+        }
+        history = [pos]
+        new_pending = {"trade_id": "T1", "coin": "ETH", "pair": "ETHUSDC", "txid": "SELLTX1",
+                       "quantity": 1, "stop_price": 950.0, "close_reason": "tp_watcher"}
+
+        with patch("core.tp_watcher.is_locked", return_value=False), \
+             patch("core.tp_watcher.acquire_lock"), \
+             patch("core.tp_watcher.release_lock"), \
+             patch("core.tp_watcher.send_telegram"), \
+             patch("core.tp_watcher._write_watcher_state"), \
+             patch("core.tp_watcher._load_config", return_value={"maker_exit_enabled": True}), \
+             patch("core.tp_watcher.load_trade_history", return_value=history), \
+             patch("core.tp_watcher.save_trade_history") as mock_save, \
+             patch("core.tp_watcher.load_maker_exit_pending_orders", return_value=[]), \
+             patch("core.tp_watcher.save_maker_exit_pending_orders") as mock_save_pending, \
+             patch("core.tp_watcher.attempt_maker_exit", return_value=new_pending) as mock_attempt, \
+             patch("core.tp_watcher._cli", side_effect=_fake_cli):
+            tp_watcher._tp_watcher_tick()
+
+        mock_attempt.assert_called_once()
+        self.assertEqual(mock_attempt.call_args[0][0], pos)
+        self.assertEqual(mock_attempt.call_args[0][1], "tp_watcher")
+        mock_save_pending.assert_called_once_with([new_pending])
+        # La position reste "open" côté trade_history — c'est maker_exit_watcher.py qui la
+        # clôturera au fill/repli marché, pas tp_watcher.py.
+        self.assertEqual(pos["status"], "open")
+        mock_save.assert_called_once()
+
+    def test_position_already_in_maker_exit_pending_is_not_retriggered(self):
+        pos = {
+            "trade_id": "T1", "coin": "ETH", "status": "open",
+            "entry_price": 1000, "quantity": 1, "tp_price": 1100,
+            "entry_fee_usdc": 0.5, "sl_order_txid": "SLTX0", "stop_price": 950.0,
+        }
+        history = [pos]
+        already_pending = [{"trade_id": "T1", "coin": "ETH", "pair": "ETHUSDC", "txid": "SELLTX1"}]
+
+        with patch("core.tp_watcher.is_locked", return_value=False), \
+             patch("core.tp_watcher.acquire_lock"), \
+             patch("core.tp_watcher.release_lock"), \
+             patch("core.tp_watcher.send_telegram"), \
+             patch("core.tp_watcher._write_watcher_state"), \
+             patch("core.tp_watcher._load_config", return_value={"maker_exit_enabled": True}), \
+             patch("core.tp_watcher.load_trade_history", return_value=history), \
+             patch("core.tp_watcher.save_trade_history") as mock_save, \
+             patch("core.tp_watcher.load_maker_exit_pending_orders", return_value=already_pending), \
+             patch("core.tp_watcher.save_maker_exit_pending_orders"), \
+             patch("core.tp_watcher.attempt_maker_exit") as mock_attempt, \
+             patch("core.tp_watcher._cli", side_effect=_fake_cli):
+            tp_watcher._tp_watcher_tick()
+
+        mock_attempt.assert_not_called()
+        mock_save.assert_not_called()
 
 
 if __name__ == "__main__":

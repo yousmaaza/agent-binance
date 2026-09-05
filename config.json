@@ -14,6 +14,10 @@
   "maker_max_concession_pct": 0.003,
   "maker_timeout_seconds": 3600,
 
+  "maker_exit_enabled": true,
+  "maker_exit_timeout_seconds": 600,
+  "maker_exit_max_concession_pct": 0.003,
+
   "risk_per_trade_pct": 0.02,
   "reward_risk_ratio": 1.5,
   "fee_round_trip_pct": 0.009,

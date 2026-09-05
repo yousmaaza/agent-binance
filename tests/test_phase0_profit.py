@@ -23,13 +23,19 @@ from fixtures import test_harness as harness  # noqa: E402 -- import après sys.
 PHASE0_PROFIT_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase0_profit.py")
 
 
-def _run_phase0_profit(history_data, config=None, kraken_scenario=None):
-    """Exécute phase0_profit.py. Retourne (output_json, mock_tg, mock_save)."""
+def _run_phase0_profit(history_data, config=None, kraken_scenario=None, exit_pending=None):
+    """Exécute phase0_profit.py. Retourne (output_json, mock_tg, mock_save, mock_save_exit_pending).
+
+    core.maker_exit_watcher.load_maker_exit_pending_orders/save_maker_exit_pending_orders sont
+    toujours mockés ici (#390) — jamais le vrai state/maker_exit_pending_orders.json, sur le même
+    principe que trade_history.json."""
     cycle_id = harness.new_cycle_id()
     scenario_path = harness.write_kraken_scenario(kraken_scenario)
     out_path = f"/tmp/cycle_{cycle_id}_phase0_profit_output.json"
     text = json.dumps(history_data)
-    cfg = config if config is not None else {"min_profit_pct_take": 5.0}
+    # maker_exit_enabled: false par défaut ici -> comportement historique (SELL MARKET direct)
+    # inchangé, sauf override explicite du test (#390).
+    cfg = config if config is not None else {"min_profit_pct_take": 5.0, "maker_exit_enabled": False}
 
     old_env = harness.set_fake_kraken_env(scenario_path)
     try:
@@ -39,11 +45,14 @@ def _run_phase0_profit(history_data, config=None, kraken_scenario=None):
             stack.enter_context(patch("core.trade_helpers._load_config", return_value=cfg))
             stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", harness.FAKE_KRAKEN_PATH))
             stack.enter_context(patch("builtins.open", side_effect=harness.fake_open_factory(text)))
+            stack.enter_context(patch("core.maker_exit_watcher.load_maker_exit_pending_orders",
+                                       return_value=exit_pending if exit_pending is not None else []))
+            mock_save_exit_pending = stack.enter_context(patch("core.maker_exit_watcher.save_maker_exit_pending_orders"))
 
             harness.exec_phase_script(PHASE0_PROFIT_PATH, cycle_id)
 
         output = harness.load_and_remove_json(out_path)
-        return output, mock_tg, mock_save
+        return output, mock_tg, mock_save, mock_save_exit_pending
     finally:
         harness.restore_fake_kraken_env(old_env)
         harness.remove_if_exists(scenario_path, out_path)
@@ -62,8 +71,9 @@ class TestProfitTargetClosesPosition(unittest.TestCase):
             "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
             "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0"}},
         }
-        output, mock_tg, mock_save = _run_phase0_profit(
-            history_data, config={"min_profit_pct_take": 5.0}, kraken_scenario=kraken_scenario,
+        output, mock_tg, mock_save, _mock_save_pending = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0, "maker_exit_enabled": False},
+            kraken_scenario=kraken_scenario,
         )
 
         self.assertEqual(output["closed"], 1)
@@ -90,8 +100,9 @@ class TestProfitTargetNetOfFees(unittest.TestCase):
             "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
             "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0", "fee": "0.7"}},
         }
-        output, _mock_tg, mock_save = _run_phase0_profit(
-            history_data, config={"min_profit_pct_take": 5.0}, kraken_scenario=kraken_scenario,
+        output, _mock_tg, mock_save, _mock_save_pending = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0, "maker_exit_enabled": False},
+            kraken_scenario=kraken_scenario,
         )
 
         self.assertEqual(output["closed"], 1)
@@ -116,9 +127,9 @@ class TestProfitTargetEvaluatedNet(unittest.TestCase):
         ]
         # +5.5% brut > seuil 5%, mais net estimé = 5.5% - fee_round_trip_pct(0.9%) = 4.6% < 5%
         kraken_scenario = {"ticker": {"ETHUSDC": {"c": ["1055.0", "0.01"]}}}
-        output, mock_tg, mock_save = _run_phase0_profit(
+        output, mock_tg, mock_save, _mock_save_pending = _run_phase0_profit(
             history_data,
-            config={"min_profit_pct_take": 5.0, "fee_round_trip_pct": 0.009},
+            config={"min_profit_pct_take": 5.0, "fee_round_trip_pct": 0.009, "maker_exit_enabled": False},
             kraken_scenario=kraken_scenario,
         )
 
@@ -137,9 +148,9 @@ class TestProfitTargetEvaluatedNet(unittest.TestCase):
             "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
             "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "1060.0", "vol_exec": "1.0"}},
         }
-        output, mock_tg, mock_save = _run_phase0_profit(
+        output, mock_tg, mock_save, _mock_save_pending = _run_phase0_profit(
             history_data,
-            config={"min_profit_pct_take": 5.0, "fee_round_trip_pct": 0.009},
+            config={"min_profit_pct_take": 5.0, "fee_round_trip_pct": 0.009, "maker_exit_enabled": False},
             kraken_scenario=kraken_scenario,
         )
 
@@ -155,8 +166,9 @@ class TestProfitBelowThresholdNoAction(unittest.TestCase):
              "quantity": "1"},
         ]
         kraken_scenario = {"ticker": {"ETHUSDC": {"c": ["1020.0", "0.01"]}}}  # +2% < seuil 5%
-        output, mock_tg, mock_save = _run_phase0_profit(
-            history_data, config={"min_profit_pct_take": 5.0}, kraken_scenario=kraken_scenario,
+        output, mock_tg, mock_save, _mock_save_pending = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0, "maker_exit_enabled": False},
+            kraken_scenario=kraken_scenario,
         )
 
         self.assertEqual(output["closed"], 0)
@@ -172,7 +184,7 @@ class TestProfitMissingEntryOrQty(unittest.TestCase):
             {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": "0",
              "quantity": "1"},
         ]
-        output, _, mock_save = _run_phase0_profit(history_data, kraken_scenario={})
+        output, _, mock_save, _mock_save_pending = _run_phase0_profit(history_data, kraken_scenario={})
 
         self.assertEqual(output["closed"], 0)
         mock_save.assert_not_called()
@@ -190,13 +202,61 @@ class TestProfitSellOrderNoTxid(unittest.TestCase):
             "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
             # pas de clé order_sell_ETHUSDC -> fake_kraken renvoie {} -> pas de txid
         }
-        output, _, mock_save = _run_phase0_profit(
-            history_data, config={"min_profit_pct_take": 5.0}, kraken_scenario=kraken_scenario,
+        output, _, mock_save, _mock_save_pending = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0, "maker_exit_enabled": False},
+            kraken_scenario=kraken_scenario,
         )
 
         self.assertEqual(output["closed"], 0)
         mock_save.assert_not_called()
         self.assertEqual(history_data[0]["status"], "open")
+
+
+class TestProfitTargetMakerExitHandoff(unittest.TestCase):
+    """#390 : maker_exit_enabled (défaut) -> phase0_profit.py ne vend plus au marché lui-même, il
+    délègue à attempt_maker_exit() et enregistre le résultat dans
+    state/maker_exit_pending_orders.json plutôt que de fermer la position."""
+
+    def test_profit_target_hands_off_to_maker_exit_instead_of_market_sell(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": "1000",
+             "quantity": "1", "sl_order_txid": "SLTX0", "stop_price": 950.0},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"a": ["1100.5", "0.01"], "c": ["1100.0", "0.01"]}},  # +10% > seuil 5%
+            "order_sell_ETHUSDC_limit": {"txid": ["SELLTX1"]},
+        }
+        output, _mock_tg, mock_save, mock_save_pending = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0, "maker_exit_enabled": True},
+            kraken_scenario=kraken_scenario,
+        )
+
+        # Pas encore "closed" : posé en LIMIT, suivi par core/maker_exit_watcher.py.
+        self.assertEqual(output["closed"], 0)
+        self.assertEqual(history_data[0]["status"], "open")
+        mock_save_pending.assert_called_once()
+        saved_pending = mock_save_pending.call_args[0][0]
+        self.assertEqual(len(saved_pending), 1)
+        self.assertEqual(saved_pending[0]["trade_id"], "T1")
+        self.assertEqual(saved_pending[0]["close_reason"], "profit_target_phase0")
+        self.assertEqual(saved_pending[0]["txid"], "SELLTX1")
+        mock_save.assert_called()  # trade_history persisté (protection_failed/status potentiel)
+
+    def test_position_already_pending_maker_exit_is_not_retriggered(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": "1000",
+             "quantity": "1", "sl_order_txid": "SLTX0", "stop_price": 950.0},
+        ]
+        kraken_scenario = {"ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}}}  # +10% > seuil 5%
+        already_pending = [{"trade_id": "T1", "coin": "ETH", "pair": "ETHUSDC", "txid": "SELLTX1"}]
+        output, _mock_tg, mock_save, mock_save_pending = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0, "maker_exit_enabled": True},
+            kraken_scenario=kraken_scenario, exit_pending=already_pending,
+        )
+
+        self.assertEqual(output["closed"], 0)
+        mock_save_pending.assert_not_called()
+        mock_save.assert_not_called()
 
 
 if __name__ == "__main__":

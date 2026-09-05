@@ -19,6 +19,7 @@ from commands.perf import run_perf
 from commands.raisonnement import run_raisonnement
 from commands.status import run_status
 from core.lock import release_lock
+from core.maker_exit_watcher import maker_exit_watcher_loop
 from core.maker_watcher import maker_watcher_loop
 from core.state_manager import validate_and_repair_boot
 from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
@@ -82,6 +83,9 @@ def main_loop():
 
     threading.Thread(target=maker_watcher_loop, daemon=True, name="maker-watcher").start()
     logger.info("Maker Watcher démarré (#388)")
+
+    threading.Thread(target=maker_exit_watcher_loop, daemon=True, name="maker-exit-watcher").start()
+    logger.info("Maker Exit Watcher démarré (#390)")
 
     while True:
         try:
