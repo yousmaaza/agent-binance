@@ -341,41 +341,51 @@ def _handle_chase_end(pending: dict, history: list, tick_state: dict) -> tuple[b
         except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError):
             fill = {}
 
-        vol_exec = float(fill.get("vol_exec", 0) or 0)
-        remaining_qty = qty - vol_exec
-
-        if remaining_qty <= _QTY_EPSILON:
-            cost = float(fill.get("cost", 0) or 0)
-            exit_price = cost / vol_exec if vol_exec else pending["current_limit_price"]
-            exit_fee_usdc = float(fill.get("fee", 0) or 0)
-            ok = _finalize_position(history, pending, exit_price, exit_fee_usdc, _MAKER_FILL_LABEL)
-            return ok, (1 if ok else 0), 0
-
-        # On voulait sortir, on sort : jamais d'abandon côté sortie (#390).
+        # À partir d'ici, la limite est annulée : toute erreur inattendue (parsing d'un fill
+        # malformé, échec du repli marché ou de sa finalisation) ne doit jamais se solder par un
+        # simple log — la position resterait nue et oubliée du suivi (#390). safe_qty affine au
+        # fur et à mesure de ce qu'on sait vraiment devoir protéger.
+        safe_qty = qty
         try:
-            sell_raw = _cli("order", "sell", pair, str(remaining_qty), "--type", "market", "-o", "json", "--yes")
-            sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
-            market_txid = (sell_resp.get("txid") or [None])[0]
-            if not market_txid:
-                raise RuntimeError("pas de txid marché")
-            time.sleep(1)
-            mfill_raw = _cli("query-orders", market_txid, "-o", "json")
-            mfill = json.loads(mfill_raw).get(market_txid, {})
-            if mfill.get("status") != "closed":
-                raise RuntimeError(f"non rempli (status: {mfill.get('status')})")
-        except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, RuntimeError) as e:
-            _repose_stop_and_alert(pending, history, remaining_qty, reason=f"vente au marché échouée : {e}")
-            return True, 0, 0
+            vol_exec = float(fill.get("vol_exec", 0) or 0)
+            remaining_qty = qty - vol_exec
+            safe_qty = remaining_qty
 
-        market_vol = float(mfill.get("vol_exec", remaining_qty))
-        market_cost = float(mfill.get("cost", 0) or 0)
-        market_fee = float(mfill.get("fee", 0) or 0)
-        total_vol = vol_exec + market_vol
-        total_cost = float(fill.get("cost", 0) or 0) + market_cost
-        exit_price = total_cost / total_vol if total_vol else pending["current_limit_price"]
-        exit_fee_usdc = float(fill.get("fee", 0) or 0) + market_fee
-        ok = _finalize_position(history, pending, exit_price, exit_fee_usdc, "taker")
-        return ok, 0, (1 if ok else 0)
+            if remaining_qty <= _QTY_EPSILON:
+                cost = float(fill.get("cost", 0) or 0)
+                exit_price = cost / vol_exec if vol_exec else pending["current_limit_price"]
+                exit_fee_usdc = float(fill.get("fee", 0) or 0)
+                ok = _finalize_position(history, pending, exit_price, exit_fee_usdc, _MAKER_FILL_LABEL)
+                return ok, (1 if ok else 0), 0
+
+            # On voulait sortir, on sort : jamais d'abandon côté sortie (#390).
+            try:
+                sell_raw = _cli("order", "sell", pair, str(remaining_qty), "--type", "market", "-o", "json", "--yes")
+                sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
+                market_txid = (sell_resp.get("txid") or [None])[0]
+                if not market_txid:
+                    raise RuntimeError("pas de txid marché")
+                time.sleep(1)
+                mfill_raw = _cli("query-orders", market_txid, "-o", "json")
+                mfill = json.loads(mfill_raw).get(market_txid, {})
+                if mfill.get("status") != "closed":
+                    raise RuntimeError(f"non rempli (status: {mfill.get('status')})")
+            except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, RuntimeError) as e:
+                _repose_stop_and_alert(pending, history, remaining_qty, reason=f"vente au marché échouée : {e}")
+                return True, 0, 0
+
+            market_vol = float(mfill.get("vol_exec", remaining_qty))
+            market_cost = float(mfill.get("cost", 0) or 0)
+            market_fee = float(mfill.get("fee", 0) or 0)
+            total_vol = vol_exec + market_vol
+            total_cost = float(fill.get("cost", 0) or 0) + market_cost
+            exit_price = total_cost / total_vol if total_vol else pending["current_limit_price"]
+            exit_fee_usdc = float(fill.get("fee", 0) or 0) + market_fee
+            ok = _finalize_position(history, pending, exit_price, exit_fee_usdc, "taker")
+            return ok, 0, (1 if ok else 0)
+        except (ValueError, TypeError, KeyError) as e:
+            _repose_stop_and_alert(pending, history, safe_qty, reason=f"erreur inattendue après annulation de la limite : {e}")
+            return True, 0, 0
     except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
         logger.error(f"[Maker Exit Watcher] Fin de chasse {coin} : {e}")
         tick_state["status"] = "error"

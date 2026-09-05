@@ -311,6 +311,38 @@ class TestMarketSellFailureReposesStop(unittest.TestCase):
         self.assertTrue(any("NON protégée" in msg for msg in alert_calls))
 
 
+class TestUnexpectedErrorAfterCancelReposesStop(unittest.TestCase):
+    """Casse délibérément une erreur inattendue APRÈS l'annulation de la limite (ici : la vente
+    marché de repli réussit, mais Kraken renvoie un champ "cost" non numérique lors du parsing
+    final) -> le stop doit être reposé. Sans ce garde-fou, la position reste ouverte, sans stop
+    vivant, hors du suivi et sans alerte (cf. retour de review sur ce ticket)."""
+
+    def test_malformed_fill_after_successful_market_sell_reposes_stop(self):
+        placed_at = (datetime.now(timezone.utc) - timedelta(seconds=700)).isoformat()
+        pending = _pending(placed_at=placed_at)
+        pos = _position()
+        fake_cli = _FakeCli(**{
+            "query-orders_SELLTX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"a": ["1100.5", "0.01"], "c": ["1100.0", "0.01"]},
+            "order_sell_ETHUSDC_market": {"txid": ["MARKETTX1"]},
+            # La vente marché est bien remplie (status "closed") mais "cost" n'est pas numérique
+            # -> float() lève ValueError lors du calcul du prix de sortie moyen.
+            "query-orders_MARKETTX1": {"status": "closed", "cost": "not-a-number", "vol_exec": "1.0", "fee": "0.4"},
+            "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTXNEW"]},
+        })
+
+        history, saved_pending, mock_save_history, mock_tg = _run_tick([pending], fake_cli, [pos])
+
+        mock_save_history.assert_called_once()
+        self.assertEqual(pos["status"], "open")  # jamais marquée vendue malgré le fill Kraken
+        self.assertEqual(pos["sl_order_txid"], "SLTXNEW")  # stop reposé, pas oublié
+        self.assertFalse(pos.get("protection_failed"))
+        self.assertEqual(saved_pending, [])  # sortie du suivi, plus jamais oubliée en silence
+        alert_calls = [c.args[0] for c in mock_tg.call_args_list if c.args]
+        self.assertTrue(any("reposé" in msg for msg in alert_calls))
+
+
 class TestConcessionBudgetExhaustedTriggersMarketFallback(unittest.TestCase):
     def test_concession_budget_exceeded_cancels_and_falls_back_to_market(self):
         pending = _pending()
