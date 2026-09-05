@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
@@ -12,14 +13,19 @@ from typing import Callable
 from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
 from core.env import KRAKEN_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, POSITION_PROMPT, get_cycle_phases_log_path
 from core.lock import acquire_lock, is_locked, release_lock
+from core.maker_exit_watcher import load_maker_exit_pending_orders
 from core.telegram import send_telegram
 from core.timing import fmt_local
+from core.trade_helpers import _load_config
 from orchestration.stream_parser import is_resource_error, parse_stream_event
 from orchestration.watchdog import WatchdogThread
 from botlogging.cycle_logger import CycleLogger
 from storage.mongo import mongo_repo
 
 CLAUDE_PROCESS_TIMEOUT_S = 3600  # 1h max par cycle — tuer le processus si dépassé
+# Marge au-delà de maker_exit_timeout_seconds avant de forcer le démarrage d'un cycle malgré
+# une chasse de sortie maker toujours en cours (#461).
+_MAKER_EXIT_WAIT_MARGIN_S = 60
 
 
 @dataclass
@@ -80,6 +86,22 @@ def run_position_check_workflow(trigger: str = "auto", fmt_next_fn=None) -> None
     )
 
 
+def _wait_for_maker_exit_chase() -> None:
+    """Retarde le démarrage d'un cycle tant qu'une chasse de sortie maker est en cours (#461).
+
+    Une position sans stop (chasse en cours, cf. maker_exit_watcher.py) prime sur le démarrage
+    d'un nouveau cycle : sans cette attente, le cycle pose le verrou et le watcher ne peut plus
+    s'exécuter pour sortir la position ou lui reposer un stop. Borné à
+    maker_exit_timeout_seconds + marge — au-delà, le cycle démarre quand même plutôt que
+    d'attendre indéfiniment.
+    """
+    cfg = _load_config()
+    poll_s = cfg.get("maker_tick_seconds", 20)
+    deadline = time.monotonic() + cfg.get("maker_exit_timeout_seconds", 600) + _MAKER_EXIT_WAIT_MARGIN_S
+    while load_maker_exit_pending_orders() and time.monotonic() < deadline:
+        time.sleep(poll_s)
+
+
 def _run_workflow_cycle(
     prompt_template: str,
     log_prefix: str,
@@ -100,6 +122,8 @@ def _run_workflow_cycle(
         config: WorkflowConfig avec callbacks et options (watchdog, helpers)
         additional_replacements: Remplacements prompt supplémentaires
     """
+    _wait_for_maker_exit_chase()
+
     if is_locked():
         if config.on_lock_busy:
             config.on_lock_busy()

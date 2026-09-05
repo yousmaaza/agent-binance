@@ -413,6 +413,8 @@ def _handle_amend_order(pending: dict, current_ask: float) -> None:
 
 def _maker_exit_watcher_tick(cfg: dict) -> None:
     if is_locked():
+        # Distinct de "ok" (#461) : le watcher n'a pas pu s'exécuter, pas "rien à faire".
+        _write_watcher_state("locked", None, 0)
         return
 
     pending_orders = load_maker_exit_pending_orders()
@@ -438,7 +440,9 @@ def _maker_exit_watcher_tick(cfg: dict) -> None:
         orders_checked += 1
 
         if is_locked():
+            # Idem (#461) : ordre reporté au tick suivant faute de verrou, pas faute de travail.
             remaining_pending.append(pending)
+            tick_state["status"] = "locked"
             continue
 
         try:

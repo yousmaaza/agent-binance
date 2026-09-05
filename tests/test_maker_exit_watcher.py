@@ -381,6 +381,51 @@ class TestAskMovedTriggersAmend(unittest.TestCase):
         self.assertTrue(fake_cli.calls_with("order", "amend"))
 
 
+class TestLockedTickNeverTouchesWatcherLock(unittest.TestCase):
+    """Piège central (#461) : le verrou n'est ni réentrant ni propriétaire (core/lock.py) —
+    acquire_lock() écrase, release_lock() efface sans vérifier qui détient. Si le watcher
+    passait outre is_locked() et posait/relâchait le verrou, un release_lock() libérerait celui
+    du cycle en cours. Ces tests vérifient que ça ne se produit jamais, et distinguent
+    explicitement (état "locked") le cas où le watcher n'a pas pu s'exécuter du cas où il n'y
+    avait rien à faire."""
+
+    def test_locked_at_top_returns_early_without_touching_lock(self):
+        with patch("core.maker_exit_watcher.is_locked", return_value=True) as mock_locked, \
+             patch("core.maker_exit_watcher.acquire_lock") as mock_acquire, \
+             patch("core.maker_exit_watcher.release_lock") as mock_release, \
+             patch("core.maker_exit_watcher.load_maker_exit_pending_orders") as mock_load, \
+             patch("core.maker_exit_watcher._write_watcher_state") as mock_write_state:
+            maker_exit_watcher._maker_exit_watcher_tick(BASE_CONFIG)
+
+        mock_locked.assert_called_once()
+        mock_load.assert_not_called()  # sort avant même de lire les ordres en attente
+        mock_acquire.assert_not_called()
+        mock_release.assert_not_called()
+        mock_write_state.assert_called_once_with("locked", None, 0)
+
+    def test_mid_loop_lock_defers_order_and_marks_status_locked(self):
+        """Course rare mais réelle (cf. issue #461) : le verrou apparaît APRÈS le check initial,
+        pendant l'itération sur les ordres en attente (un cycle démarre entre-temps). L'ordre
+        doit être reporté au tick suivant sans jamais toucher au verrou."""
+        pending = _pending()
+        with patch("core.maker_exit_watcher.is_locked", side_effect=[False, True]), \
+             patch("core.maker_exit_watcher.acquire_lock") as mock_acquire, \
+             patch("core.maker_exit_watcher.release_lock") as mock_release, \
+             patch("core.maker_exit_watcher.load_maker_exit_pending_orders", return_value=[pending]), \
+             patch("core.maker_exit_watcher.save_maker_exit_pending_orders") as mock_save_pending, \
+             patch("core.maker_exit_watcher.load_trade_history", return_value=[]), \
+             patch("core.maker_exit_watcher.save_trade_history") as mock_save_history, \
+             patch("core.maker_exit_watcher._write_watcher_state") as mock_write_state:
+            maker_exit_watcher._maker_exit_watcher_tick(BASE_CONFIG)
+
+        mock_acquire.assert_not_called()
+        mock_release.assert_not_called()
+        mock_save_history.assert_not_called()
+        saved_pending = mock_save_pending.call_args[0][0]
+        self.assertEqual(saved_pending, [pending])  # reporté, pas perdu
+        mock_write_state.assert_called_once_with("locked", None, 1, 0, 0)
+
+
 class TestSignalSellNeverUsesMakerExitPath(unittest.TestCase):
     """Une vente sur signal retombé n'emprunte jamais ce chemin (#390 — hors périmètre) :
     attempt_maker_exit() n'est appelée que par tp_watcher.py et phase0_profit.py, jamais par le
