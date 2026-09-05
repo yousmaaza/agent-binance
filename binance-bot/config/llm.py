@@ -29,7 +29,9 @@ WEEKLY_ANALYSIS_CLI_FLAGS = [
     "--model", "claude-sonnet-4-6",
 ]
 
-WEEKLY_ANALYSIS_TIMEOUT_S = 120
+# 600 s (#459) : les cycles de trading, de charge comparable, ont une durée médiane de 403 s.
+# Deux minutes étaient en dessous de ce que l'opération demande.
+WEEKLY_ANALYSIS_TIMEOUT_S = 600
 
 
 def get_configured_model() -> str:

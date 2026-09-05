@@ -347,5 +347,63 @@ class TestRunWeeklyAnalysis(_WeeklyAnalysisTestCase):
                 self.fail(f"run_weekly_analysis() a laissé fuir une exception : {e}")
 
 
+
+class TestNumberExtractionScope(unittest.TestCase):
+    """#458 — le garde-fou rejetait les dates et bloquait 100 % des générations.
+
+    Le contrôle ne porte plus que sur les affirmations financières : un nombre à décimale, ou
+    un entier suivi d'une unité. La prose passe."""
+
+    def test_dates_are_not_treated_as_financial_claims(self):
+        """C'est le cas qui a fait échouer la génération du 31/08."""
+        self.assertEqual(wa._extract_numbers("le 31 août, puis le 07/09"), [])
+
+    def test_durations_are_not_treated_as_financial_claims(self):
+        self.assertEqual(wa._extract_numbers("sur 7 jours et les 30 derniers jours"), [])
+
+    def test_percentages_are_still_extracted(self):
+        self.assertEqual(wa._extract_numbers("64% des trades"), [64.0])
+        self.assertEqual(wa._extract_numbers("64 % des trades"), [64.0])
+
+    def test_amounts_with_a_unit_are_still_extracted(self):
+        self.assertEqual(wa._extract_numbers("a gagné 812 USDC"), [812.0])
+        self.assertEqual(wa._extract_numbers("perdu 45 $"), [45.0])
+
+    def test_any_decimal_is_extracted_even_without_a_unit(self):
+        """Un décimal nu est presque toujours un chiffre financier."""
+        self.assertEqual(wa._extract_numbers("écart-type de 3.81"), [3.81])
+        self.assertEqual(wa._extract_numbers("net de -11.87 USDC"), [-11.87])
+
+    def test_bare_counts_are_a_documented_gap_not_an_oversight(self):
+        """LIMITE ASSUMÉE : un entier nu sous 31 est indistinguable d'un quantième. Ce test
+        fige le compromis pour qu'il soit revu sciemment, jamais découvert par surprise."""
+        self.assertEqual(wa._extract_numbers("27 trades clôturés"), [])
+
+
+class TestGuardStillRejectsFabricationAfterLoosening(unittest.TestCase):
+    """#458 — assouplir ne doit pas rouvrir la faille démontrée en #453."""
+
+    def _payload(self):
+        return _realistic_payload()
+
+    def test_fabricated_win_rate_is_still_rejected(self):
+        text = ("La performance s'améliore : 64% des trades sont gagnants "
+                "contre 29% le mois dernier.")
+        self.assertFalse(wa._verify_numbers(text, self._payload()))
+
+    def test_free_percentages_are_still_rejected(self):
+        text = "Le taux atteint 73% ce mois-ci, en hausse de 41%, et le maker couvre 88%."
+        self.assertFalse(wa._verify_numbers(text, self._payload()))
+
+    def test_invented_amount_is_still_rejected(self):
+        self.assertFalse(wa._verify_numbers("a gagné 812.44 USDC", self._payload()))
+
+    def test_a_text_citing_a_date_now_passes(self):
+        """Le scénario exact du 31/08 : une date dans le texte ne doit plus tout bloquer."""
+        text = "Cette semaine du 31 août au 7 septembre, sur 7 jours, rien de notable."
+        self.assertTrue(wa._verify_numbers(text, self._payload()))
+
+
+
 if __name__ == "__main__":
     unittest.main()
