@@ -28,7 +28,15 @@ _HISTORY_PATH = os.path.join(PROJECT_DIR, "state", "trade_history.json")
 MIN_TRADES_7D = 10
 WIDE_WINDOW_DAYS = 30
 
-_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+# Ne sont vérifiés que les nombres qui constituent une AFFIRMATION FINANCIÈRE (#458) : ceux
+# qui portent une décimale, ou qui sont suivis d'un marqueur d'unité. Un entier nu — une date
+# (« le 31 août »), une durée (« sur 7 jours »), un ordinal — relève de la prose et n'affirme
+# rien sur l'argent. L'ancienne regex les capturait tous, ce qui faisait échouer toute
+# génération citant une date : aucune analyse n'a jamais été publiée à cause de cela.
+_NUMBER_RE = re.compile(
+    r"-?\d+\.\d+"                                  # tout décimal : 3.81, -11.87
+    r"|-?\d+(?=\s*(?:%|USDC|USD|\$|€|EUR))"          # entier suivi d'une unité : 64 %, 45 USDC
+)
 _MONEY_TOLERANCE = 0.015  # arrondi flottant à 2 décimales, pas plus
 _PCT_TOLERANCE = 1.0      # un pourcentage cité en prose est généralement arrondi à l'entier
 
@@ -222,6 +230,16 @@ def _call_claude(prompt: str) -> tuple[str | None, float | None]:
 # ---------------------------------------------------------------------------
 
 def _extract_numbers(text: str) -> list[float]:
+    """Les nombres du texte qui affirment quelque chose sur l'argent ou les taux (#458).
+
+    Assouplir ici ne rouvre pas la faille de #453 : ce qui y était démontré — un taux de
+    réussite fabriqué, des pourcentages libres, un montant inventé — porte toujours une unité
+    ou une décimale, et reste donc vérifié.
+
+    LIMITE ASSUMÉE : un effectif écrit sans unité (« 27 trades clôturés ») n'est plus vérifié.
+    Un entier nu sous 31 est indistinguable d'un quantième en prose ; il faut choisir entre
+    laisser passer les comptes ou rejeter toute date, et rejeter les dates bloquait 100 % des
+    générations. Les effectifs restent des faits de moindre portée qu'un montant ou un taux."""
     return [float(m) for m in _NUMBER_RE.findall(text)]
 
 
