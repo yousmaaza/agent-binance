@@ -244,7 +244,10 @@ def _finalize_position(history: list, pending: dict, exit_price: float, exit_fee
     return True
 
 
-def _repose_stop_and_alert(pending: dict, history: list, qty: float, reason: str) -> None:
+def _repose_stop_and_alert(pending: dict, history: list, qty: float, reason: str, context: str = "sortie maker") -> None:
+    """context nomme, dans les notifications, le mécanisme appelant (par défaut la sortie maker,
+    seul appelant jusqu'à #472) — un autre appelant (ex. vente sur signal) passe son propre libellé
+    pour ne pas induire l'utilisateur en erreur sur l'origine du problème."""
     coin = pending["coin"]
     pair = pending["pair"]
     stop_price = pending.get("stop_price")
@@ -252,7 +255,7 @@ def _repose_stop_and_alert(pending: dict, history: list, qty: float, reason: str
 
     if not stop_price or pos is None:
         send_telegram(
-            f"🚨 {coin} : position NON protégée après échec sortie maker ({reason}) — "
+            f"🚨 {coin} : position NON protégée après échec {context} ({reason}) — "
             "stop introuvable, intervention manuelle requise"
         )
         if pos is not None:
@@ -263,14 +266,14 @@ def _repose_stop_and_alert(pending: dict, history: list, qty: float, reason: str
     if protection_failed:
         pos["protection_failed"] = True
         send_telegram(
-            f"🚨 {coin} : position NON protégée après échec sortie maker ({reason}) — "
+            f"🚨 {coin} : position NON protégée après échec {context} ({reason}) — "
             f"repose du stop a aussi échoué !{err_msg}"
         )
     else:
         pos["sl_order_txid"] = new_sl_txid
         pos["stop_price"] = stop_price_rounded
         pos["protection_failed"] = False
-        send_telegram(f"🛡️ {coin} : sortie maker interrompue ({reason}) — stop reposé à {stop_price_rounded:.4g}")
+        send_telegram(f"🛡️ {coin} : {context} interrompue ({reason}) — stop reposé à {stop_price_rounded:.4g}")
 
 
 def _handle_filled_order(pending: dict, order_status: dict, history: list) -> tuple[bool, int, int]:
