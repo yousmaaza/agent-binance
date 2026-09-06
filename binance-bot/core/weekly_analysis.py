@@ -138,6 +138,19 @@ def _previous_week_summary(week_key: str) -> dict | None:
     return {"window_days": snapshot.get("window_days"), "aggregate": snapshot.get("aggregate")}
 
 
+def _net_by(trades: list, key_fn) -> dict:
+    """Net et effectif regroupés par une clé — les deux ensemble : un total sans son effectif
+    laisse croire à une tendance là où il n'y a parfois qu'un seul trade."""
+    grouped: dict = {}
+    for trade in trades:
+        bucket = grouped.setdefault(key_fn(trade), {"net_usdc": 0.0, "count": 0})
+        bucket["net_usdc"] += trade.get("pnl_usdc") or 0
+        bucket["count"] += 1
+    for bucket in grouped.values():
+        bucket["net_usdc"] = round(bucket["net_usdc"], 2)
+    return grouped
+
+
 def _build_payload(window: dict, cycles: list, now: datetime, week_key: str) -> dict:
     trades = window["trades"]
     return {
@@ -156,6 +169,14 @@ def _build_payload(window: dict, cycles: list, now: datetime, week_key: str) -> 
             for t in trades
         ],
         "aggregate": _aggregate(trades),
+        # Sous-totaux par motif de sortie et par crypto (#465). Une analyse cite naturellement
+        # « les stops ont coûté X » ou « TRUMP pèse Y » : sans ces valeurs dans la charge utile,
+        # le modèle les recalcule depuis la liste des trades et le contrôle numérique les rejette
+        # comme non rattachables. C'est ce qui a bloqué la génération du 05/09 sur -33.04, le net
+        # réel des sorties au stop. Les fournir sert deux fois : le modèle n'a plus à les dériver,
+        # et le garde-fou les reconnaît.
+        "by_close_reason": _net_by(trades, lambda t: t.get("close_reason") or "non renseignée"),
+        "by_coin": _net_by(trades, lambda t: t.get("coin") or "?"),
         "significance": _significance(trades),
         "cycles": _cycles_summary(cycles),
         "previous_week": _previous_week_summary(week_key),
@@ -183,8 +204,11 @@ def _build_prompt(payload: dict) -> str:
         "- `significance` donne le verdict statistique sur la moyenne par trade : si `conclusive` "
         "est faux, dis explicitement qu'aucune conclusion sur la stratégie n'est possible à ce "
         "stade (échantillon trop petit), sans fabriquer de récit de performance.\n"
-        "- Chaque nombre que tu écris doit être un chiffre transmis ci-dessus, ou s'en déduire par "
-        "une opération simple (somme, pourcentage, différence). N'invente aucun nombre.\n"
+        "- N'écris QUE des nombres présents tels quels dans le JSON ci-dessus. Ne calcule rien "
+        "toi-même : les sous-totaux utiles y figurent déjà (`aggregate` pour la période, "
+        "`by_close_reason` par motif de sortie, `by_coin` par crypto, `significance` pour la "
+        "statistique). Un nombre que tu calcules, même exactement, fera échouer la publication — "
+        "un contrôle automatique rejette tout chiffre qu'il ne retrouve pas dans ces données.\n"
         "- Écris les nombres avec un point comme séparateur décimal (ex: 12.50), jamais de "
         "virgule : un contrôle automatique doit pouvoir les relire.\n"
         "- Réponds uniquement par le texte de la note (3 à 6 phrases), sans titre ni markdown."

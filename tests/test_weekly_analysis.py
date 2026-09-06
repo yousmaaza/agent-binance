@@ -405,5 +405,48 @@ class TestGuardStillRejectsFabricationAfterLoosening(unittest.TestCase):
 
 
 
+
+class TestPayloadExposesSubtotals(unittest.TestCase):
+    """#465 — le modèle cite naturellement « les stops ont coûté X ». Sans ces sous-totaux dans
+    la charge utile, il les recalcule et le contrôle numérique les rejette : deux générations
+    consécutives ont échoué ainsi, sur -33.04 puis sur un chiffre non rattachable."""
+
+    TRADES = [
+        {"coin": "SOL", "pnl_usdc": 5.0, "fees_usdc": 1.0, "close_reason": "tp_watcher"},
+        {"coin": "SOL", "pnl_usdc": -2.0, "fees_usdc": 1.0, "close_reason": "sl_hit"},
+        {"coin": "ETH", "pnl_usdc": -3.0, "fees_usdc": 1.0, "close_reason": "sl_hit"},
+    ]
+
+    def test_net_grouped_by_close_reason(self):
+        grouped = wa._net_by(self.TRADES, lambda t: t.get("close_reason"))
+        self.assertAlmostEqual(grouped["sl_hit"]["net_usdc"], -5.0)
+        self.assertEqual(grouped["sl_hit"]["count"], 2)
+
+    def test_net_grouped_by_coin(self):
+        grouped = wa._net_by(self.TRADES, lambda t: t.get("coin"))
+        self.assertAlmostEqual(grouped["SOL"]["net_usdc"], 3.0)
+        self.assertEqual(grouped["ETH"]["count"], 1)
+
+    def test_every_subtotal_carries_its_effectif(self):
+        """Un total sans son effectif laisse croire à une tendance là où il n'y a qu'un trade."""
+        for bucket in wa._net_by(self.TRADES, lambda t: t.get("coin")).values():
+            self.assertIn("count", bucket)
+            self.assertGreater(bucket["count"], 0)
+
+    def test_missing_close_reason_is_named_not_dropped(self):
+        grouped = wa._net_by([{"coin": "X", "pnl_usdc": 1.0}], lambda t: t.get("close_reason") or "non renseignée")
+        self.assertIn("non renseignée", grouped)
+
+    def test_subtotals_are_reachable_by_the_numeric_guard(self):
+        """Le lien entre les deux : un sous-total cité dans le texte doit passer le contrôle."""
+        payload = _realistic_payload()
+        payload["by_close_reason"] = wa._net_by(self.TRADES, lambda t: t.get("close_reason"))
+        self.assertTrue(wa._verify_numbers("Les stops ont coûté -5.00 USDC.", payload))
+        # -777.77 est hors de portée des agrégats : -9.99 avait été choisi d'abord et se
+        # trouvait dérivable par combinaison, ce qui rendait l'assertion vide.
+        self.assertFalse(wa._verify_numbers("Les stops ont coûté -777.77 USDC.", payload))
+
+
+
 if __name__ == "__main__":
     unittest.main()
