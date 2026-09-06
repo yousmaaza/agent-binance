@@ -219,5 +219,42 @@ class TestOcoRetryExhaustedFallback(unittest.TestCase):
         self.assertEqual(pos["oco_retry_count"], 0)
 
 
+class TestOcoRetryCycleId(unittest.TestCase):
+    """#470 : les deux fermetures scriptées de phase0_oco_retry.py portent le cycle_id du cycle
+    qui les a exécutées."""
+
+    def test_force_close_above_tp_carries_cycle_id(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "protection_failed": True,
+             "quantity": 1, "entry_price": 1000, "tp_price": 1200, "stop_price": 900,
+             "oco_retry_count": 0},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1300.0", "0.01"]}},
+            "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
+            "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "1300.0", "vol_exec": "1.0"}},
+        }
+        _output, _, _, saved_history = _run_phase0_oco_retry(history_data, kraken_scenario=kraken_scenario)
+
+        self.assertIsNotNone(saved_history[0]["cycle_id"])
+
+    def test_exhausted_fallback_carries_cycle_id(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "protection_failed": True,
+             "quantity": 1, "entry_price": 1000, "tp_price": 1200, "stop_price": 900,
+             "oco_retry_count": 3},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1050.0", "0.01"]}},
+            "order_sell_ETHUSDC": {"txid": ["SELLTX2"]},
+            "query-orders_SELLTX2": {"SELLTX2": {"status": "closed", "cost": "1050.0", "vol_exec": "1.0"}},
+        }
+        _output, _, _, saved_history = _run_phase0_oco_retry(
+            history_data, config={"max_oco_retry": 3}, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertIsNotNone(saved_history[0]["cycle_id"])
+
+
 if __name__ == "__main__":
     unittest.main()

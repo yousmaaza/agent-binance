@@ -105,7 +105,7 @@ def _tp_watcher_tick():
         acquire_lock()
         try:
             if maker_exit_enabled:
-                new_pending = attempt_maker_exit(pos, "tp_watcher", cfg)
+                new_pending = attempt_maker_exit(pos, "tp_watcher", cfg, cycle_id=None)
                 changed = True
                 if new_pending:
                     exit_pending.append(new_pending)
@@ -157,6 +157,7 @@ def _tp_watcher_tick():
                 "pnl_gross_pct": net["pnl_gross_pct"],
                 "pnl_pct": pnl_pct,
                 "close_reason": "tp_watcher",
+                "cycle_id": None,
                 "exit_date": datetime.now(timezone.utc).isoformat() + "Z",
             })
             changed = True

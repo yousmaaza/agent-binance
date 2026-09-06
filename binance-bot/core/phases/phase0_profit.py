@@ -64,7 +64,7 @@ for pos in history:
 
     if pnl_pct_net_est >= min_profit:
         if maker_exit_enabled:
-            new_pending = attempt_maker_exit(pos, "profit_target_phase0", cfg, notify=tg)
+            new_pending = attempt_maker_exit(pos, "profit_target_phase0", cfg, notify=tg, cycle_id=CYCLE_ID)
             if new_pending:
                 exit_pending.append(new_pending)
                 save_maker_exit_pending_orders(exit_pending)
@@ -109,6 +109,7 @@ for pos in history:
                     "pnl_pct": actual_pnl_pct,
                     "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "close_reason": "profit_target_phase0",
+                    "cycle_id": CYCLE_ID,
                 })
                 profit_summary.append(f"✅ {coin} : {actual_pnl_pct:+.1f}% ({actual_pnl_usdc:+.2f} USDC)")
                 tg(f"✅ Phase 0 — {coin} vendu (P&L cible)\n{actual_pnl_pct:+.1f}% | {actual_pnl_usdc:+.2f} USDC")

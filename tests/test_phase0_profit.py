@@ -259,5 +259,46 @@ class TestProfitTargetMakerExitHandoff(unittest.TestCase):
         mock_save.assert_not_called()
 
 
+class TestProfitTargetCycleId(unittest.TestCase):
+    """#470 : une position fermée en Phase 0 (clôture directe, sans maker exit) porte le
+    cycle_id du cycle qui l'a fermée."""
+
+    def test_direct_close_carries_cycle_id(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": "1000",
+             "quantity": "1"},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
+            "order_sell_ETHUSDC": {"txid": ["SELLTX1"]},
+            "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0"}},
+        }
+        output, _mock_tg, mock_save, _mock_save_pending = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0, "maker_exit_enabled": False},
+            kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        pos = mock_save.call_args[0][0][0]
+        self.assertIsNotNone(pos["cycle_id"])
+
+    def test_maker_exit_handoff_transports_cycle_id_into_pending(self):
+        history_data = [
+            {"trade_id": "T1", "coin": "ETH", "status": "open", "entry_price": "1000",
+             "quantity": "1", "sl_order_txid": "SLTX0", "stop_price": 950.0},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"a": ["1100.5", "0.01"], "c": ["1100.0", "0.01"]}},
+            "order_sell_ETHUSDC_limit": {"txid": ["SELLTX1"]},
+        }
+        _output, _mock_tg, _mock_save, mock_save_pending = _run_phase0_profit(
+            history_data, config={"min_profit_pct_take": 5.0, "maker_exit_enabled": True},
+            kraken_scenario=kraken_scenario,
+        )
+
+        saved_pending = mock_save_pending.call_args[0][0]
+        self.assertIsNotNone(saved_pending[0]["cycle_id"])
+
+
 if __name__ == "__main__":
     unittest.main()

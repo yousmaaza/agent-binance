@@ -4,8 +4,8 @@
 {% set g = results.financials.global or {} %}
 {% set cs = cycles.cadence_summary %}
 
-<input type="radio" name="tab" id="t1" class="tabsel"{{ " checked" if active_tab != "ventes" else "" }}>
-<input type="radio" name="tab" id="t2" class="tabsel">
+<input type="radio" name="tab" id="t1" class="tabsel"{{ " checked" if active_tab not in ("ventes", "cycles") else "" }}>
+<input type="radio" name="tab" id="t2" class="tabsel"{{ " checked" if active_tab == "cycles" else "" }}>
 <input type="radio" name="tab" id="t3" class="tabsel">
 <input type="radio" name="tab" id="t4" class="tabsel"{{ " checked" if active_tab == "ventes" else "" }}>
 
@@ -315,7 +315,7 @@
     {% if cycles.error %}<p class="warn">{{ cycles.error }}</p>{% endif %}
     <div class="cycs">
       {% for c in cycles.journal %}
-      <article class="cyc">
+      <article class="cyc" id="cyc-{{ c.cycle_id }}">
         <div class="cyc-top">
           <time>{{ c.local_time }}</time>
           <span class="topsc {{ 'hit' if (c.top_score or 0) >= cs.threshold }}">{{ c.top_score or 0 }}<i>/10</i></span>
@@ -488,7 +488,7 @@
           <th>Coin</th><th>Entrée</th><th>Sortie</th><th class="num">Durée</th>
           <th class="num">Investi</th><th class="num">Retiré</th>
           <th class="num">Brut</th><th class="num">Frais</th><th class="num">Net</th>
-          <th>Motif</th><th>Déclencheur</th>
+          <th>Motif</th><th>Déclencheur</th><th>Cycle</th>
         </tr></thead>
         <tbody>
           <tr class="totaux">
@@ -500,7 +500,7 @@
             <td class="num {{ 'gain' if t.gross >= 0 else 'loss' }}">{{ "%+.2f"|format(t.gross) }}</td>
             <td class="num wait">−{{ "%.2f"|format(t.fees) }}</td>
             <td class="num {{ 'gain' if t.net >= 0 else 'loss' }}">{{ "%+.2f"|format(t.net) }}</td>
-            <td colspan="2"></td>
+            <td colspan="3"></td>
           </tr>
         {% for r in s.rows %}
           <tr{% if r.suspect %} class="suspect"{% endif %}>
@@ -515,6 +515,7 @@
             <td class="num {{ 'gain' if r.is_win else 'loss' }}">{{ "%+.2f"|format(r.pnl_usdc or 0) }}</td>
             <td class="mut">{{ r.reason_label }}{% if r.suspect %}<span class="flag bad" title="{{ r.suspect }}">douteux</span>{% endif %}</td>
             <td class="mut"><span class="trig trig-{{ r.trigger }}" title="{{ r.trigger_detail }}">{{ r.trigger }}</span>{% if r.anomaly %}<span class="flag bad" title="{{ r.anomaly }}">écart</span>{% endif %}</td>
+            <td class="mut">{% if "cycle_id" not in r %}<span title="vente antérieure à l'enregistrement du cycle">—</span>{% elif r.cycle_id is none %}hors cycle{% elif r.cycle_linkable %}<a href="{{ url_for('dashboard_home') }}?tab=cycles#cyc-{{ r.cycle_id }}">{{ r.cycle_id }}</a>{% else %}{{ r.cycle_id }}{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>

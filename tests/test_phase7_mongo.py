@@ -416,16 +416,30 @@ class TestClosedTradesProjection(unittest.TestCase):
             "entry_price": 100.0, "exit_price": 104.0, "tp_price": 104.2, "stop_price": 99.0,
             "quantity": 1.0, "pnl_gross_usdc": 4.0, "fees_usdc": 1.0, "pnl_usdc": 3.0,
             "close_reason": "tp_watcher", "maker_or_taker": "maker", "fees_estimated": True,
-            "entry_order_id": "SECRET", "sl_order_txid": "SECRET",
+            "entry_order_id": "SECRET", "sl_order_txid": "SECRET", "cycle_id": "20260828_100500",
         }])
         row = rows[0]
         for field in ("coin", "entry_date", "exit_date", "hold_hours", "entry_price", "exit_price",
                       "tp_price", "stop_price", "quantity", "pnl_gross_usdc", "fees_usdc",
-                      "pnl_usdc", "close_reason", "maker_or_taker", "fees_estimated"):
+                      "pnl_usdc", "close_reason", "maker_or_taker", "fees_estimated", "cycle_id"):
             self.assertIn(field, row, field)
         # projection etroite : pas d'identifiants d'ordres
         self.assertNotIn("entry_order_id", row)
         self.assertNotIn("sl_order_txid", row)
+
+    def test_cycle_id_present_is_forwarded(self):
+        """#470 : une vente fermée pendant un cycle porte son cycle_id jusqu'au dashboard."""
+        ns = self._module()
+        rows = ns["_closed_trades"]([{"coin": "SOL", "cycle_id": "20260828_100500"}])
+        self.assertEqual(rows[0]["cycle_id"], "20260828_100500")
+
+    def test_cycle_id_absent_becomes_explicit_none(self):
+        """#470 : une vente sans champ cycle_id (hors cycle, ou antérieure à la migration) ne
+        doit jamais faire planter la projection ni être confondue avec un identifiant réel."""
+        ns = self._module()
+        rows = ns["_closed_trades"]([{"coin": "SOL"}])
+        self.assertIn("cycle_id", rows[0])
+        self.assertIsNone(rows[0]["cycle_id"])
 
     def test_hold_hours_computed_from_the_two_dates(self):
         ns = self._module()
