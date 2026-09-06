@@ -100,15 +100,21 @@ for sc in sell_candidates:
 
     try:
         pairs_raw = binance("pairs", "--pair", pair, "-o", "json")
-        lot_dec = int(json.loads(pairs_raw).get(pair, {}).get("lot_decimals", 8))
+        pair_data = json.loads(pairs_raw).get(pair, {})
+        lot_dec = int(pair_data.get("lot_decimals", 8))
+        ordermin = float(pair_data.get("ordermin", 0) or 0)
     except Exception:
         lot_dec = 8
+        ordermin = 0.0
     step = 10 ** (-lot_dec)
     sell_qty = round(math.floor(min(trade_qty, coin_balance) / step) * step, lot_dec)
+    # Un reliquat plus petit que le pas de la paire (ou son ordermin) n'est de toute façon pas
+    # vendable ni protégeable par un nouvel ordre -> pas économiquement significatif (#472 review).
+    untradeable_threshold = max(step, ordermin)
 
     if sell_qty <= 0:
         tg(f"⚠️ {coin} : solde disponible nul pour la vente sur signal — position reprotégée")
-        _repose_stop_and_alert(pending, history, trade_qty, reason="solde disponible nul avant vente sur signal")
+        _repose_stop_and_alert(pending, history, trade_qty, reason="solde disponible nul avant vente sur signal", context="vente sur signal")
         history_changed = True
         continue
 
@@ -121,7 +127,7 @@ for sc in sell_candidates:
             raise RuntimeError("pas de txid")
     except Exception as e:
         tg(f"⚠️ Échec SELL MARKET signal {coin}: {e}")
-        _repose_stop_and_alert(pending, history, sell_qty, reason=f"vente au marché échouée : {e}")
+        _repose_stop_and_alert(pending, history, sell_qty, reason=f"vente au marché échouée : {e}", context="vente sur signal")
         history_changed = True
         continue
 
@@ -148,26 +154,32 @@ for sc in sell_candidates:
         # échec de vente. Si la vente a réellement eu lieu, le repose échouera (solde insuffisant)
         # et rendra le problème visible plutôt que de l'enterrer sous un PnL inventé.
         tg(f"⚠️ {coin} : fill introuvable après 3 tentatives (vente sur signal) — position reprotégée")
-        _repose_stop_and_alert(pending, history, sell_qty, reason="fill introuvable après 3 tentatives (signal_sell)")
+        _repose_stop_and_alert(pending, history, sell_qty, reason="fill introuvable après 3 tentatives (signal_sell)", context="vente sur signal")
         history_changed = True
         continue
 
-    remaining_qty = sell_qty - vol_exec
-    if remaining_qty > _QTY_EPSILON:
+    # Reliquat mesuré contre la position (trade_qty), pas contre l'ordre (sell_qty) : sell_qty
+    # est déjà plafonné au solde réel (Step 2), donc un reliquat mesuré contre sell_qty masque la
+    # partie de la position que ce plafonnement a exclue de la vente (#472 review).
+    remaining_qty = trade_qty - vol_exec
+    if remaining_qty > untradeable_threshold:
         # Remplissage partiel : le reliquat reste une position suivie et protégée, pas de trade
         # clôturé sur une quantité qui n'a pas été réellement vendue (#472).
-        tg(f"⚠️ {coin} : remplissage partiel signal_sell ({vol_exec}/{sell_qty}) — reliquat reprotégé")
-        _repose_stop_and_alert(pending, history, remaining_qty, reason=f"remplissage partiel signal_sell (vol_exec={vol_exec})")
+        tg(f"⚠️ {coin} : remplissage partiel signal_sell ({vol_exec}/{trade_qty}) — reliquat reprotégé")
+        _repose_stop_and_alert(pending, history, remaining_qty, reason=f"remplissage partiel signal_sell (vol_exec={vol_exec})", context="vente sur signal")
         history_changed = True
         continue
 
-    # Step 5 : PnL net, close_reason, cycle_id
+    # Step 5 : PnL net sur la quantité RÉELLEMENT vendue (vol_exec), jamais sur trade_qty — un
+    # reliquat inférieur à untradeable_threshold n'est pas vendable, il est absorbé silencieusement
+    # (#472 review) plutôt que de gonfler artificiellement le PnL enregistré.
     exit_price = cost / vol_exec
     exit_fee_usdc = fee
-    net = compute_net_pnl(entry_price, exit_price, trade_qty, entry_fee_usdc, exit_fee_usdc)
+    net = compute_net_pnl(entry_price, exit_price, vol_exec, entry_fee_usdc, exit_fee_usdc)
 
     open_trade.update({
         "status": "closed",
+        "quantity": vol_exec,
         "exit_price": exit_price,
         "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "entry_fee_usdc": entry_fee_usdc,

@@ -235,5 +235,84 @@ class TestSignalSellPartialFillKeepsRemainderTracked(unittest.TestCase):
         mock_repose_tg.assert_called()
 
 
+class TestSignalSellBalanceShortfallIsMeasuredAgainstPosition(unittest.TestCase):
+    """Review PR #475 : le solde réel plafonne la taille de l'ORDRE (sell_qty), pas la taille de
+    la POSITION (trade_qty) — un ordre intégralement rempli à sell_qty peut donc ne représenter
+    qu'une fraction de la position réellement détenue. Le reliquat doit être mesuré contre
+    trade_qty, sinon la partie non vendue de la position disparaît silencieusement et le PnL est
+    calculé sur une quantité jamais vendue.
+
+    Position de 100 XRP entrée à 0.50, solde réel 60, ordre de 60 intégralement rempli à 0.60 :
+    avec le mauvais dénominateur (sell_qty), remaining_qty vaut 0 -> le trade se clôturait pour
+    100 XRP avec un PnL gonflé de 67% pendant que 40 XRP restaient sans stop. Avec le bon
+    dénominateur (trade_qty), remaining_qty vaut 40 -> reconnu comme un remplissage partiel
+    significatif, la position n'est pas clôturée et le reliquat de 40 XRP est reprotégé."""
+
+    def test_full_order_fill_below_real_balance_is_treated_as_significant_partial(self):
+        history_data = [
+            {"trade_id": "T7", "coin": "XRP", "status": "open", "entry_price": 0.50,
+             "quantity": 100.0, "entry_fee_usdc": 0.05, "stop_price": 0.45,
+             "sl_order_txid": "SLTX0"},
+        ]
+        kraken_scenario = {
+            "balance": {"XRP": "60.0"},
+            "pairs": {"XRPUSDC": {"lot_decimals": 1, "ordermin": "1"}},
+            "order_sell_XRPUSDC_market": {"txid": ["SELLTX8"]},
+            # Ordre de 60 (plafonné par le solde réel) intégralement rempli.
+            "query-orders_SELLTX8": {"SELLTX8": {"status": "closed", "cost": "36.0", "vol_exec": "60.0", "fee": "0.06"}},
+            "order_sell_XRPUSDC_stop-loss": {"txid": ["NEWSLTX8"]},
+        }
+        output, mock_tg, mock_save, saved_history, mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "XRP", "score": 2}], history_data, kraken_scenario=kraken_scenario,
+        )
+
+        # Ne se clôture pas : 40 XRP de la position n'ont jamais été vendus.
+        self.assertEqual(output["closed"], 0)
+        pos = saved_history[0]
+        self.assertEqual(pos["status"], "open")
+        self.assertIsNone(pos.get("pnl_usdc"))
+        self.assertIsNone(pos.get("exit_price"))
+        # Le reliquat (100 - 60 = 40 XRP) est reprotégé, pas laissé nu ni oublié.
+        self.assertEqual(pos["sl_order_txid"], "NEWSLTX8")
+        self.assertFalse(pos["protection_failed"])
+        mock_tg.assert_called()
+        mock_repose_tg.assert_called()
+
+
+class TestSignalSellPnlUsesActuallySoldQuantity(unittest.TestCase):
+    """Review PR #475 : quand la position se clôture réellement, le PnL et la quantité enregistrée
+    portent sur vol_exec (ce qui a été réellement vendu), jamais sur trade_qty — la troncature au
+    pas de la paire (Step 2) rend systématiquement sell_qty (et donc vol_exec) un peu inférieur à
+    trade_qty ; ce reliquat est en-dessous du pas de la paire (non vendable, non protégeable), donc
+    absorbé silencieusement, mais le PnL enregistré ne doit jamais gonfler la quantité vendue."""
+
+    def test_closed_trade_records_pnl_and_quantity_on_vol_exec_not_trade_qty(self):
+        history_data = [
+            {"trade_id": "T8", "coin": "ADA", "status": "open", "entry_price": 1.0,
+             "quantity": 10.004, "entry_fee_usdc": 0.0, "stop_price": 0.9,
+             "sl_order_txid": "SLTX0"},
+        ]
+        kraken_scenario = {
+            "balance": {"ADA": "10.004"},
+            # lot_decimals=2 -> pas de 0.01 : sell_qty tronqué à 10.00 (perd le résidu 0.004,
+            # inférieur au pas -> non significatif).
+            "pairs": {"ADAUSDC": {"lot_decimals": 2}},
+            "order_sell_ADAUSDC_market": {"txid": ["SELLTX9"]},
+            "query-orders_SELLTX9": {"SELLTX9": {"status": "closed", "cost": "10.5", "vol_exec": "10.0", "fee": "0.0"}},
+        }
+        output, mock_tg, mock_save, saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "ADA", "score": 3}], history_data, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        pos = saved_history[0]
+        self.assertEqual(pos["status"], "closed")
+        # quantity enregistrée = vol_exec réellement vendu (10.0), pas trade_qty (10.004).
+        self.assertEqual(pos["quantity"], 10.0)
+        # pnl_gross = (1.05 - 1.0) * 10.0 = 0.5 (et non (1.05-1.0)*10.004 = 0.5002).
+        self.assertAlmostEqual(pos["pnl_gross_usdc"], 0.5)
+        mock_tg.assert_called()
+
+
 if __name__ == "__main__":
     unittest.main()
