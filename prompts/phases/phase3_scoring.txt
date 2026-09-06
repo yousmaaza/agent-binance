@@ -46,6 +46,8 @@ Lis /tmp/cycle___CYCLE_ID___phase3_output.json pour récupérer :
 - buy_candidates, sell_candidates, skip_coins_detail, scores_detail
 - top_score, N_buy, skipped, skip_type, skip_detail
 
+Si tu clôtures un trade issu de sell_candidates : écris dans state/trade_history.json close_reason=f"signal_sell_score{score}" et cycle_id="__CYCLE_ID__".
+
 Mets à jour les variables de synthèse :
 - top_score, skipped, skip_type, skip_detail
 

@@ -61,6 +61,7 @@ class TestTpWatcherFeeCapture(unittest.TestCase):
         self.assertAlmostEqual(pos["entry_fee_usdc"], 0.5)
         self.assertAlmostEqual(pos["exit_fee_usdc"], 0.7)
         self.assertEqual(pos["close_reason"], "tp_watcher")
+        self.assertIsNone(pos["cycle_id"])
 
 
 class TestTpWatcherMakerExitHandoff(unittest.TestCase):
@@ -95,6 +96,7 @@ class TestTpWatcherMakerExitHandoff(unittest.TestCase):
         mock_attempt.assert_called_once()
         self.assertEqual(mock_attempt.call_args[0][0], pos)
         self.assertEqual(mock_attempt.call_args[0][1], "tp_watcher")
+        self.assertIsNone(mock_attempt.call_args.kwargs["cycle_id"])
         mock_save_pending.assert_called_once_with([new_pending])
         # La position reste "open" côté trade_history — c'est maker_exit_watcher.py qui la
         # clôturera au fill/repli marché, pas tp_watcher.py.

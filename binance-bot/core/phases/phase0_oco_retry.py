@@ -88,6 +88,7 @@ try:
                             "pnl_usdc": pnl_usdc, "pnl_gross_pct": net["pnl_gross_pct"], "pnl_pct": pnl_pct,
                             "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                             "protection_failed": False, "close_reason": "market_above_tp",
+                            "cycle_id": CYCLE_ID,
                         })
                 log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "force_close_success", {
                     "exit_price": fill_exit,
@@ -133,7 +134,7 @@ try:
                                 "pnl_usdc": pnl_usdc, "pnl_gross_pct": net["pnl_gross_pct"], "pnl_pct": pnl_pct,
                                 "exit_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                                 "protection_failed": False, "close_reason": "protection_exhausted",
-                                "oco_retry_count": 0,
+                                "oco_retry_count": 0, "cycle_id": CYCLE_ID,
                             })
                     log_phase0_event(CYCLE_ID, "phase0_oco_retry", coin, "exhausted_fallback_success", {
                         "exit_price": fill_exit,

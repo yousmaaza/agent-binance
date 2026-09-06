@@ -167,6 +167,64 @@ class TestFullFillClosesPositionAsMaker(unittest.TestCase):
         self.assertFalse(fake_cli.calls_with("order", "cancel"))  # pas de stop reposé
 
 
+class TestCycleIdTransportThroughMakerExit(unittest.TestCase):
+    """#470 : le cycle_id qui a déclenché la sortie maker (Phase 0, "en cycle") ou son absence
+    (tp_watcher, hors cycle) est transporté depuis maker_exit_pending_orders.json jusqu'au trade
+    clôturé, sans jamais être déduit."""
+
+    def test_attempt_maker_exit_carries_cycle_id_into_the_pending_record(self):
+        pos = _position()
+        fake_cli = _FakeCli(**{
+            "ticker_ETHUSDC": {"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]},
+            "order_sell_ETHUSDC_limit": {"txid": ["SELLTX1"]},
+        })
+
+        with patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
+            record = maker_exit_watcher.attempt_maker_exit(
+                pos, "profit_target_phase0", BASE_CONFIG, notify=lambda *_a, **_k: None,
+                cycle_id="20260828_100500",
+            )
+
+        self.assertEqual(record["cycle_id"], "20260828_100500")
+
+    def test_attempt_maker_exit_defaults_cycle_id_to_none(self):
+        pos = _position()
+        fake_cli = _FakeCli(**{
+            "ticker_ETHUSDC": {"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]},
+            "order_sell_ETHUSDC_limit": {"txid": ["SELLTX1"]},
+        })
+
+        with patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
+            record = maker_exit_watcher.attempt_maker_exit(
+                pos, "tp_watcher", BASE_CONFIG, notify=lambda *_a, **_k: None,
+            )
+
+        self.assertIsNone(record["cycle_id"])
+
+    def test_fill_of_a_pending_order_posed_during_a_cycle_keeps_its_cycle_id(self):
+        pending = _pending(close_reason="profit_target_phase0", cycle_id="20260828_100500")
+        pos = _position()
+        fake_cli = _FakeCli(**{
+            "query-orders_SELLTX1": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0", "fee": "0.4"},
+        })
+
+        _history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli, [pos])
+
+        self.assertEqual(pos["cycle_id"], "20260828_100500")
+
+    def test_fill_of_a_pending_order_posed_outside_a_cycle_keeps_cycle_id_none(self):
+        pending = _pending(close_reason="tp_watcher", cycle_id=None)
+        pos = _position()
+        fake_cli = _FakeCli(**{
+            "query-orders_SELLTX1": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0", "fee": "0.4"},
+        })
+
+        _history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli, [pos])
+
+        self.assertIn("cycle_id", pos)
+        self.assertIsNone(pos["cycle_id"])
+
+
 class TestTimeoutTriggersMarketFallback(unittest.TestCase):
     def test_timeout_elapsed_cancels_limit_and_sells_at_market(self):
         placed_at = (datetime.now(timezone.utc) - timedelta(seconds=700)).isoformat()

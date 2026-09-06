@@ -185,6 +185,7 @@ def _closed_trades(closed: list, limit: int = CLOSED_TRADES_LIMIT) -> list:
             "fees_usdc": trade.get("fees_usdc"),
             "pnl_usdc": trade.get("pnl_usdc"),
             "close_reason": trade.get("close_reason"),
+            "cycle_id": trade.get("cycle_id"),
             "maker_or_taker": trade.get("maker_or_taker"),
             "fees_estimated": bool(trade.get("fees_estimated")),
         })

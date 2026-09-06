@@ -239,6 +239,7 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
                 "pnl_gross_pct": net["pnl_gross_pct"],
                 "pnl_pct": net["pnl_pct"],
                 "close_reason": "market_above_tp_at_fill",
+                "cycle_id": CYCLE_ID,
             })
             _save_trade_history_atomic(history)
 

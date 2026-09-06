@@ -190,5 +190,36 @@ class TestHappyPath(DashboardAppTestBase):
         self.assertIn("On a acheté du BNB", body)  # explanation_fr injectée dans la modale
 
 
+class TestSalesTabCycleLink(DashboardAppTestBase):
+    """#470 : la vente affiche le cycle quand il existe, "hors cycle" quand il vaut None, et ne
+    plante jamais sur une vente antérieure sans le champ."""
+
+    def test_sales_tab_renders_three_cycle_id_cases_without_error(self):
+        closed_trades = [
+            {"coin": "SOL", "entry_date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00",
+             "hold_hours": 52.0, "entry_price": 100.0, "exit_price": 104.0, "tp_price": 104.0, "quantity": 1.0,
+             "pnl_gross_usdc": 4.0, "fees_usdc": 1.0, "pnl_usdc": 3.0, "close_reason": "profit_target_phase0",
+             "maker_or_taker": "maker", "fees_estimated": False, "cycle_id": "20260828_100500"},
+            {"coin": "ADA", "entry_date": "2026-08-20T08:00:00+00:00", "exit_date": "2026-08-21T08:00:00+00:00",
+             "hold_hours": 24.0, "entry_price": 0.2, "exit_price": 0.19, "tp_price": 0.22, "quantity": 100.0,
+             "pnl_gross_usdc": -1.0, "fees_usdc": 0.5, "pnl_usdc": -1.5, "close_reason": "tp_watcher",
+             "maker_or_taker": None, "fees_estimated": True, "cycle_id": None},
+            {"coin": "XRP", "entry_date": "2026-06-01T08:00:00+00:00", "exit_date": "2026-06-02T08:00:00+00:00",
+             "hold_hours": 24.0, "entry_price": 0.5, "exit_price": 0.51, "tp_price": 0.55, "quantity": 10.0,
+             "pnl_gross_usdc": 0.1, "fees_usdc": 0.02, "pnl_usdc": 0.08, "close_reason": "sl_hit",
+             "maker_or_taker": None, "fees_estimated": False},  # vente antérieure : pas de champ du tout
+        ]
+        state = dict(SAMPLE_STATE, updated_at=datetime.now(timezone.utc).isoformat(), closed_trades=closed_trades)
+        with patch("app.get_dashboard_state", return_value=state), \
+             patch("app.get_recent_cycles", return_value=SAMPLE_CYCLES), \
+             patch("app.get_prices", return_value={"BNB": 510.0}):
+            self._login()
+            r = self.client.get("/?tab=ventes&periode=tout")
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('href="/?tab=cycles#cyc-20260828_100500"', body)
+        self.assertIn("hors cycle", body)
+
+
 if __name__ == "__main__":
     unittest.main()

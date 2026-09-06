@@ -642,6 +642,22 @@ class TestBuildSalesView(unittest.TestCase):
         self.assertEqual(view["reasons"][0]["n"], 3)
 
 
+class TestSalesViewCycleId(unittest.TestCase):
+    """#470 : le cycle_id (présent / None explicite / absent) traverse build_sales_view sans
+    jamais faire planter la vue ni être déduit."""
+
+    def test_three_cycle_id_cases_render_without_error(self):
+        trades = [
+            {**TestBuildSalesView.TRADES[0], "cycle_id": "20260828_100500"},
+            {**TestBuildSalesView.TRADES[1], "cycle_id": None},
+            {k: v for k, v in TestBuildSalesView.TRADES[1].items() if k != "cycle_id"},
+        ]
+        view = viewdata.build_sales_view(trades, "UTC")
+        rows = view["rows"]
+        self.assertEqual(rows[0]["cycle_id"], "20260828_100500")
+        self.assertIsNone(rows[1]["cycle_id"])
+        self.assertNotIn("cycle_id", rows[2])
+
 
 if __name__ == "__main__":
     unittest.main()

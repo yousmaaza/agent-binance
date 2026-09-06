@@ -201,6 +201,7 @@ class TestImmediateCloseWhenPriceAboveTpAtFill(unittest.TestCase):
         self.assertEqual(pos["close_reason"], "market_above_tp_at_fill")
         self.assertAlmostEqual(pos["exit_price"], 2020.0)
         self.assertAlmostEqual(pos["pnl_usdc"], 2.0, places=6)
+        self.assertIsNotNone(pos["cycle_id"])
 
 
 class TestTpCalculationNetOfFees(unittest.TestCase):

@@ -128,7 +128,7 @@ def _place_stop_loss(pair: str, qty: float, stop_price: float):
         return None, True, f" {e}", stop_price
 
 
-def attempt_maker_exit(pos: dict, close_reason: str, cfg: dict, notify=None) -> dict | None:
+def attempt_maker_exit(pos: dict, close_reason: str, cfg: dict, notify=None, cycle_id: str | None = None) -> dict | None:
     """Enchaînement imposé (#390) : annule le stop, pose une vente LIMIT post-only au meilleur
     vendeur (ask courant). Retourne l'enregistrement à ajouter à
     state/maker_exit_pending_orders.json — maker_exit_watcher_loop() prend le relais.
@@ -188,6 +188,7 @@ def attempt_maker_exit(pos: dict, close_reason: str, cfg: dict, notify=None) -> 
         "current_limit_price": ask,
         "adjustments": 0,
         "placed_at": datetime.now(timezone.utc).isoformat(),
+        "cycle_id": cycle_id,
     }
 
 
@@ -229,6 +230,7 @@ def _finalize_position(history: list, pending: dict, exit_price: float, exit_fee
         "pnl_gross_pct": net["pnl_gross_pct"],
         "pnl_pct": net["pnl_pct"],
         "close_reason": pending["close_reason"],
+        "cycle_id": pending.get("cycle_id"),
         "exit_date": datetime.now(timezone.utc).isoformat() + "Z",
         # Classification de la SORTIE (#390) — distincte de "maker_or_taker" qui désigne
         # l'ENTRÉE (consommé par commands/perf.py et phase7_mongo.py) : ne jamais l'écraser.
