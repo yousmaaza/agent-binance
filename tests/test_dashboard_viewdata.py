@@ -527,8 +527,10 @@ class TestSuspectExitMarker(unittest.TestCase):
         self.assertEqual(self.SYN_38515BAB["pnl_usdc"], -1.1650800000000001)
 
     def test_frozen_case_stays_excluded_from_amounts_but_counted_in_net(self):
-        """Fige le comportement pour ce trade précis : un futur backfill qui recalculerait
-        exit_price ou retirerait le marqueur doit faire échouer ce test."""
+        """Fige le rendu de ce trade dans l'onglet Ventes : marqué comme suspect, exclu des
+        montants, mais toujours compté dans le net. Fixture codée en dur — ne protège pas contre
+        un backfill sur le vrai state/trade_history.json, c'est le rôle de
+        tests/test_trade_history_data_quality.py."""
         other = {"trade_id": "other", "coin": "SOL", "entry_price": 100.0, "exit_price": 104.0,
                   "quantity": 1.0, "pnl_usdc": 3.0, "close_reason": "tp_watcher", "hold_hours": 52.0}
         view = viewdata.build_sales_view([other, self.SYN_38515BAB], "UTC")
