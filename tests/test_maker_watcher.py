@@ -458,5 +458,55 @@ class TestWriteWatcherStateAbandonedCounter(unittest.TestCase):
             self.assertEqual(state["total_ticks"], 3)
 
 
+class _StopLoop(BaseException):
+    """Sentinelle pour interrompre maker_watcher_loop() — hérite de BaseException (pas Exception)
+    pour ne pas être interceptée par le except Exception de la boucle (#463)."""
+
+
+class TestMakerWatcherLoopSurvivesUnlistedException(unittest.TestCase):
+    """#463 : une exception hors de l'ancienne liste fermée (json.JSONDecodeError,
+    subprocess.CalledProcessError, ValueError, OSError) — ici un AttributeError — ne doit jamais
+    tuer le thread : la boucle doit continuer au tick suivant, avec une trace portant le type."""
+
+    def test_attribute_error_in_tick_is_caught_and_loop_continues(self):
+        tick_calls = []
+
+        def fake_tick(cfg):
+            tick_calls.append(cfg)
+            raise AttributeError("'NoneType' object has no attribute 'get'")
+
+        with patch("core.maker_watcher._load_config", return_value={}), \
+             patch("core.maker_watcher._maker_watcher_tick", side_effect=fake_tick), \
+             patch("core.maker_watcher.time.sleep", side_effect=[None, None, _StopLoop()]), \
+             patch("core.maker_watcher.logger") as mock_logger:
+            with self.assertRaises(_StopLoop):
+                maker_watcher.maker_watcher_loop()
+
+        # Deux ticks exécutés malgré l'AttributeError du premier -> la boucle a survécu.
+        self.assertEqual(len(tick_calls), 2)
+        mock_logger.exception.assert_called()
+        last_msg = mock_logger.exception.call_args[0][0]
+        self.assertIn("AttributeError", last_msg)
+
+
+class TestNullOrderStatusValueHandledWithoutRaising(unittest.TestCase):
+    """#463 : Kraken peut répondre {"TX1": null} pour un ordre — order_status ne doit jamais être
+    None avant un .get("status") dessus (AttributeError sinon)."""
+
+    def test_null_txid_value_falls_through_to_open_order_branch_without_raising(self):
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": None,
+            "ticker_ETHUSDC": {"b": ["1999.5", "0.01"], "c": ["2000.0", "0.01"]},
+        })
+
+        history, saved_pending, mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
+
+        mock_save_history.assert_not_called()
+        self.assertEqual(history, [])
+        self.assertEqual(len(saved_pending), 1)
+        self.assertEqual(saved_pending[0]["txid"], "TX1")
+
+
 if __name__ == "__main__":
     unittest.main()

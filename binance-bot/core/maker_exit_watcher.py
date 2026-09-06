@@ -198,8 +198,8 @@ def maker_exit_watcher_loop():
         tick_seconds = cfg.get("maker_tick_seconds", 20)
         try:
             _maker_exit_watcher_tick(cfg)
-        except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
-            logger.error(f"[Maker Exit Watcher] Erreur inattendue : {e}")
+        except Exception as e:
+            logger.exception(f"[Maker Exit Watcher] Erreur inattendue : {type(e).__name__}: {e}")
         time.sleep(tick_seconds)
 
 
@@ -294,7 +294,7 @@ def _handle_externally_resolved(pending: dict, history: list, tick_state: dict) 
     try:
         try:
             query_raw = _cli("query-orders", txid, "-o", "json")
-            fill = json.loads(query_raw).get(txid, {})
+            fill = json.loads(query_raw).get(txid) or {}
         except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError):
             fill = {}
 
@@ -337,7 +337,7 @@ def _handle_chase_end(pending: dict, history: list, tick_state: dict) -> tuple[b
         time.sleep(1)
         try:
             query_raw = _cli("query-orders", txid, "-o", "json")
-            fill = json.loads(query_raw).get(txid, {})
+            fill = json.loads(query_raw).get(txid) or {}
         except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError):
             fill = {}
 
@@ -367,7 +367,7 @@ def _handle_chase_end(pending: dict, history: list, tick_state: dict) -> tuple[b
                     raise RuntimeError("pas de txid marché")
                 time.sleep(1)
                 mfill_raw = _cli("query-orders", market_txid, "-o", "json")
-                mfill = json.loads(mfill_raw).get(market_txid, {})
+                mfill = json.loads(mfill_raw).get(market_txid) or {}
                 if mfill.get("status") != "closed":
                     raise RuntimeError(f"non rempli (status: {mfill.get('status')})")
             except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, RuntimeError) as e:
@@ -447,7 +447,7 @@ def _maker_exit_watcher_tick(cfg: dict) -> None:
 
         try:
             query_raw = _cli("query-orders", txid, "-o", "json")
-            order_status = json.loads(query_raw).get(txid, {})
+            order_status = json.loads(query_raw).get(txid) or {}
         except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
             logger.warning(f"[Maker Exit Watcher] query-orders {txid} ({coin}) : {e}")
             tick_state["status"] = "warning"
