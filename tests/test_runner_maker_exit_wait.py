@@ -28,6 +28,21 @@ sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 from orchestration import runner  # noqa: E402 -- import après sys.path.insert, ordre volontaire
 
 
+def _fake_clock():
+    """Horloge fictive partagée entre time.sleep et time.monotonic (#464) : chaque faux sommeil
+    avance l'horloge de la durée demandée, si bien que la boucle de _wait_for_maker_exit_chase()
+    se déroule instantanément tout en exerçant la vraie borne (aucun vrai temps ne s'écoule)."""
+    clock = {"t": 0.0}
+
+    def fake_sleep(seconds):
+        clock["t"] += seconds
+
+    def fake_monotonic():
+        return clock["t"]
+
+    return fake_sleep, fake_monotonic
+
+
 class TestNoChaseInProgressNeverDelays(unittest.TestCase):
     """Aucune chasse en cours -> aucun retard, comportement actuel strictement inchangé."""
 
@@ -62,19 +77,18 @@ class TestWaitIsBoundedByTimeoutPlusMargin(unittest.TestCase):
     malgré la chasse toujours en cours."""
 
     def test_stops_waiting_once_deadline_exceeded_even_if_still_pending(self):
-        # deadline = 0 + 600 (timeout) + 60 (marge) = 660. Séquence : calcul deadline (0), deux
-        # vérifications sous la borne (100, 200), puis une au-delà (700) -> sortie de boucle.
-        monotonic_values = iter([0, 100, 200, 700])
+        # Chasse active (30s) qui ne se résout jamais : la borne réelle (600 + marge 60 = 660s)
+        # doit être atteinte via l'horloge fictive, sans jamais attendre pour de vrai (#464).
+        fake_sleep, fake_monotonic = _fake_clock()
         with patch("orchestration.runner._load_config",
-                   return_value={"maker_exit_timeout_seconds": 600, "maker_tick_seconds": 5}), \
+                   return_value={"maker_exit_timeout_seconds": 600, "maker_tick_seconds": 20}), \
              patch("orchestration.runner.load_maker_exit_pending_orders",
                    return_value=[{"trade_id": "T1"}]), \
-             patch("orchestration.runner.time.sleep") as mock_sleep, \
-             patch("orchestration.runner.time.monotonic",
-                   side_effect=lambda: next(monotonic_values)):
-            runner._wait_for_maker_exit_chase()  # ne doit jamais lever StopIteration (pas de boucle infinie)
+             patch("orchestration.runner.time.sleep", side_effect=fake_sleep) as mock_sleep, \
+             patch("orchestration.runner.time.monotonic", side_effect=fake_monotonic):
+            runner._wait_for_maker_exit_chase()
 
-        self.assertEqual(mock_sleep.call_count, 2)
+        self.assertEqual(mock_sleep.call_count, 33)  # 660s / 20s de poll
 
 
 class TestStaleOrderDoesNotDelayCycle(unittest.TestCase):
@@ -85,12 +99,17 @@ class TestStaleOrderDoesNotDelayCycle(unittest.TestCase):
         runner._STALE_MAKER_EXIT_ALERTED_TXIDS.clear()
 
     def test_stale_pending_order_ignored_no_sleep_but_alerts(self):
-        stale_placed_at = (datetime.now(timezone.utc) - timedelta(seconds=10_000)).isoformat()
+        # Résidu vieux de 2h : si la garde d'ancienneté disparaît, cet ordre reste "actif" pour
+        # toujours et la boucle tourne jusqu'à la borne réelle (660s) sur le vrai temps -> horloge
+        # fictive obligatoire pour que le test échoue vite plutôt que de bloquer (#464).
+        stale_placed_at = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
         stale_pending = {"trade_id": "T1", "coin": "ETH", "txid": "SELLTX1", "placed_at": stale_placed_at}
+        fake_sleep, fake_monotonic = _fake_clock()
         with patch("orchestration.runner._load_config", return_value={}), \
              patch("orchestration.runner.load_maker_exit_pending_orders", return_value=[stale_pending]), \
              patch("orchestration.runner.send_telegram") as mock_tg, \
-             patch("orchestration.runner.time.sleep") as mock_sleep:
+             patch("orchestration.runner.time.sleep", side_effect=fake_sleep) as mock_sleep, \
+             patch("orchestration.runner.time.monotonic", side_effect=fake_monotonic):
             runner._wait_for_maker_exit_chase()
 
         mock_sleep.assert_not_called()
