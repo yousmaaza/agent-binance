@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#471](pr-471-exit-price-unreliable.md) | [BUG] SYN 38515bab : marquer exit_price non fiable au lieu de le réécrire | 2026-09-06 |
 | [#467](pr-467-watchers-robustes.md) | [BUG] Aligner les watchers maker sur le motif except Exception du TP watcher | 2026-09-06 |
 | [#466](pr-466-sous-totaux-hebdo.md) | [BUG] L'analyse hebdo échouait sur ses propres sous-totaux | 2026-09-06 |
 | [#462](pr-462-attendre-cycle-chasse-sortie.md) | [BUG] Faire attendre un cycle tant qu'une chasse de sortie maker est en cours | 2026-09-05 |
