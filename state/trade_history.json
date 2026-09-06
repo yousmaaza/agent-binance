@@ -813,7 +813,8 @@
     "exit_date": "2026-06-26T20:06:52.744107+00:00",
     "pnl_usdc": -1.1650800000000001,
     "pnl_pct": -5.004284490145674,
-    "close_reason": "sl_hit"
+    "close_reason": "sl_hit",
+    "data_quality": "exit_price_unreliable"
   },
   {
     "trade_id": "cc465534",

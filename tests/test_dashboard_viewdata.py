@@ -500,6 +500,48 @@ class TestSaleTriggerAndAnomaly(unittest.TestCase):
         self.assertIsNone(viewdata.sale_anomaly(trade))
 
 
+class TestSuspectExitMarker(unittest.TestCase):
+    """#469 — SYN 38515bab : exit_price (0,5543) est faux, pnl_usdc (-1,16508) fait foi.
+    Le marqueur `data_quality` prime sur l'heuristique, qui ne sert qu'aux cas pas encore marqués."""
+
+    SYN_38515BAB = {
+        "trade_id": "38515bab", "coin": "SYN", "entry_price": 0.34397, "exit_price": 0.5543,
+        "quantity": 203.6, "pnl_usdc": -1.1650800000000001, "close_reason": "sl_hit",
+        "data_quality": "exit_price_unreliable", "hold_hours": 3.9,
+    }
+
+    def test_marker_is_read_before_the_heuristic(self):
+        # Le prix impliquerait un gain de +42 USDC : l'heuristique seule le repérerait aussi,
+        # mais c'est le marqueur qui doit répondre en premier.
+        self.assertIsNotNone(viewdata._suspect_exit(self.SYN_38515BAB))
+
+    def test_marker_flags_even_when_the_heuristic_would_stay_silent(self):
+        """Preuve que c'est bien le marqueur qui décide, pas l'heuristique : ici le prix de
+        sortie est cohérent avec le résultat, l'heuristique seule ne dirait rien."""
+        trade = {"entry_price": 1.0, "exit_price": 0.9, "quantity": 10.0, "pnl_usdc": -1.0,
+                  "data_quality": "exit_price_unreliable"}
+        self.assertIsNone(viewdata._suspect_exit({**trade, "data_quality": None}))
+        self.assertIsNotNone(viewdata._suspect_exit(trade))
+
+    def test_pnl_usdc_is_never_touched_by_the_marker(self):
+        self.assertEqual(self.SYN_38515BAB["pnl_usdc"], -1.1650800000000001)
+
+    def test_frozen_case_stays_excluded_from_amounts_but_counted_in_net(self):
+        """Fige le rendu de ce trade dans l'onglet Ventes : marqué comme suspect, exclu des
+        montants, mais toujours compté dans le net. Fixture codée en dur — ne protège pas contre
+        un backfill sur le vrai state/trade_history.json, c'est le rôle de
+        tests/test_trade_history_data_quality.py."""
+        other = {"trade_id": "other", "coin": "SOL", "entry_price": 100.0, "exit_price": 104.0,
+                  "quantity": 1.0, "pnl_usdc": 3.0, "close_reason": "tp_watcher", "hold_hours": 52.0}
+        view = viewdata.build_sales_view([other, self.SYN_38515BAB], "UTC")
+        syn_row = next(r for r in view["rows"] if r["trade_id"] == "38515bab")
+        self.assertIsNotNone(syn_row["suspect"])
+        self.assertEqual(syn_row["pnl_usdc"], -1.1650800000000001)
+        self.assertEqual(view["totals"]["excluded_from_amounts"], 1)
+        self.assertAlmostEqual(view["totals"]["invested"], 100.0)  # SOL seul, SYN exclu
+        self.assertAlmostEqual(view["totals"]["net"], round(3.0 - 1.1650800000000001, 2))  # SYN compte quand même
+
+
 class TestSalesWindow(unittest.TestCase):
     NOW = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
 
