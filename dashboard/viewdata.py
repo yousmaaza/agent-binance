@@ -463,7 +463,10 @@ def close_reason_label(raw) -> str:
 def _suspect_exit(trade: dict) -> str | None:
     """Un prix de sortie qui impliquerait un gain alors que le résultat enregistré est une perte
     ne peut pas être vrai (#455). Cas connu : SYN 38515bab, stop « déclenché » au-dessus du prix
-    d'entrée. On signale sans corriger — c'est le prix qui est faux, pas le résultat."""
+    d'entrée, désormais marqué `data_quality: exit_price_unreliable` (#469) — on lit ce marqueur
+    en priorité, l'heuristique ne sert qu'à repérer un futur cas encore non marqué."""
+    if trade.get("data_quality") == "exit_price_unreliable":
+        return "prix de sortie marqué non fiable (data_quality)"
     entry, exit_price = trade.get("entry_price"), trade.get("exit_price")
     quantity, net = trade.get("quantity"), trade.get("pnl_usdc")
     if None in (entry, exit_price, quantity, net):
