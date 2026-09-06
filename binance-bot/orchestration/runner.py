@@ -492,7 +492,10 @@ def _update_cost_in_mongo(cycle_id: str, stdout_path: str, cycle_log: CycleLogge
         db = mongo_repo._db()
         if db is not None:
             try:
-                db.cycles.update_one({"_id": cycle_id}, {"$set": {"api_cost_usd": cost_usd}})
+                # upsert=True : sur un cycle en échec, la Phase 7 n'a pas encore créé le document (#452).
+                result = db.cycles.update_one({"_id": cycle_id}, {"$set": {"api_cost_usd": cost_usd}}, upsert=True)
+                if result.matched_count == 0:
+                    cycle_log.warning(f"Mongo cost update : aucun document existant pour {cycle_id}, créé via upsert")
                 cycle_log.info(f"Cost updated in MongoDB: {cost_usd} USD")
             except Exception as e:
                 cycle_log.error(f"Mongo cost update échec : {e}")
@@ -502,7 +505,10 @@ def _update_billing_mode_in_mongo(cycle_id: str, billing_mode: str, cycle_log: C
     db = mongo_repo._db()
     if db is not None:
         try:
-            db.cycles.update_one({"_id": cycle_id}, {"$set": {"billing_mode": billing_mode}})
+            # upsert=True : sur un cycle en échec, la Phase 7 n'a pas encore créé le document (#452).
+            result = db.cycles.update_one({"_id": cycle_id}, {"$set": {"billing_mode": billing_mode}}, upsert=True)
+            if result.matched_count == 0:
+                cycle_log.warning(f"Mongo billing_mode update : aucun document existant pour {cycle_id}, créé via upsert")
             cycle_log.info(f"Billing mode updated in MongoDB: {billing_mode}")
         except Exception as e:
             cycle_log.error(f"Mongo billing_mode update échec : {e}")
@@ -512,7 +518,12 @@ def _update_perf_in_mongo(cycle_id: str, duration_s: int, error_type: str | None
     db = mongo_repo._db()
     if db is not None:
         try:
-            db.cycles.update_one({"_id": cycle_id}, {"$set": {"duration_s": duration_s, "error_type": error_type}})
+            # upsert=True : sur un cycle en échec, la Phase 7 n'a pas encore créé le document (#452).
+            result = db.cycles.update_one(
+                {"_id": cycle_id}, {"$set": {"duration_s": duration_s, "error_type": error_type}}, upsert=True,
+            )
+            if result.matched_count == 0:
+                cycle_log.warning(f"Mongo perf update : aucun document existant pour {cycle_id}, créé via upsert")
             cycle_log.info(f"Perf updated in MongoDB: duration_s={duration_s} error_type={error_type}")
         except Exception as e:
             cycle_log.error(f"Mongo perf update échec : {e}")
@@ -547,7 +558,10 @@ def _handle_error(
     db = mongo_repo._db()
     if db is not None:
         try:
-            db.cycles.update_one(
+            # duration_s (pas duration_seconds) : même nom de champ que _update_perf_in_mongo pour
+            # toutes les écritures futures (#452). Les 102 documents historiques ne portant que
+            # duration_seconds ne sont pas migrés — cf. commands/perf.py pour le repli en lecture.
+            result = db.cycles.update_one(
                 {"_id": cycle_id},
                 {"$set": {
                     "cycle_id": cycle_id,
@@ -555,10 +569,12 @@ def _handle_error(
                     "status": "error",
                     "trigger": trigger,
                     "prompt_version": PROMPT_VERSION,
-                    "duration_seconds": duration,
+                    "duration_s": int(duration),
                     "explanation_fr": "Le cycle a échoué avant de produire un résultat exploitable.",
                 }},
                 upsert=True,
             )
+            if result.matched_count == 0:
+                cycle_log.warning(f"Mongo fallback erreur : aucun document existant pour {cycle_id}, créé via upsert")
         except Exception as e:
             cycle_log.error(f"Mongo fallback erreur : {e}")

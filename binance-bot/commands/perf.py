@@ -239,7 +239,7 @@ def _bloc_cycles() -> list[str]:
         if db is not None:
             mongo_rows = list(db.cycles.find({}, {
                 "execution": 1, "decisions": 1,
-                "duration_s": 1, "error_type": 1,
+                "duration_s": 1, "duration_seconds": 1, "error_type": 1,
             }))
     except Exception:
         pass
@@ -251,7 +251,11 @@ def _bloc_cycles() -> list[str]:
                 st = d.get("skip_type")
                 if st in skip_counts:
                     skip_counts[st] += 1
-        durations = [c["duration_s"] for c in mongo_rows if c.get("duration_s") is not None]
+        durations = [
+            c["duration_s"] if c.get("duration_s") is not None else c["duration_seconds"]
+            for c in mongo_rows
+            if c.get("duration_s") is not None or c.get("duration_seconds") is not None
+        ]
         lines.extend(_format_cycle_lines(
             total=len(mongo_rows),
             with_buy=sum(1 for c in mongo_rows if (c.get("execution") or {}).get("executed", 0) > 0),
