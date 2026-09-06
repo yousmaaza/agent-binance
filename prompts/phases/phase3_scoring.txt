@@ -46,7 +46,25 @@ Lis /tmp/cycle___CYCLE_ID___phase3_output.json pour récupérer :
 - buy_candidates, sell_candidates, skip_coins_detail, scores_detail
 - top_score, N_buy, skipped, skip_type, skip_detail
 
-Si tu clôtures un trade issu de sell_candidates : écris dans state/trade_history.json close_reason=f"signal_sell_score{score}" et cycle_id="__CYCLE_ID__".
+Si sell_candidates n'est pas vide, construis /tmp/cycle___CYCLE_ID___phase3_signal_sell_input.json :
+
+{
+  "sell_candidates": <sell_candidates de la sortie ci-dessus>,
+  "config": null
+}
+
+Puis exécute le script de vente sur signal :
+
+```bash
+__PROJECT_DIR__/.venv/bin/python3 __PROJECT_DIR__/binance-bot/core/phases/phase3_signal_sell.py __CYCLE_ID__
+```
+
+Le script lit /tmp/cycle___CYCLE_ID___phase3_signal_sell_input.json et écrit /tmp/cycle___CYCLE_ID___phase3_signal_sell_output.json.
+Stdout attendu : PHASE3_SIGNAL_SELL_DONE|closed=N
+
+Lis /tmp/cycle___CYCLE_ID___phase3_signal_sell_output.json pour récupérer closed. Le script gère
+lui-même l'annulation du stop, la vente au marché, le calcul du PnL, le close_reason et le
+cycle_id — n'improvise aucune vente toi-même à partir de sell_candidates.
 
 Mets à jour les variables de synthèse :
 - top_score, skipped, skip_type, skip_detail

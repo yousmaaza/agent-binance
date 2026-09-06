@@ -46,6 +46,7 @@ SCRIPT_TO_PROMPT = {
     "phase0_trailing_stop.py": "phase0_snapshot.txt",
     "phase1_scan.py": "phase1_scan.txt",
     "phase3_scoring.py": "phase3_scoring.txt",
+    "phase3_signal_sell.py": "phase3_scoring.txt",
     "phase4_sizing.py": "phase4_sizing.txt",
     "phase5_execution.py": "phase5_execution.txt",
     "phase6_next_cycle.py": "phases6_8.txt",
