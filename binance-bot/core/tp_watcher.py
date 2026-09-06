@@ -49,7 +49,7 @@ def tp_watcher_loop():
         try:
             _tp_watcher_tick()
         except Exception as e:
-            logger.error(f"[TP Watcher] Erreur inattendue : {e}")
+            logger.exception(f"[TP Watcher] Erreur inattendue : {type(e).__name__}: {e}")
         time.sleep(120)
 
 

@@ -89,8 +89,8 @@ def maker_watcher_loop():
         tick_seconds = cfg.get("maker_tick_seconds", 20)
         try:
             _maker_watcher_tick(cfg)
-        except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
-            logger.error(f"[Maker Watcher] Erreur inattendue : {e}")
+        except Exception as e:
+            logger.exception(f"[Maker Watcher] Erreur inattendue : {type(e).__name__}: {e}")
         time.sleep(tick_seconds)
 
 
@@ -205,7 +205,7 @@ def _fallback_market_buy(pending: dict, history: list) -> None:
     for attempt in range(3):
         try:
             query_raw = _cli("query-orders", entry_txid, "-o", "json")
-            fill = json.loads(query_raw).get(entry_txid, {})
+            fill = json.loads(query_raw).get(entry_txid) or {}
         except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError):
             fill = {}
         if fill.get("status") == "closed":
@@ -241,7 +241,7 @@ def _resolve_after_cancel(pending: dict, allow_market_fallback: bool, history: l
     txid = pending["txid"]
     try:
         query_raw = _cli("query-orders", txid, "-o", "json")
-        fill = json.loads(query_raw).get(txid, {})
+        fill = json.loads(query_raw).get(txid) or {}
     except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
         logger.warning(f"[Maker Watcher] Query post-cancel {txid} ({coin}) : {e}")
         fill = {}
@@ -382,7 +382,7 @@ def _maker_watcher_tick(cfg: dict) -> None:
 
         try:
             query_raw = _cli("query-orders", txid, "-o", "json")
-            order_status = json.loads(query_raw).get(txid, {})
+            order_status = json.loads(query_raw).get(txid) or {}
         except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError) as e:
             logger.warning(f"[Maker Watcher] query-orders {txid} ({coin}) : {e}")
             tick_state["status"] = "warning"

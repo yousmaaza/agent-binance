@@ -128,5 +128,34 @@ class TestTpWatcherMakerExitHandoff(unittest.TestCase):
         mock_save.assert_not_called()
 
 
+class _StopLoop(BaseException):
+    """Sentinelle pour interrompre tp_watcher_loop() — hérite de BaseException (pas Exception)
+    pour ne pas être interceptée par le except Exception de la boucle (#463)."""
+
+
+class TestTpWatcherLoopSurvivesUnlistedException(unittest.TestCase):
+    """#463 : tp_watcher_loop() catche déjà `except Exception`, mais ne journalisait que
+    `{e}` — sans le type ni la pile, un incident reste difficile à diagnostiquer. La boucle doit
+    continuer au tick suivant ET la trace doit porter le type de l'exception."""
+
+    def test_attribute_error_in_tick_is_caught_and_loop_continues(self):
+        tick_calls = []
+
+        def fake_tick():
+            tick_calls.append(1)
+            raise AttributeError("'NoneType' object has no attribute 'get'")
+
+        with patch("core.tp_watcher._tp_watcher_tick", side_effect=fake_tick), \
+             patch("core.tp_watcher.time.sleep", side_effect=[None, None, _StopLoop()]), \
+             patch("core.tp_watcher.logger") as mock_logger:
+            with self.assertRaises(_StopLoop):
+                tp_watcher.tp_watcher_loop()
+
+        self.assertEqual(len(tick_calls), 2)
+        mock_logger.exception.assert_called()
+        last_msg = mock_logger.exception.call_args[0][0]
+        self.assertIn("AttributeError", last_msg)
+
+
 if __name__ == "__main__":
     unittest.main()
