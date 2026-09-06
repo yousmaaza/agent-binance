@@ -191,22 +191,30 @@ class TestHappyPath(DashboardAppTestBase):
 
 
 class TestSalesTabCycleLink(DashboardAppTestBase):
-    """#470 : la vente affiche le cycle quand il existe, "hors cycle" quand il vaut None, et ne
-    plante jamais sur une vente antérieure sans le champ."""
+    """#470, retour de review : quatre rendus distincts pour le cycle d'une vente — lien (cycle
+    dans le journal chargé), identifiant en texte simple (cycle réel mais hors de la fenêtre du
+    journal, #473), "hors cycle" (cycle_id: None explicite), et un marqueur neutre d'inconnu
+    (champ absent, ventes antérieures à cette PR) — jamais confondus, jamais de lien mort."""
 
-    def test_sales_tab_renders_three_cycle_id_cases_without_error(self):
+    def test_four_cycle_id_cases_are_rendered_distinctly(self):
         closed_trades = [
             {"coin": "SOL", "entry_date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00",
              "hold_hours": 52.0, "entry_price": 100.0, "exit_price": 104.0, "tp_price": 104.0, "quantity": 1.0,
              "pnl_gross_usdc": 4.0, "fees_usdc": 1.0, "pnl_usdc": 3.0, "close_reason": "profit_target_phase0",
-             "maker_or_taker": "maker", "fees_estimated": False, "cycle_id": "20260828_100500"},
+             "maker_or_taker": "maker", "fees_estimated": False,
+             "cycle_id": "20260828_100500"},  # dans SAMPLE_CYCLES -> lien
+            {"coin": "DOT", "entry_date": "2026-01-01T08:00:00+00:00", "exit_date": "2026-01-02T08:00:00+00:00",
+             "hold_hours": 24.0, "entry_price": 5.0, "exit_price": 5.2, "tp_price": 5.3, "quantity": 10.0,
+             "pnl_gross_usdc": 2.0, "fees_usdc": 0.1, "pnl_usdc": 1.9, "close_reason": "profit_target_phase0",
+             "maker_or_taker": "maker", "fees_estimated": False,
+             "cycle_id": "20260101_000500"},  # réel mais hors du journal chargé -> texte, pas de lien
             {"coin": "ADA", "entry_date": "2026-08-20T08:00:00+00:00", "exit_date": "2026-08-21T08:00:00+00:00",
              "hold_hours": 24.0, "entry_price": 0.2, "exit_price": 0.19, "tp_price": 0.22, "quantity": 100.0,
              "pnl_gross_usdc": -1.0, "fees_usdc": 0.5, "pnl_usdc": -1.5, "close_reason": "tp_watcher",
-             "maker_or_taker": None, "fees_estimated": True, "cycle_id": None},
+             "maker_or_taker": None, "fees_estimated": True, "cycle_id": None},  # hors cycle explicite
             {"coin": "XRP", "entry_date": "2026-06-01T08:00:00+00:00", "exit_date": "2026-06-02T08:00:00+00:00",
              "hold_hours": 24.0, "entry_price": 0.5, "exit_price": 0.51, "tp_price": 0.55, "quantity": 10.0,
-             "pnl_gross_usdc": 0.1, "fees_usdc": 0.02, "pnl_usdc": 0.08, "close_reason": "sl_hit",
+             "pnl_gross_usdc": 0.1, "fees_usdc": 0.02, "pnl_usdc": 0.08, "close_reason": "signal_sell_score3",
              "maker_or_taker": None, "fees_estimated": False},  # vente antérieure : pas de champ du tout
         ]
         state = dict(SAMPLE_STATE, updated_at=datetime.now(timezone.utc).isoformat(), closed_trades=closed_trades)
@@ -217,8 +225,19 @@ class TestSalesTabCycleLink(DashboardAppTestBase):
             r = self.client.get("/?tab=ventes&periode=tout")
         body = r.data.decode("utf-8")
         self.assertEqual(r.status_code, 200)
+
+        # SOL : cycle dans le journal -> vrai lien.
         self.assertIn('href="/?tab=cycles#cyc-20260828_100500"', body)
-        self.assertIn("hors cycle", body)
+        # DOT : cycle réel mais hors du journal chargé -> identifiant visible, jamais de lien mort.
+        self.assertIn("20260101_000500", body)
+        self.assertNotIn('href="/?tab=cycles#cyc-20260101_000500"', body)
+        # ADA : cycle_id: None explicite -> cellule "hors cycle" (exactement une, la colonne
+        # Cycle), jamais confondue avec l'absence de champ. Le mot apparaît aussi ailleurs sur la
+        # page (note explicative, colonne Déclencheur) : on cible la cellule elle-même.
+        self.assertEqual(body.count('<td class="mut">hors cycle</td>'), 1)
+        # XRP : signal_sell_score3 prouve une fermeture pendant un cycle, mais le champ n'a jamais
+        # été écrit (vente antérieure à cette PR) -> marqueur neutre d'inconnu, pas "hors cycle".
+        self.assertIn("vente antérieure à l'enregistrement du cycle", body)
 
 
 if __name__ == "__main__":

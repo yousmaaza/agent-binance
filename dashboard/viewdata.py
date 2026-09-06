@@ -476,7 +476,8 @@ def _suspect_exit(trade: dict) -> str | None:
     return None
 
 
-def build_sales_rows(closed_trades: list, tz_name: str) -> list:
+def build_sales_rows(closed_trades: list, tz_name: str, known_cycle_ids=None) -> list:
+    known_cycle_ids = known_cycle_ids or ()
     rows = []
     for trade in closed_trades or []:
         entered, exited = parse_iso(trade.get("entry_date")), parse_iso(trade.get("exit_date"))
@@ -497,6 +498,10 @@ def build_sales_rows(closed_trades: list, tz_name: str) -> list:
             "trigger": sale_trigger(trade.get("close_reason"))[0],
             "trigger_detail": sale_trigger(trade.get("close_reason"))[1],
             "anomaly": sale_anomaly(trade),
+            # #470, retour de review : un cycle hors de la fenêtre du journal (CYCLES_JOURNAL_LIMIT)
+            # n'a pas d'ancre dans le DOM — le lien casserait silencieusement. On ne lie que ce
+            # qui est effectivement affiché dans l'onglet Cycles.
+            "cycle_linkable": trade.get("cycle_id") in known_cycle_ids,
         })
     return rows
 
@@ -586,10 +591,10 @@ def _build_quality(rows: list) -> dict:
     }
 
 
-def build_sales_view(closed_trades: list, tz_name: str) -> dict:
+def build_sales_view(closed_trades: list, tz_name: str, known_cycle_ids=None) -> dict:
     """Agrégats de l'onglet Ventes. Tout chiffre est accompagné de son effectif : sur 87 ventes
     dont un tiers porte des frais estimés, une moyenne sans son n induirait en erreur."""
-    rows = build_sales_rows(closed_trades, tz_name)
+    rows = build_sales_rows(closed_trades, tz_name, known_cycle_ids)
     if not rows:
         return {"rows": [], "reasons": [], "totals": {}, "quality": {}, "durations": {}}
 

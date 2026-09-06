@@ -156,8 +156,9 @@ def dashboard_home():
     # les motifs et le journal portent tous sur la même période, et l'onglet survit au rechargement.
     window = request.args.get("periode", "tout")
     active_tab = request.args.get("tab", "resultat")
+    known_cycle_ids = {c.get("cycle_id") for c in cycles if c.get("cycle_id")}
     sales_view = viewdata.build_sales_view(
-        viewdata.filter_sales_window(state.get("closed_trades") or [], window), tz_name)
+        viewdata.filter_sales_window(state.get("closed_trades") or [], window), tz_name, known_cycle_ids)
     sales_view["window"] = window
     sales_view["windows"] = viewdata.SALES_WINDOWS
     # Le champ n'existe qu'après redéploiement de la VPS (#455) : distinguer « pas encore

@@ -515,7 +515,7 @@
             <td class="num {{ 'gain' if r.is_win else 'loss' }}">{{ "%+.2f"|format(r.pnl_usdc or 0) }}</td>
             <td class="mut">{{ r.reason_label }}{% if r.suspect %}<span class="flag bad" title="{{ r.suspect }}">douteux</span>{% endif %}</td>
             <td class="mut"><span class="trig trig-{{ r.trigger }}" title="{{ r.trigger_detail }}">{{ r.trigger }}</span>{% if r.anomaly %}<span class="flag bad" title="{{ r.anomaly }}">écart</span>{% endif %}</td>
-            <td class="mut">{% if r.cycle_id %}<a href="{{ url_for('dashboard_home') }}?tab=cycles#cyc-{{ r.cycle_id }}">{{ r.cycle_id }}</a>{% else %}hors cycle{% endif %}</td>
+            <td class="mut">{% if "cycle_id" not in r %}<span title="vente antérieure à l'enregistrement du cycle">—</span>{% elif r.cycle_id is none %}hors cycle{% elif r.cycle_linkable %}<a href="{{ url_for('dashboard_home') }}?tab=cycles#cyc-{{ r.cycle_id }}">{{ r.cycle_id }}</a>{% else %}{{ r.cycle_id }}{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>

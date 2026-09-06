@@ -643,20 +643,36 @@ class TestBuildSalesView(unittest.TestCase):
 
 
 class TestSalesViewCycleId(unittest.TestCase):
-    """#470 : le cycle_id (présent / None explicite / absent) traverse build_sales_view sans
-    jamais faire planter la vue ni être déduit."""
+    """#470, retour de review : le cycle_id (présent + dans le journal / présent mais hors du
+    journal / None explicite / absent) traverse build_sales_view sans jamais faire planter la
+    vue ni être déduit, et porte de quoi distinguer "on ne sait pas" de "hors cycle"."""
 
-    def test_three_cycle_id_cases_render_without_error(self):
+    def test_four_cycle_id_cases_are_distinguished(self):
         trades = [
-            {**TestBuildSalesView.TRADES[0], "cycle_id": "20260828_100500"},
+            {**TestBuildSalesView.TRADES[0], "cycle_id": "20260828_100500"},  # dans le journal
+            {**TestBuildSalesView.TRADES[0], "cycle_id": "20260101_000500"},  # hors du journal
             {**TestBuildSalesView.TRADES[1], "cycle_id": None},
             {k: v for k, v in TestBuildSalesView.TRADES[1].items() if k != "cycle_id"},
         ]
-        view = viewdata.build_sales_view(trades, "UTC")
+        view = viewdata.build_sales_view(trades, "UTC", known_cycle_ids={"20260828_100500"})
         rows = view["rows"]
+
         self.assertEqual(rows[0]["cycle_id"], "20260828_100500")
-        self.assertIsNone(rows[1]["cycle_id"])
-        self.assertNotIn("cycle_id", rows[2])
+        self.assertTrue(rows[0]["cycle_linkable"])
+
+        self.assertEqual(rows[1]["cycle_id"], "20260101_000500")
+        self.assertFalse(rows[1]["cycle_linkable"])
+
+        self.assertIsNone(rows[2]["cycle_id"])
+        self.assertFalse(rows[2]["cycle_linkable"])
+
+        self.assertNotIn("cycle_id", rows[3])
+        self.assertFalse(rows[3]["cycle_linkable"])
+
+    def test_no_known_cycle_ids_never_crashes_and_links_nothing(self):
+        trades = [{**TestBuildSalesView.TRADES[0], "cycle_id": "20260828_100500"}]
+        view = viewdata.build_sales_view(trades, "UTC")
+        self.assertFalse(view["rows"][0]["cycle_linkable"])
 
 
 if __name__ == "__main__":
