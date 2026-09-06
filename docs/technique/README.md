@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#475](pr-475-mettre-sous-contrat-vente-signal.md) | [TECH] Mettre sous contrat la vente sur signal (score ≤ 3) | 2026-09-06 |
 | [#474](pr-474-cycles-echec-mongo.md) | [BUG] error_type, coût et durée perdus sur les cycles en échec (update sans upsert) | 2026-09-06 |
 | [#473](pr-473-cycle-id-vente.md) | [M1] Enregistrer le cycle_id au moment de la vente | 2026-09-06 |
 | [#471](pr-471-exit-price-unreliable.md) | [BUG] SYN 38515bab : marquer exit_price non fiable au lieu de le réécrire | 2026-09-06 |
