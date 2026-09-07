@@ -34,6 +34,9 @@ def _run_phase3_signal_sell(sell_candidates, history_data, config=None, kraken_s
     """Exécute phase3_signal_sell.py. Retourne (output, mock_tg, mock_save, saved_history,
     mock_repose_tg)."""
     cycle_id = harness.new_cycle_id()
+    # Chemins /tmp/ reflètent le contrat inter-phases Claude : phase3_signal_sell.py s'attend
+    # à lire/écrire ces fichiers temporaires, indexés par cycle_id (passé en argv[1]).
+    # Test utilise /tmp/ volontairement pour reproduire le contexte exact de production (#481).
     in_path = f"/tmp/cycle_{cycle_id}_phase3_signal_sell_input.json"
     out_path = f"/tmp/cycle_{cycle_id}_phase3_signal_sell_output.json"
     scenario_path = harness.write_kraken_scenario(kraken_scenario)

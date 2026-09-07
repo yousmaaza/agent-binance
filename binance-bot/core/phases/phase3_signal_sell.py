@@ -48,8 +48,11 @@ CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
 _QTY_EPSILON = 1e-9
 
-# Chemin fixe volontaire (contrat avec prompts/phases/phase3_scoring.txt) : neutralisation
-# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+# /tmp/ hardcodé volontairement : contrat inter-phases Claude (phase3_scoring.py écrit,
+# phase3_signal_sell.py lit). Migration vers state/ planifiée (#392, #403) — implique
+# un refactoring architectural (state/ persistant vs /tmp/ par cycle). Visant un
+# inter-process communication (IPC) entre sous-processus Claude et webhook_server.py.
+# Bandit B108 neutralisé : temporaire et accepté, source directe du cycle_id (pas injecté).
 in_path = f"/tmp/cycle_{CYCLE_ID}_phase3_signal_sell_input.json"  # nosec B108
 with open(in_path) as f:
     inp = json.load(f)
@@ -209,8 +212,11 @@ if history_changed:
     _save_trade_history_atomic(history)
 
 print(f"PHASE3_SIGNAL_SELL_DONE|closed={closed_count}")
-# Chemin fixe volontaire (contrat avec prompts/phases/phase3_scoring.txt) : neutralisation
-# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
+# /tmp/ hardcodé volontairement : sortie phase écrite ici, relue par phase4_sizing.py.
+# Fait partie du contrat inter-phases Claude (webhooks_server.py orchestre, transmet
+# CYCLE_ID, chaque phase lit/écrit /tmp/cycle_{CYCLE_ID}_*). Migration vers state/
+# planifiée (#392, #403). Bandit B108 neutralisé : chemin entièrement déterministe
+# (cycle_id source directe, aucune injection d'utilisateur).
 out_path = f"/tmp/cycle_{CYCLE_ID}_phase3_signal_sell_output.json"  # nosec B108
 with open(out_path, "w") as f:
     json.dump({"closed": closed_count}, f)
