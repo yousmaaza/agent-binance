@@ -41,8 +41,8 @@ import datetime
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.maker_exit_watcher import _repose_stop_and_alert  # noqa: E402
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl, kraken_coin_balance  # noqa: E402
+from core.maker_exit_watcher import _repose_stop_and_alert
+from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl, kraken_coin_balance
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
