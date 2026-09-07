@@ -42,7 +42,7 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
 from core.maker_exit_watcher import _repose_stop_and_alert  # noqa: E402
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl  # noqa: E402
+from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl, kraken_coin_balance  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -83,7 +83,10 @@ for sc in sell_candidates:
         "stop_price": open_trade.get("stop_price"),
     }
 
-    # Step 1 : annuler le stop actif avant de vendre (contrainte hold_trade Kraken, cf. #390)
+    # Step 1 : annuler le stop actif avant de vendre (contrainte hold_trade Kraken, cf. #390). À
+    # partir d'ici la position peut être sans stop : tout `except` de ce script reste volontairement
+    # large (`Exception`, jamais un sous-ensemble de types précis) -- sur ce chemin, une exception
+    # non rattrapée coûte une position non protégée, la précision du typage passe après (#476 review).
     if sl_txid:
         try:
             binance("order", "cancel", sl_txid, "-o", "json", "--yes")
@@ -91,12 +94,24 @@ for sc in sell_candidates:
             tg(f"⚠️ {coin} : annulation SL échouée avant vente sur signal — stop conservé, {e}")
             continue
 
-    # Step 2 : quantité = min(trade_history, solde réel) tronquée au pas Kraken (#472, XRP 18/08)
+    # Step 2 : quantité = min(trade_history, solde réel) tronquée au pas Kraken (#472, XRP 18/08).
+    # kraken_coin_balance résout les actifs historiques préfixés (ETH -> XETH, etc., #476) ; si
+    # l'actif reste introuvable dans le solde, on retombe sur trade_qty comme pour un échec Kraken
+    # -- jamais sur 0, pour ne pas confondre une clé introuvable avec un solde réellement nul.
+    # Panne de l'appel Kraken (réseau, JSON invalide) vs alias manquant pour un solde pourtant reçu
+    # sont distingués (#476 review) : le second signale un défaut de code (table incomplète), pas un
+    # aléa réseau -- il doit être visible, pas avalé en silence comme le bug initial.
     try:
         balance_raw = binance("balance", "-o", "json")
-        coin_balance = float(json.loads(balance_raw).get(coin, 0) or 0)
+        balance = json.loads(balance_raw)
     except Exception:
         coin_balance = trade_qty
+    else:
+        try:
+            coin_balance = kraken_coin_balance(balance, coin)
+        except KeyError:
+            tg(f"⚠️ {coin} : actif introuvable dans le solde Kraken — alias manquant, vente sur trade_qty")
+            coin_balance = trade_qty
 
     try:
         pairs_raw = binance("pairs", "--pair", pair, "-o", "json")
@@ -118,7 +133,11 @@ for sc in sell_candidates:
         history_changed = True
         continue
 
-    # Step 3 : SELL MARKET
+    # Step 3 : SELL MARKET. Le stop est déjà annulé (Step 1) : `except Exception` large et non un
+    # sous-ensemble de types précis (ValueError, RuntimeError...) est délibéré ici -- ça inclut
+    # notamment subprocess.TimeoutExpired et OSError levés par binance() (#476 review), pour
+    # garantir que toute panne à cet endroit déclenche la reprotection plutôt que de laisser le
+    # script planter avec la position vendue-en-doute et sans stop.
     try:
         sell_raw = binance("order", "sell", pair, str(sell_qty), "--type", "market", "-o", "json", "--yes")
         sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}

@@ -14,6 +14,10 @@ Chemin du scénario lu depuis la variable d'env FAKE_KRAKEN_SCENARIO. Format :
 Sous-commandes supportées : ticker, balance, pairs, ohlc, order buy, order sell, order amend,
 order cancel, query-orders.
 
+`"balance_fail": true` fait échouer `balance` (imprime "Request failed" au lieu du dict de
+solde) -- simule une panne réelle de l'appel Kraken (#476), à distinguer d'un alias manquant dans
+un solde reçu normalement.
+
 Pour `order buy`/`order sell`, la clé cherchée est d'abord `order_<sub>_<pair>_<type>` (ex.
 order_buy_ETHUSDC_limit) puis, à défaut, `order_<sub>_<pair>` — permet de distinguer dans un même
 scénario la pose LIMIT post-only (#388) du repli BUY MARKET sur le même pair.
@@ -46,6 +50,9 @@ def _handle_ticker(scenario, args):
 
 
 def _handle_balance(scenario, args):
+    if scenario.get("balance_fail"):
+        print("Request failed: simulated Kraken outage")
+        return
     print(json.dumps(scenario.get("balance", {})))
 
 
