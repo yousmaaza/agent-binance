@@ -15,14 +15,8 @@ flowchart TD
     F --> G["claude-code-review.yml<br/>tech-lead-reviewer poste un commentaire"]
     G --> H[claude-post-review.yml]
     H --> I["Job 1 — fix-bloquants<br/>corrige les 🛑 directement sur la branche PR"]
-    H --> J["Job 2 — create-rec-tickets<br/>1 ticket [REC] (label REC-AUTO) par ⚠️/💡"]
-    J --> K[auto-dispatch-on-auto-label.yml<br/>label REC-AUTO]
-    K --> L["binance-dev-auto.yml — mode REC-AUTO<br/>implémente sur la branche PR existante,<br/>ferme le ticket [REC]"]
-    L --> M{"rec-complete-review.yml<br/>tous les [REC] de la PR fermés ?"}
-    M -->|Non| N[Attend les autres tickets REC ouverts]
-    M -->|Oui| G
     I --> O{Review propre ?}
-    O -->|Non, nouveaux bloquants/REC| G
+    O -->|Non, nouveaux bloquants| G
     O -->|Oui| P["Merge de la PR<br/>toujours manuel"]
     P --> Q["claude-doc-tech.yml<br/>génère docs/technique/, met à jour SPEC.md, miroir Wiki"]
     Q --> R["Déploiement VPS<br/>gh workflow run deploy-vps.yml (manuel)"]
@@ -59,18 +53,11 @@ Ajouter le label **`AUTO`** sur une issue déclenche `auto-dispatch-on-auto-labe
 
 ## 4. Boucle post-review automatique
 
-`claude-post-review.yml` se déclenche quand la review précédente se termine. Deux jobs :
+`claude-post-review.yml` se déclenche quand la review précédente se termine. Un seul job :
 
 - **`fix-bloquants`** : lit la review, corrige *directement* chaque item de la section 🛑 Bloquants sur la branche de la PR, commit, push. Aucun ticket créé pour les bloquants — ils sont corrigés immédiatement.
-- **`create-rec-tickets`** : pour chaque item numéroté des sections ⚠️/💡 (recommandations non bloquantes), crée une issue `[REC] <titre>` labellisée `REC-AUTO`, avec des marqueurs `<!-- pr_branch: ... -->` / `<!-- pr_number: ... -->` dans le body pour savoir où l'implémenter. Max 5 tickets par PR.
 
-Chaque ticket `[REC]` créé porte le label `REC-AUTO`, ce qui redéclenche `auto-dispatch-on-auto-label.yml` → `binance-dev-auto.yml`, mais en **mode REC-AUTO** cette fois : implémente directement sur la branche PR existante (pas de nouvelle branche, pas de nouvelle PR), puis ferme le ticket `[REC]` avec un commentaire de référence.
-
-Quand un ticket `REC-AUTO` se ferme, `rec-complete-review.yml` vérifie si **tous** les `[REC]` de cette PR sont fermés :
-- Si oui → redéclenche `claude-code-review.yml` (nouvelle review propre).
-- Si non → attend les autres tickets `[REC]` encore ouverts.
-
-Cette boucle continue jusqu'à obtenir une review sans bloquant ni nouvelle recommandation.
+Les recommandations non bloquantes (sections ⚠️/💡 de la review) ne déclenchent plus aucune automatisation : elles restent dans le commentaire de review sur la PR, où un humain les lit et ouvre un ticket manuellement s'il les juge utiles.
 
 ## 5. Merge — toujours manuel
 
@@ -93,6 +80,5 @@ Les deux lisent uniquement des fichiers commités en git (pas `reports/*.md`, gi
 
 ## Points de vigilance
 
-- Les tickets `[REC]` doivent conserver leurs marqueurs `<!-- pr_branch -->`/`<!-- pr_number -->` dans le body — sans eux, `binance-dev-auto` ne sait pas où implémenter le fix et `rec-complete-review` ne peut pas retrouver la PR à re-review.
 - Garde-fous constants sur tous les jobs automatisés : jamais `git add -A`/`git add .`, jamais `--force`, jamais de merge automatique, jamais de modification de `.env`/`state/trade_history.json`/`CLAUDE.md`.
 - Le modèle utilisé en CI est `claude-haiku-4-5-20251001` pour tous les agents automatisés (coût/vitesse) — différent du modèle par défaut d'une session Claude Code interactive.
