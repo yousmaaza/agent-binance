@@ -90,7 +90,7 @@ for sc in sell_candidates:
     if sl_txid:
         try:
             binance("order", "cancel", sl_txid, "-o", "json", "--yes")
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             tg(f"⚠️ {coin} : annulation SL échouée avant vente sur signal — stop conservé, {e}")
             continue
 
@@ -101,7 +101,7 @@ for sc in sell_candidates:
     try:
         balance_raw = binance("balance", "-o", "json")
         coin_balance = kraken_coin_balance(json.loads(balance_raw), coin)
-    except Exception:
+    except (RuntimeError, json.JSONDecodeError, ValueError):
         coin_balance = trade_qty
 
     try:
@@ -109,7 +109,7 @@ for sc in sell_candidates:
         pair_data = json.loads(pairs_raw).get(pair, {})
         lot_dec = int(pair_data.get("lot_decimals", 8))
         ordermin = float(pair_data.get("ordermin", 0) or 0)
-    except Exception:
+    except (RuntimeError, json.JSONDecodeError, ValueError):
         lot_dec = 8
         ordermin = 0.0
     step = 10 ** (-lot_dec)
@@ -131,7 +131,7 @@ for sc in sell_candidates:
         sell_txid = (sell_resp.get("txid") or [None])[0]
         if not sell_txid:
             raise RuntimeError("pas de txid")
-    except Exception as e:
+    except (RuntimeError, json.JSONDecodeError, ValueError) as e:
         tg(f"⚠️ Échec SELL MARKET signal {coin}: {e}")
         _repose_stop_and_alert(pending, history, sell_qty, reason=f"vente au marché échouée : {e}", context="vente sur signal")
         history_changed = True
