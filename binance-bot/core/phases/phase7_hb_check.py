@@ -5,15 +5,16 @@ Exécuté par Claude en Phase 7 avant hb(7) :
 
 Stdout : PHASE7_HB_CHECK_DONE|missing=[...]
 """
-import sys
-import os
 import json
+import os
+import sys
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg  # noqa: E402
-from core.heartbeat import hb, init as _hb_init  # noqa: E402
+from core.heartbeat import hb
+from core.heartbeat import init as _hb_init
+from core.trade_helpers import tg
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -34,7 +35,7 @@ try:
 except Exception:
     pass
 
-missing_phases = [p for p in range(0, 7) if p not in hb_check_phases]
+missing_phases = [p for p in range(7) if p not in hb_check_phases]
 if missing_phases:
     tg(f"⚠️ Heartbeats manquants détectés : phases {missing_phases}. Complétude garantie...")
     for p in missing_phases:

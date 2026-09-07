@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Vérification : next_1h_slot() sur une semaine UTC — pas de collision avec slots 4h."""
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def next_1h_slot_logic(now: datetime) -> datetime:

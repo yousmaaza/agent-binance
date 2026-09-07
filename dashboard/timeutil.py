@@ -3,11 +3,10 @@
 Réimplémentation autonome (pas d'import de binance-bot/core/timing.py) : le dashboard est un
 déploiement indépendant, ne doit pas dépendre de la présence du dossier binance-bot/ sur Railway."""
 from datetime import datetime, timezone
-from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-def parse_iso(raw: Optional[str]) -> Optional[datetime]:
+def parse_iso(raw: str | None) -> datetime | None:
     if not raw:
         return None
     try:
@@ -28,6 +27,6 @@ def to_local(dt_utc: datetime, tz_name: str, fmt: str = "%d/%m %H:%M") -> str:
     return local.strftime(fmt)
 
 
-def age_minutes(dt_utc: datetime, now: Optional[datetime] = None) -> float:
+def age_minutes(dt_utc: datetime, now: datetime | None = None) -> float:
     now = now or datetime.now(timezone.utc)
     return (now - dt_utc).total_seconds() / 60

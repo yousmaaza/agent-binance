@@ -21,7 +21,7 @@ from unittest.mock import MagicMock, patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-import webhook_server  # noqa: E402 -- import après sys.path.insert, ordre volontaire
+import webhook_server
 
 TEST_CHAT_ID = "555555"
 

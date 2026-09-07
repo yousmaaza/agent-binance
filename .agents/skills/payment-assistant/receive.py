@@ -5,18 +5,19 @@ Payment Assistant - Receive Actions
 Generate receive QR code / payment link via C2C createReceive API.
 """
 import json
-from typing import Dict, Any, Optional
+from typing import Any
 
 from common import (
-    is_config_ready, show_config_guide,
     PaymentAPI,
+    is_config_ready,
+    show_config_guide,
 )
 
 # Receive API endpoint
 RECEIVE_ENDPOINT = '/binancepay/openapi/user/c2c/createReceive'
 
 
-def action_receive(config: Dict[str, Any], currency: str = None, amount: float = None, note: str = None):
+def action_receive(config: dict[str, Any], currency: str = None, amount: float = None, note: str = None):
     """
     Generate a receive QR code / payment link.
 

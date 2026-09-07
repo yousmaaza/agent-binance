@@ -10,7 +10,8 @@ import tempfile
 import time
 from datetime import datetime, timezone
 
-from core.env import KRAKEN_CLI_PATH as _EXCHANGE_CLI, PROJECT_DIR as _PROJECT_DIR
+from core.env import KRAKEN_CLI_PATH as _EXCHANGE_CLI
+from core.env import PROJECT_DIR as _PROJECT_DIR
 
 
 def tg(text: str) -> None:
@@ -181,5 +182,5 @@ def log_phase0_event(cycle_id: str, phase: str, coin: str, action: str, details:
     try:
         with open(log_file, "a") as f:
             f.write(json.dumps(event) + "\n")
-    except (IOError, OSError):
+    except OSError:
         pass

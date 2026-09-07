@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """Test pour vérifier que reward_risk_ratio absent de config.json utilise le default."""
 import unittest
-import sys
-import os
-import json
-import tempfile
 
 
 class TestRewardRiskRatioDefault(unittest.TestCase):

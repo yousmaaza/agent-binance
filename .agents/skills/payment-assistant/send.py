@@ -5,12 +5,12 @@ Payment Assistant - Send Actions
 All send/pay action functions + QRCodeHandler.
 Extracted from payment_skill.py — logic unchanged.
 """
-import os
 import json
-import subprocess
+import os
 import platform
+import subprocess
 import time
-from typing import Dict, Any, Optional
+from typing import Any
 
 try:
     import qrcode
@@ -37,14 +37,25 @@ except ImportError:
     HAS_CV2 = False
 
 from common import (
-    OrderStatus, SKILLS_ERROR_CODES,
-    SKILL_DIR, CONFIG_FILE_PATH, STATE_FILE_PATH, QR_CODE_OUTPUT_PATH, INBOX_DIR, CLIPBOARD_IMAGE_PATH,
     API_KEY_GUIDE_MESSAGE,
-    load_config, is_config_ready, show_config_guide, validate_config,
-    load_state, update_state, set_order_status, get_order_status, clear_state, get_status_hint,
+    CLIPBOARD_IMAGE_PATH,
+    CONFIG_FILE_PATH,
+    INBOX_DIR,
+    QR_CODE_OUTPUT_PATH,
+    OrderStatus,
     PaymentAPI,
+    clear_state,
+    get_order_status,
+    get_status_hint,
+    is_config_ready,
+    load_config,
+    load_state,
+    set_order_status,
+    show_config_guide,
+    update_state,
+    validate_config,
 )
-from send_extension import detect_extension, get_extension_by_type, get_all_endpoints
+from send_extension import detect_extension, get_all_endpoints, get_extension_by_type
 
 # API Endpoints - aggregated from all extensions
 ENDPOINTS = get_all_endpoints()
@@ -53,7 +64,7 @@ ENDPOINTS = get_all_endpoints()
 # ============================================================
 # State helpers dict - passed to extension.purchase()
 # ============================================================
-def _get_state_helpers() -> Dict[str, Any]:
+def _get_state_helpers() -> dict[str, Any]:
     """Build the state_helpers dict that extensions use to manage state."""
     return {
         'set_order_status': set_order_status,
@@ -69,7 +80,7 @@ class QRCodeHandler:
     """Handle QR code generation, decoding, and clipboard/inbox image operations."""
 
     @staticmethod
-    def generate_qr_image(qr_string: str, output_path: str = QR_CODE_OUTPUT_PATH) -> Optional[str]:
+    def generate_qr_image(qr_string: str, output_path: str = QR_CODE_OUTPUT_PATH) -> str | None:
         """Generate QR code image from string"""
         if not HAS_QRCODE:
             return None
@@ -84,7 +95,7 @@ class QRCodeHandler:
             return None
 
     @staticmethod
-    def decode_qr_from_image(image_path: str) -> Optional[str]:
+    def decode_qr_from_image(image_path: str) -> str | None:
         """Decode QR code from image file. Tries pyzbar first, then opencv."""
         # Try pyzbar first
         if HAS_PIL and HAS_PYZBAR:
@@ -196,7 +207,7 @@ class QRCodeHandler:
             return False, None, "decode_failed"
 
     @staticmethod
-    def parse_emvco_qr(qr_string: str) -> Dict[str, str]:
+    def parse_emvco_qr(qr_string: str) -> dict[str, str]:
         """Parse EMVCo QR code format to extract merchant info"""
         result = {}
         try:
@@ -285,7 +296,7 @@ def action_config():
     }))
 
 
-def action_purchase(config: Dict[str, Any], raw_qr: str):
+def action_purchase(config: dict[str, Any], raw_qr: str):
     """
     Unified Purchase Flow - Step 1: Parse QR
 
@@ -377,7 +388,7 @@ def action_set_amount(amount: float, currency: str = None):
     }))
 
 
-def action_pay_confirm(config: Dict[str, Any], amount: float = None, currency: str = None):
+def action_pay_confirm(config: dict[str, Any], amount: float = None, currency: str = None):
     """
     Payment Flow - Step 2: Confirm Payment
 
@@ -468,7 +479,7 @@ def action_pay_confirm(config: Dict[str, Any], amount: float = None, currency: s
 
         print()
         print("════════════════════════════════════════════════════")
-        print(f"❌ Payment Failed")
+        print("❌ Payment Failed")
         print("════════════════════════════════════════════════════")
         print(f"   {error_msg}")
         if error_hint:
@@ -517,7 +528,7 @@ def action_pay_confirm(config: Dict[str, Any], amount: float = None, currency: s
     }))
 
 
-def action_poll(config: Dict[str, Any]):
+def action_poll(config: dict[str, Any]):
     """Payment Flow - Step 3: Poll payment status until final result"""
     state = load_state()
     pay_order_id = state.get('pay_order_id')
@@ -644,7 +655,7 @@ def action_reset():
     print()
 
 
-def action_resume(config: Dict[str, Any]):
+def action_resume(config: dict[str, Any]):
     """Resume from current state - automatically continue the payment flow."""
     is_ready, reason, missing_fields = is_config_ready(config)
     if not is_ready:
@@ -767,7 +778,7 @@ def action_help():
     print()
 
 
-def _get_file_info(file_path: str) -> Dict[str, Any]:
+def _get_file_info(file_path: str) -> dict[str, Any]:
     """Get file metadata for debugging/transparency."""
     try:
         stat = os.stat(file_path)
@@ -918,7 +929,7 @@ def action_decode_qr(image_path: str = None, base64_data: str = None, use_clipbo
             print(json.dumps({
                 'success': False,
                 'error': 'base64_decode_failed',
-                'message': f'Failed to decode base64 image: {str(e)}',
+                'message': f'Failed to decode base64 image: {e!s}',
                 'source_type': 'base64',
                 'hint': 'Ensure the base64 data is valid image data.'
             }))

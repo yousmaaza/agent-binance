@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core import weekly_analysis as wa  # noqa: E402
+from core import weekly_analysis as wa
 
 
 def _iso(days_ago: float = 0) -> str:

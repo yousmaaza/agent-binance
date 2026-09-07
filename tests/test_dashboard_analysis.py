@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "dashboard"))
 
-import analysis  # noqa: E402
+import analysis
 
 
 class TestBlockingReasons(unittest.TestCase):

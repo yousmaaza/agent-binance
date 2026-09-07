@@ -4,13 +4,11 @@ Deux erreurs distinctes exposées à la vue pour des messages dégradés précis
 - MongoUnavailable : connexion/requête impossible (réseau, IP non whitelistée, credentials).
 - DashboardStateMissing : connexion OK mais le document dashboard_state n'existe pas encore
   (premier déploiement avant le premier cycle post-#431)."""
-from typing import Optional
-
-from pymongo import MongoClient
-from pymongo.errors import PyMongoError
 
 import settings
 from cache import cache
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 
 
 class MongoUnavailable(Exception):
@@ -21,7 +19,7 @@ class DashboardStateMissing(Exception):
     pass
 
 
-_client: Optional[MongoClient] = None
+_client: MongoClient | None = None
 
 
 def _get_client() -> MongoClient:
@@ -92,7 +90,7 @@ def get_cycles_for_grid(limit: int) -> list:
     return cache.get_or_set(f"grid:{limit}", settings.CYCLES_CACHE_TTL_S, lambda: _fetch_cycles_for_grid(limit))
 
 
-def _fetch_latest_weekly_analysis() -> Optional[dict]:
+def _fetch_latest_weekly_analysis() -> dict | None:
     db = _db()
     try:
         return db.weekly_analysis.find_one(sort=[("generated_at", -1)])
@@ -100,7 +98,7 @@ def _fetch_latest_weekly_analysis() -> Optional[dict]:
         raise MongoUnavailable(str(e)) from e
 
 
-def get_latest_weekly_analysis() -> Optional[dict]:
+def get_latest_weekly_analysis() -> dict | None:
     """Analyse hebdomadaire rédigée la plus récente (#453), ou None si jamais générée."""
     return cache.get_or_set(
         "weekly_analysis:latest", settings.DASHBOARD_STATE_CACHE_TTL_S, _fetch_latest_weekly_analysis,

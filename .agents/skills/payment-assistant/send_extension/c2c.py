@@ -4,7 +4,7 @@ C2C Payment Extension.
 Handles Binance C2C QR Code payments (URL-based QR codes).
 """
 import json
-from typing import Dict, Any
+from typing import Any
 
 from .base import PaymentExtension
 
@@ -17,7 +17,7 @@ PAYMENT_TYPE_C2C = 'C2C'
 # ============================================================
 class C2cParseQrResponse:
     """Response from C2C parseQr API"""
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.checkout_id = data.get('checkoutId', '')
         self.checkout_type = data.get('checkoutType', '')
         self.biz_type = data.get('bizType', '')
@@ -34,7 +34,7 @@ class C2cParseQrResponse:
 
 class C2cConfirmPaymentResponse:
     """Response from C2C confirmPayment API"""
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.pay_order_id = data.get('payOrderId', '')
         self.status = data.get('status', '')
         self.usd_amount = data.get('usdAmount')
@@ -62,7 +62,7 @@ class C2cExtension(PaymentExtension):
         # C2C detection is intentionally broad; PIX is checked first in registry.
         return True
 
-    def purchase(self, api, raw_qr: str, state_helpers: Dict[str, Any]):
+    def purchase(self, api, raw_qr: str, state_helpers: dict[str, Any]):
         """C2C purchase flow - Step 1: Parse C2C QR code"""
         set_order_status = state_helpers['set_order_status']
         update_state = state_helpers['update_state']
@@ -111,7 +111,7 @@ class C2cExtension(PaymentExtension):
             daily_limit=str(order_info.daily_limit) if order_info.daily_limit else None
         )
 
-        print(f"✅ QR Parsed Successfully")
+        print("✅ QR Parsed Successfully")
         print(f"   📝 Checkout ID: {order_info.checkout_id}")
         print(f"   🏪 Payee: {order_info.nickname}")
         print(f"   💱 Currency: {order_info.currency or 'Not specified'}")
@@ -152,7 +152,7 @@ class C2cExtension(PaymentExtension):
             print("📝 No preset amount")
             print("════════════════════════════════════════════════════")
             print()
-            print(f"💡 Please enter the amount (e.g., '100' or '100 USDT')")
+            print("💡 Please enter the amount (e.g., '100' or '100 USDT')")
             update_state({
                 'needs_amount_input': True,
                 'order_status': OrderStatus.AWAITING_AMOUNT.value
@@ -169,7 +169,7 @@ class C2cExtension(PaymentExtension):
                 'daily_limit': str(order_info.daily_limit) if order_info.daily_limit else None
             }))
 
-    def build_confirm_params(self, state: Dict[str, Any], amount: str, currency: str) -> Dict[str, Any]:
+    def build_confirm_params(self, state: dict[str, Any], amount: str, currency: str) -> dict[str, Any]:
         """Build C2C confirmPayment params (includes bizType)."""
         return {
             'checkoutId': state.get('checkout_id', ''),
@@ -184,7 +184,7 @@ class C2cExtension(PaymentExtension):
     def get_poll_endpoint(self) -> str:
         return self.endpoints['query_payment_status']
 
-    def build_poll_params(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def build_poll_params(self, state: dict[str, Any]) -> dict[str, Any]:
         """C2C poll includes bizType."""
         params = {'payOrderId': state.get('pay_order_id', '')}
         biz_type = state.get('biz_type')

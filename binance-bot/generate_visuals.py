@@ -10,14 +10,12 @@ Usage :
 
 Prérequis : NAPKIN_API_TOKEN dans .env
 """
-import os
-import sys
-import json
-import time
 import argparse
+import json
+import os
 import subprocess
-import urllib.request
-import urllib.error
+import sys
+import time
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent.parent
@@ -319,7 +317,7 @@ def generate_one(section_id: str, fmt: str, token: str) -> list[Path]:
     spec = VISUALS[section_id]
 
     print(f"→ [{section_id}] {spec['title']}")
-    print(f"  Envoi du texte à Napkin API…", flush=True)
+    print("  Envoi du texte à Napkin API…", flush=True)
 
     request_id = create_visual(token, spec["text"].strip(), fmt)
     print(f"  request_id={request_id}")

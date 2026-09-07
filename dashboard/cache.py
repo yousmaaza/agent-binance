@@ -3,7 +3,8 @@
 Volontairement basique (process-local, pas de Redis) : un seul dyno web sur Railway pour ce
 dashboard, un cache partagé entre requêtes n'apporte rien de plus ici."""
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 class TTLCache:

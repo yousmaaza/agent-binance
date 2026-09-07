@@ -6,23 +6,31 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable
 
-from loguru import logger
-
+from botlogging.cycle_logger import CycleLogger
 from config.llm import CLAUDE_CLI_FLAGS, get_configured_model
-from core.env import KRAKEN_CLI_PATH, LOGS_DIR, PROJECT_DIR, PROMPT_VERSION, TRADE_PROMPT, POSITION_PROMPT, get_cycle_phases_log_path
+from core.env import (
+    KRAKEN_CLI_PATH,
+    LOGS_DIR,
+    POSITION_PROMPT,
+    PROJECT_DIR,
+    PROMPT_VERSION,
+    TRADE_PROMPT,
+    get_cycle_phases_log_path,
+)
 from core.lock import acquire_lock, is_locked, release_lock
 from core.maker_exit_watcher import load_maker_exit_pending_orders
 from core.telegram import send_telegram
 from core.timing import fmt_local
 from core.trade_helpers import _load_config
+from loguru import logger
+from storage.mongo import mongo_repo
+
 from orchestration.stream_parser import is_resource_error, parse_stream_event
 from orchestration.watchdog import WatchdogThread
-from botlogging.cycle_logger import CycleLogger
-from storage.mongo import mongo_repo
 
 CLAUDE_PROCESS_TIMEOUT_S = 3600  # 1h max par cycle — tuer le processus si dépassé
 # Marge au-delà de maker_exit_timeout_seconds avant de forcer le démarrage d'un cycle malgré
@@ -341,14 +349,14 @@ def _write_helpers_file(fd: int, helpers_path: str, cycle_id: str, trigger: str)
     hb_path = get_cycle_phases_log_path(cycle_id)
     helpers_content = f"""import subprocess, json, time as _t, datetime as _hb_dt, os as _hb_os, tempfile as _hb_tempfile, math
 
-KRAKEN_CLI = {repr(KRAKEN_CLI_PATH)}
-PYTHON_BIN  = {repr(sys.executable)}
-PROJECT_DIR = {repr(PROJECT_DIR)}
-CYCLE_ID    = {repr(cycle_id)}
+KRAKEN_CLI = {KRAKEN_CLI_PATH!r}
+PYTHON_BIN  = {sys.executable!r}
+PROJECT_DIR = {PROJECT_DIR!r}
+CYCLE_ID    = {cycle_id!r}
 MONGO_URI   = _hb_os.environ.get("MONGODB_URI", "")
 MONGO_DB    = _hb_os.environ.get("MONGODB_DB", "agent-binance")
-_HB_PATH    = {repr(hb_path)}
-_trigger    = {repr(trigger)}
+_HB_PATH    = {hb_path!r}
+_trigger    = {trigger!r}
 
 _hb_os.makedirs(_hb_os.path.dirname(_HB_PATH), exist_ok=True)
 _hb_phase_start = {{}}

@@ -11,7 +11,9 @@ from unittest.mock import patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from commands import perf  # noqa: E402 -- import après sys.path.insert, ordre volontaire
+from commands import (
+    perf,
+)
 
 
 class _FakeCyclesCollection:

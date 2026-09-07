@@ -5,15 +5,20 @@ Exécuté par Claude en Phase 0 après le rattrapage OCO :
 
 Stdout : PHASE0_TS_DONE|updated=N
 """
-import sys
-import os
 import json
 import math
+import os
+import sys
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _save_trade_history_atomic, log_phase0_event  # noqa: E402
+from core.trade_helpers import (
+    _save_trade_history_atomic,
+    binance,
+    log_phase0_event,
+    tg,
+)
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 

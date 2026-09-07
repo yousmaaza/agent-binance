@@ -9,9 +9,6 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import core.env  # noqa: F401  — bootstrap loguru + .env + prompt
-
-from loguru import logger
-
 from commands.cout import run_cout
 from commands.eval import run_eval
 from commands.maker import run_maker
@@ -22,11 +19,18 @@ from core.lock import release_lock
 from core.maker_exit_watcher import maker_exit_watcher_loop
 from core.maker_watcher import maker_watcher_loop
 from core.state_manager import validate_and_repair_boot
-from core.telegram import get_offset, handle_callback, save_offset, send_telegram, tg_post
+from core.telegram import (
+    get_offset,
+    handle_callback,
+    save_offset,
+    send_telegram,
+    tg_post,
+)
 from core.timing import fmt_local, next_4h_slot, next_weekly_slot
 from core.tp_watcher import tp_watcher_loop
 from core.weekly_analysis import run_weekly_analysis
-from orchestration.runner import run_trade_workflow, run_position_check_workflow
+from loguru import logger
+from orchestration.runner import run_position_check_workflow, run_trade_workflow
 
 NEXT_AUTO_TRADE = None
 NEXT_WEEKLY_ANALYSIS = None
@@ -58,7 +62,10 @@ def main_loop():
     NEXT_WEEKLY_ANALYSIS = next_weekly_slot()
     offset = get_offset()
 
-    from core.env import TRADE_PROMPT, POSITION_PROMPT  # noqa: F401 — vérifie que les prompts sont bien chargés
+    from core.env import (  # noqa: F401 — vérifie que les prompts sont bien chargés
+        POSITION_PROMPT,
+        TRADE_PROMPT,
+    )
 
     is_valid, error = validate_and_repair_boot()
     if not is_valid:

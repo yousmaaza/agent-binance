@@ -15,16 +15,16 @@ Exécuté par Claude en Phase 8 :
 
 Stdout : PHASE8_CYCLE_LOG_DONE|status=ok
 """
-import sys
-import os
-import json
 import datetime
+import json
+import os
 import subprocess
+import sys
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg  # noqa: E402
+from core.trade_helpers import tg
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 

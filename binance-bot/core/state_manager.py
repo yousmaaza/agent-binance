@@ -5,8 +5,9 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 
-from core.env import PROJECT_DIR
 from loguru import logger
+
+from core.env import PROJECT_DIR
 
 
 def _validate_trade_history(data):

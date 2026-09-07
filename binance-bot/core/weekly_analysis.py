@@ -14,12 +14,12 @@ import statistics
 import subprocess
 from datetime import datetime, timedelta, timezone
 
-from loguru import logger
-
 from config.llm import WEEKLY_ANALYSIS_CLI_FLAGS, WEEKLY_ANALYSIS_TIMEOUT_S
+from loguru import logger
+from storage.mongo import mongo_repo
+
 from core.env import MONGO_URI, PROJECT_DIR
 from core.timing import iso_week_key, parse_dt
-from storage.mongo import mongo_repo
 
 _HISTORY_PATH = os.path.join(PROJECT_DIR, "state", "trade_history.json")
 

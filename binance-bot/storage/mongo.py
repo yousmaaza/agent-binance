@@ -1,17 +1,15 @@
 """Accès MongoDB : connexion lazy, lecture/écriture des cycles."""
 from datetime import datetime
-from typing import Dict, List, Optional
-
-from loguru import logger
-from pymongo import MongoClient
 
 from core.env import MONGO_DB, MONGO_URI
+from loguru import logger
 from models.cycle import CycleDocument
+from pymongo import MongoClient
 
 
 class MongoRepository:
     def __init__(self):
-        self._client: Optional[MongoClient] = None
+        self._client: MongoClient | None = None
 
     def _db(self):
         if not MONGO_URI:
@@ -47,7 +45,7 @@ class MongoRepository:
             logger.error(f"MongoDB save_cycle erreur : {e}")
             return False
 
-    def find_last_cycle(self) -> Optional[Dict]:
+    def find_last_cycle(self) -> dict | None:
         db = self._db()
         if db is None:
             return None
@@ -57,7 +55,7 @@ class MongoRepository:
             logger.error(f"MongoDB find_last_cycle erreur : {e}")
             return None
 
-    def find_cycles_since(self, since: datetime) -> List[Dict]:
+    def find_cycles_since(self, since: datetime) -> list[dict]:
         """Cycles dont le timestamp est >= since — pour le résumé de cycles de l'analyse hebdo (#453)."""
         db = self._db()
         if db is None:
@@ -73,7 +71,7 @@ class MongoRepository:
             logger.error(f"MongoDB find_cycles_since erreur : {e}")
             return []
 
-    def find_weekly_analysis(self, week_key: str) -> Optional[Dict]:
+    def find_weekly_analysis(self, week_key: str) -> dict | None:
         """Document existant pour cette semaine ISO, ou None — clé d'idempotence de #453."""
         db = self._db()
         if db is None:
@@ -84,7 +82,7 @@ class MongoRepository:
             logger.error(f"MongoDB find_weekly_analysis erreur : {e}")
             return None
 
-    def save_weekly_analysis(self, doc: Dict) -> bool:
+    def save_weekly_analysis(self, doc: dict) -> bool:
         db = self._db()
         if db is None:
             return False
@@ -95,7 +93,7 @@ class MongoRepository:
             logger.error(f"MongoDB save_weekly_analysis erreur : {e}")
             return False
 
-    def get_api_costs(self, limit: int = 5) -> List[Dict]:
+    def get_api_costs(self, limit: int = 5) -> list[dict]:
         db = self._db()
         if db is None:
             return []

@@ -10,7 +10,7 @@ from itertools import pairwise
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "dashboard"))
 
-import viewdata  # noqa: E402
+import viewdata
 
 
 class TestResolveTimezone(unittest.TestCase):

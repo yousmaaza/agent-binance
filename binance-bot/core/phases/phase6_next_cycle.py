@@ -6,14 +6,14 @@ Exécuté par Claude en Phase 6 :
 Stdout : PHASE6_NEXT_CYCLE_DONE|next=DD/MM HH:MM (heure locale)
 Output : /tmp/cycle_{CYCLE_ID}_phase6_next_output.json
 """
-import sys
-import os
 import json
+import os
+import sys
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.timing import fmt_local, next_4h_slot  # noqa: E402
+from core.timing import fmt_local, next_4h_slot
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 

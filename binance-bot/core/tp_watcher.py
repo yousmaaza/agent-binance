@@ -15,7 +15,8 @@ from core.maker_exit_watcher import (
 )
 from core.state_manager import load_trade_history, save_trade_history
 from core.telegram import send_telegram
-from core.trade_helpers import binance as _cli, _load_config, compute_net_pnl
+from core.trade_helpers import _load_config, compute_net_pnl
+from core.trade_helpers import binance as _cli
 
 _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "tp_watcher_state.json")
 

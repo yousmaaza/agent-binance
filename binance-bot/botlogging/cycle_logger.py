@@ -2,9 +2,8 @@
 import json
 from datetime import datetime, timezone
 
-from loguru import logger
-
 from core.env import get_cycle_phases_log_path
+from loguru import logger
 
 
 class CycleLogger:

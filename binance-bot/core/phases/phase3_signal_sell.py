@@ -31,28 +31,32 @@ Exécuté par Claude en Phase 3, après phase3_scoring.py :
 Stdout : PHASE3_SIGNAL_SELL_DONE|closed=N
 Output : /tmp/cycle_{CYCLE_ID}_phase3_signal_sell_output.json
 """
-import sys
-import os
+import datetime
 import json
 import math
+import os
+import sys
 import time
-import datetime
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
 from core.maker_exit_watcher import _repose_stop_and_alert
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl, kraken_coin_balance
+from core.trade_helpers import (
+    _load_config,
+    _save_trade_history_atomic,
+    binance,
+    compute_net_pnl,
+    kraken_coin_balance,
+    tg,
+)
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
 _QTY_EPSILON = 1e-9
 
-# /tmp/ hardcodé volontairement : contrat inter-phases Claude (phase3_scoring.py écrit,
-# phase3_signal_sell.py lit). Migration vers state/ planifiée (#392, #403) — implique
-# un refactoring architectural (state/ persistant vs /tmp/ par cycle). Visant un
-# inter-process communication (IPC) entre sous-processus Claude et webhook_server.py.
-# Bandit B108 neutralisé : temporaire et accepté, source directe du cycle_id (pas injecté).
+# Chemin fixe volontaire (contrat avec prompts/phases/phase3_scoring.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
 in_path = f"/tmp/cycle_{CYCLE_ID}_phase3_signal_sell_input.json"  # nosec B108
 with open(in_path) as f:
     inp = json.load(f)
@@ -152,7 +156,7 @@ for sc in sell_candidates:
             if vol_exec > 0:
                 break
         except Exception:
-            pass  # Query introuvable momentanément, retry suivant
+            pass
 
     if vol_exec <= _QTY_EPSILON:
         # Fill introuvable après 3 tentatives : jamais de prix fabriqué (#469, règle « marquer,
@@ -212,11 +216,8 @@ if history_changed:
     _save_trade_history_atomic(history)
 
 print(f"PHASE3_SIGNAL_SELL_DONE|closed={closed_count}")
-# /tmp/ hardcodé volontairement : sortie phase écrite ici, relue par phase4_sizing.py.
-# Fait partie du contrat inter-phases Claude (webhooks_server.py orchestre, transmet
-# CYCLE_ID, chaque phase lit/écrit /tmp/cycle_{CYCLE_ID}_*). Migration vers state/
-# planifiée (#392, #403). Bandit B108 neutralisé : chemin entièrement déterministe
-# (cycle_id source directe, aucune injection d'utilisateur).
+# Chemin fixe volontaire (contrat avec prompts/phases/phase3_scoring.txt) : neutralisation
+# bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
 out_path = f"/tmp/cycle_{CYCLE_ID}_phase3_signal_sell_output.json"  # nosec B108
 with open(out_path, "w") as f:
     json.dump({"closed": closed_count}, f)

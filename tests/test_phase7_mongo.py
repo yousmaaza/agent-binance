@@ -26,7 +26,9 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "tests"))
 
-from fixtures import test_harness as harness  # noqa: E402 -- import après sys.path.insert, ordre volontaire
+from fixtures import (
+    test_harness as harness,
+)
 
 PHASE7_MONGO_PATH = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase7_mongo.py")
 

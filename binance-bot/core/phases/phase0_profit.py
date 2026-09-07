@@ -5,21 +5,27 @@ Exécuté par Claude en Phase 0 après le trailing stop :
 
 Stdout : PHASE0_PROFIT_DONE|closed=N
 """
-import sys
-import os
-import json
 import datetime
+import json
+import os
+import sys
 import time
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.maker_exit_watcher import (  # noqa: E402
+from core.maker_exit_watcher import (
     attempt_maker_exit,
     load_maker_exit_pending_orders,
     save_maker_exit_pending_orders,
 )
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl  # noqa: E402
+from core.trade_helpers import (
+    _load_config,
+    _save_trade_history_atomic,
+    binance,
+    compute_net_pnl,
+    tg,
+)
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 

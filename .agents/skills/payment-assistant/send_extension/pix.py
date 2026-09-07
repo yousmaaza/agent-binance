@@ -4,7 +4,7 @@ PIX Payment Extension.
 Handles Brazilian PIX EMV QR code payments (BR Code / Copia e Cola).
 """
 import json
-from typing import Dict, Any
+from typing import Any
 
 from .base import PaymentExtension
 
@@ -17,7 +17,7 @@ PAYMENT_TYPE_PIX = 'PIX'
 # ============================================================
 class PixParseQrResponse:
     """Response from Pix parseQr API"""
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.checkout_id = data.get('checkoutId', '')
         self.status = data.get('status', '')
         # Receiver info
@@ -67,7 +67,7 @@ class PixParseQrResponse:
 
 class PixConfirmPaymentResponse:
     """Response from Pix confirmPayment API"""
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.pay_order_id = data.get('payOrderId', '')
         self.status = data.get('status', '')
         self.usd_amount = data.get('usdAmount')
@@ -78,7 +78,7 @@ class PixConfirmPaymentResponse:
 # ============================================================
 # PIX EMV QR Code Parser (local preview)
 # ============================================================
-def parse_pix_emv_qr(qr_string: str) -> Dict[str, Any]:
+def parse_pix_emv_qr(qr_string: str) -> dict[str, Any]:
     """
     Parse PIX EMV QR code (TLV format) for local preview display.
 
@@ -149,7 +149,7 @@ class PixExtension(PaymentExtension):
             return False
         return 'br.gov.bcb.pix' in raw_qr.lower()
 
-    def purchase(self, api, raw_qr: str, state_helpers: Dict[str, Any]):
+    def purchase(self, api, raw_qr: str, state_helpers: dict[str, Any]):
         """PIX purchase flow - Step 1: Parse PIX QR code"""
         set_order_status = state_helpers['set_order_status']
         update_state = state_helpers['update_state']
@@ -225,7 +225,7 @@ class PixExtension(PaymentExtension):
             additional_infos=order_info.additional_infos,
         )
 
-        print(f"✅ PIX QR Parsed Successfully")
+        print("✅ PIX QR Parsed Successfully")
         print(f"   📝 Checkout ID: {order_info.checkout_id}")
         print(f"   🏪 Receiver: {order_info.display_name}")
         if order_info.receiver_psp:
@@ -238,7 +238,7 @@ class PixExtension(PaymentExtension):
         if order_info.daily_limit:
             print(f"   📊 Daily Limit: {order_info.daily_limit} USD")
         if order_info.additional_infos:
-            print(f"   📎 Additional Info:")
+            print("   📎 Additional Info:")
             for info in order_info.additional_infos:
                 print(f"      {info.get('key', '')}: {info.get('value', '')}")
         print()
@@ -297,7 +297,7 @@ class PixExtension(PaymentExtension):
                 'daily_limit': str(order_info.daily_limit) if order_info.daily_limit else None
             }))
 
-    def build_confirm_params(self, state: Dict[str, Any], amount: str, currency: str) -> Dict[str, Any]:
+    def build_confirm_params(self, state: dict[str, Any], amount: str, currency: str) -> dict[str, Any]:
         """Build PIX confirmPayment params (no bizType needed)."""
         return {
             'checkoutId': state.get('checkout_id', ''),
@@ -311,6 +311,6 @@ class PixExtension(PaymentExtension):
     def get_poll_endpoint(self) -> str:
         return self.endpoints['query_payment_status']
 
-    def build_poll_params(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def build_poll_params(self, state: dict[str, Any]) -> dict[str, Any]:
         """PIX poll does NOT include bizType."""
         return {'payOrderId': state.get('pay_order_id', '')}

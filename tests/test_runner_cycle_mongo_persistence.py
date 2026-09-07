@@ -19,7 +19,9 @@ from unittest.mock import MagicMock, patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from orchestration import runner  # noqa: E402 -- import après sys.path.insert, ordre volontaire
+from orchestration import (
+    runner,
+)
 
 _SCRATCH_DIR = os.path.join(PROJECT_DIR, "tests", "_scratch_runner_cycle_mongo")
 

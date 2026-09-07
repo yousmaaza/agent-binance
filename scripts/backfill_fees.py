@@ -47,8 +47,12 @@ from datetime import datetime, timedelta, timezone
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import binance, _save_trade_history_atomic, compute_net_pnl  # noqa: E402
-from core.timing import parse_dt  # noqa: E402
+from core.timing import parse_dt
+from core.trade_helpers import (
+    _save_trade_history_atomic,
+    binance,
+    compute_net_pnl,
+)
 
 TRADE_HISTORY_PATH = os.path.join(PROJECT_DIR, "state", "trade_history.json")
 

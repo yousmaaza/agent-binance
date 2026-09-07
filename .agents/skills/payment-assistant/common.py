@@ -9,14 +9,14 @@ Shared by send.py and receive.py:
   - API client (PaymentAPI with HMAC signing, rate limiting)
   - Data models (PaymentStatusResponse, ConfirmPaymentResponse)
 """
-import time
-import hmac
 import hashlib
-import os
+import hmac
 import json
+import os
 import secrets
-from typing import Dict, Any, Optional
+import time
 from enum import Enum
+from typing import Any
 
 try:
     import requests
@@ -111,7 +111,7 @@ def create_default_config() -> str:
     return CONFIG_FILE_PATH
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """
     Load configuration with priority: ENV > config.json > defaults
 
@@ -185,7 +185,7 @@ def load_config() -> Dict[str, Any]:
 
 
 
-def is_config_ready(config: Dict[str, Any]) -> tuple:
+def is_config_ready(config: dict[str, Any]) -> tuple:
     """Check if configuration is ready for use."""
     if not config.get('configured', False):
         return False, 'not_configured', []
@@ -202,7 +202,7 @@ def is_config_ready(config: Dict[str, Any]) -> tuple:
     return True, 'ready', []
 
 
-def show_config_guide(config: Dict[str, Any], reason: str, missing_fields: list = None):
+def show_config_guide(config: dict[str, Any], reason: str, missing_fields: list = None):
     """Show configuration guide when config is not ready."""
     print()
     print("════════════════════════════════════════════════════")
@@ -248,7 +248,7 @@ def show_config_guide(config: Dict[str, Any], reason: str, missing_fields: list 
     }))
 
 
-def validate_config(config: Dict[str, Any]) -> tuple:
+def validate_config(config: dict[str, Any]) -> tuple:
     """Validate configuration."""
     required_fields = ['api_key', 'api_secret']
     missing = []
@@ -301,14 +301,14 @@ def mark_api_call_end():
 # ============================================================
 # State Management
 # ============================================================
-def save_state(state: Dict[str, Any]):
+def save_state(state: dict[str, Any]):
     """Save state to file"""
     state['last_updated'] = time.strftime('%Y-%m-%d %H:%M:%S')
     with open(STATE_FILE_PATH, 'w') as f:
         json.dump(state, f, indent=2)
 
 
-def load_state() -> Dict[str, Any]:
+def load_state() -> dict[str, Any]:
     """Load state from file"""
     if os.path.exists(STATE_FILE_PATH):
         try:
@@ -319,7 +319,7 @@ def load_state() -> Dict[str, Any]:
     return {}
 
 
-def update_state(updates: Dict[str, Any]) -> Dict[str, Any]:
+def update_state(updates: dict[str, Any]) -> dict[str, Any]:
     """Update state with new values"""
     state = load_state()
     state.update(updates)
@@ -327,14 +327,14 @@ def update_state(updates: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
-def set_order_status(status: OrderStatus, **extra_fields) -> Dict[str, Any]:
+def set_order_status(status: OrderStatus, **extra_fields) -> dict[str, Any]:
     """Set order status and optionally update other fields"""
     updates = {'order_status': status.value}
     updates.update(extra_fields)
     return update_state(updates)
 
 
-def get_order_status() -> Optional[OrderStatus]:
+def get_order_status() -> OrderStatus | None:
     """Get current order status"""
     state = load_state()
     status_str = state.get('order_status')
@@ -352,7 +352,7 @@ def clear_state():
         os.remove(STATE_FILE_PATH)
 
 
-def get_status_hint(status: OrderStatus, state: Dict[str, Any]) -> str:
+def get_status_hint(status: OrderStatus, state: dict[str, Any]) -> str:
     """Get hint for next action based on current status"""
     currency = state.get('currency', 'USDT')
     hints = {
@@ -373,10 +373,10 @@ def get_status_hint(status: OrderStatus, state: Dict[str, Any]) -> str:
 # ============================================================
 class PaymentStatusResponse:
     """Response from queryPaymentStatus API (shared by all payment types)"""
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.status = data.get('status', '')
         self.asset_cost_vos = []
-        if 'assetCostVos' in data and data['assetCostVos']:
+        if data.get('assetCostVos'):
             for vo in data['assetCostVos']:
                 self.asset_cost_vos.append({
                     'asset': vo.get('asset', ''),
@@ -387,7 +387,7 @@ class PaymentStatusResponse:
 
 class ConfirmPaymentResponse:
     """Response from confirmPayment API (shared by all payment types)"""
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         self.pay_order_id = data.get('payOrderId', '')
         self.status = data.get('status', '')
         self.usd_amount = data.get('usdAmount')
@@ -406,7 +406,7 @@ class PaymentAPI:
     Extensions provide endpoints and params; this class handles transport.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         if config is None:
             config = load_config()
         self.config = config
@@ -414,7 +414,7 @@ class PaymentAPI:
         self.api_secret = config.get('api_secret', '')
         self.base_url = config.get('base_url', '')
 
-    def _make_request(self, endpoint: str, params: Dict[str, Any], method: str = 'POST', use_body: bool = False) -> Dict[str, Any]:
+    def _make_request(self, endpoint: str, params: dict[str, Any], method: str = 'POST', use_body: bool = False) -> dict[str, Any]:
         """Make API request using OpenAPI signing method.
 
         Args:
@@ -431,7 +431,7 @@ class PaymentAPI:
 
         return self._make_openapi_request(endpoint, params)
 
-    def _make_openapi_request(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _make_openapi_request(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         """Make OpenAPI-style request with header-based signature.
 
         Signature format: HMAC-SHA512(payload, api_secret)
@@ -475,7 +475,7 @@ class PaymentAPI:
             mark_api_call_end()
             return {'success': False, 'code': '-1', 'message': str(e)}
 
-    def _parse_response(self, response) -> Dict[str, Any]:
+    def _parse_response(self, response) -> dict[str, Any]:
         """Parse API response into unified format.
 
         OpenAPI format: {"status": "SUCCESS", "code": "000000", "data": {...}, "errorMessage": null}
@@ -510,7 +510,7 @@ class PaymentAPI:
                 'message': error_message
             }
 
-    def _parse_error(self, result: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_error(self, result: dict[str, Any]) -> dict[str, Any]:
         """Parse API error and return user-friendly info"""
         code = result.get('code')
         message = result.get('message', 'Unknown error')
@@ -521,7 +521,7 @@ class PaymentAPI:
 
         return {'status': 'ERROR', 'code': code, 'message': message, 'hint': 'Please try again later'}
 
-    def make_parsed_request(self, endpoint: str, params: Dict[str, Any], response_cls, method: str = 'POST', use_body: bool = False) -> Dict[str, Any]:
+    def make_parsed_request(self, endpoint: str, params: dict[str, Any], response_cls, method: str = 'POST', use_body: bool = False) -> dict[str, Any]:
         """Make API request and parse response with given class.
 
         Used by extensions to call APIs with their own response models.
@@ -543,7 +543,7 @@ class PaymentAPI:
         error_info = self._parse_error(result)
         return {'success': False, **error_info}
 
-    def confirm_payment(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def confirm_payment(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         """Call confirmPayment endpoint (shared response format)."""
         result = self._make_request(endpoint, params, use_body=True)
         if result['success'] and result.get('data'):
@@ -551,7 +551,7 @@ class PaymentAPI:
         error_info = self._parse_error(result)
         return {'success': False, **error_info}
 
-    def query_payment_status(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def query_payment_status(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         """Call queryPaymentStatus endpoint (shared response format)."""
         result = self._make_request(endpoint, params, method='POST', use_body=True)
         if result['success'] and result.get('data'):

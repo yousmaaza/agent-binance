@@ -18,14 +18,14 @@ Exécuté par Claude en Phase 3 :
 Stdout : PHASE3_DONE|N_buy=X|skipped=Y|top_score=Z
 Output : /tmp/cycle_{CYCLE_ID}_phase3_output.json
 """
-import sys
-import os
 import json
+import os
+import sys
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, _load_config  # noqa: E402
+from core.trade_helpers import _load_config, tg
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 

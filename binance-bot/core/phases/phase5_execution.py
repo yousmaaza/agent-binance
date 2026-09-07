@@ -27,21 +27,27 @@ Stdout : PHASE5_DONE|executed=N|pending=P|skipped=M
 de remplissage par core/maker_watcher.py — pas encore des achats, cf. #397)
 Output : /tmp/cycle_{CYCLE_ID}_phase5_output.json
 """
-import sys
-import os
+import datetime
 import json
 import math
+import os
+import sys
+import tempfile
 import time
 import uuid
-import datetime
-import tempfile
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import (  # noqa: E402
-    tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl,
-    maker_or_taker_from_ordertype, load_maker_pending_orders, save_maker_pending_orders,
+from core.trade_helpers import (
+    _load_config,
+    _save_trade_history_atomic,
+    binance,
+    compute_net_pnl,
+    load_maker_pending_orders,
+    maker_or_taker_from_ordertype,
+    save_maker_pending_orders,
+    tg,
 )
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"

@@ -7,7 +7,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import core.env  # noqa: F401  — bootstrap loguru + .env + prompt
-
 from commands.cout import run_cout
 from commands.eval import run_eval
 from commands.perf import run_perf

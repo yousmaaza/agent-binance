@@ -1,6 +1,5 @@
 """Schéma d'un trade dans trade_history.json."""
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass
@@ -19,10 +18,10 @@ class TradeRecord:
     stop_order_id: str = ""
     tp_order_id: str = ""
     status: str = "open"         # "open" | "closed"
-    exit_price: Optional[float] = None
-    exit_date: Optional[str] = None
-    pnl_usdc: Optional[float] = None
-    pnl_pct: Optional[float] = None
+    exit_price: float | None = None
+    exit_date: str | None = None
+    pnl_usdc: float | None = None
+    pnl_pct: float | None = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in self.__dict__.items()}

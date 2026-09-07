@@ -20,7 +20,7 @@ from unittest.mock import patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core import maker_exit_watcher  # noqa: E402
+from core import maker_exit_watcher
 
 BASE_CONFIG = {
     "maker_exit_max_concession_pct": 0.003,
@@ -128,10 +128,7 @@ class TestAttemptMakerExitPostsPostOnlySellOrder(unittest.TestCase):
 
     def test_places_post_only_sell_limit_at_current_ask(self):
         pos = _position()
-        fake_cli = _FakeCli(**{
-            "ticker_ETHUSDC": {"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]},
-            "order_sell_ETHUSDC_limit": {"txid": ["SELLTX1"]},
-        })
+        fake_cli = _FakeCli(ticker_ETHUSDC={"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]}, order_sell_ETHUSDC_limit={"txid": ["SELLTX1"]})
 
         with patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
             record = maker_exit_watcher.attempt_maker_exit(pos, "tp_watcher", BASE_CONFIG, notify=lambda *_a, **_k: None)
@@ -174,10 +171,7 @@ class TestCycleIdTransportThroughMakerExit(unittest.TestCase):
 
     def test_attempt_maker_exit_carries_cycle_id_into_the_pending_record(self):
         pos = _position()
-        fake_cli = _FakeCli(**{
-            "ticker_ETHUSDC": {"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]},
-            "order_sell_ETHUSDC_limit": {"txid": ["SELLTX1"]},
-        })
+        fake_cli = _FakeCli(ticker_ETHUSDC={"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]}, order_sell_ETHUSDC_limit={"txid": ["SELLTX1"]})
 
         with patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
             record = maker_exit_watcher.attempt_maker_exit(
@@ -189,10 +183,7 @@ class TestCycleIdTransportThroughMakerExit(unittest.TestCase):
 
     def test_attempt_maker_exit_defaults_cycle_id_to_none(self):
         pos = _position()
-        fake_cli = _FakeCli(**{
-            "ticker_ETHUSDC": {"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]},
-            "order_sell_ETHUSDC_limit": {"txid": ["SELLTX1"]},
-        })
+        fake_cli = _FakeCli(ticker_ETHUSDC={"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]}, order_sell_ETHUSDC_limit={"txid": ["SELLTX1"]})
 
         with patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
             record = maker_exit_watcher.attempt_maker_exit(

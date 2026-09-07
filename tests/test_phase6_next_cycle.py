@@ -22,9 +22,11 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "tests"))
 
-from fixtures import test_harness as harness  # noqa: E402 -- import après sys.path.insert, ordre volontaire
-from config.app import APP_CONFIG  # noqa: E402
-from core.timing import fmt_local  # noqa: E402
+from config.app import APP_CONFIG
+from core.timing import fmt_local
+from fixtures import (
+    test_harness as harness,
+)
 
 PHASE6_NEXT_CYCLE_PATH = os.path.join(
     PROJECT_DIR, "binance-bot", "core", "phases", "phase6_next_cycle.py",

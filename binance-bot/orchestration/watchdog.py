@@ -3,8 +3,8 @@ import os
 import threading
 import time
 
-from core.telegram import send_telegram
 from botlogging.cycle_logger import CycleLogger
+from core.telegram import send_telegram
 
 _STALL_THRESHOLD = 900   # secondes (15 min)
 _POLL_INTERVAL = 60      # secondes

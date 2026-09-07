@@ -12,8 +12,8 @@ from unittest.mock import patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "dashboard"))
 
-import kraken_client  # noqa: E402
-from cache import cache  # noqa: E402
+import kraken_client
+from cache import cache
 
 
 class _FakeResponse:

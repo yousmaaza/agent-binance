@@ -1,13 +1,12 @@
 """Commande /status — retourne une str (compatible Telegram et CLI)."""
 import json
 import subprocess
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
-from loguru import logger
-
-from core.env import PROJECT_DIR, KRAKEN_CLI_PATH
 from config.app import APP_CONFIG
+from core.env import KRAKEN_CLI_PATH, PROJECT_DIR
 from core.timing import fmt_local, parse_dt
+from loguru import logger
 
 
 def _fetch_account_data() -> dict | None:

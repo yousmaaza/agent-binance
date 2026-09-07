@@ -19,7 +19,7 @@ from unittest.mock import patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core import maker_watcher  # noqa: E402
+from core import maker_watcher
 
 BASE_CONFIG = {
     "price_deviation_max_pct": 0.02,

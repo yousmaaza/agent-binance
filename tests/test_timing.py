@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from config.app import APP_CONFIG  # noqa: E402
-from core.timing import fmt_local, iso_week_key, next_weekly_slot  # noqa: E402
+from config.app import APP_CONFIG
+from core.timing import fmt_local, iso_week_key, next_weekly_slot
 
 
 class TestFmtLocal(unittest.TestCase):

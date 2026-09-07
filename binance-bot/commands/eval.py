@@ -113,13 +113,13 @@ def _cycles_and_cost_section(cutoff: datetime, period_days: int) -> tuple[str, s
     api_cost = sum(c.get("api_cost_usd") or 0 for c in api)
     abo_cost = _SUBSCRIPTION_COST_EUR_MONTH / 30 * period_days
 
-    cost_lines = [f"💳 <b>Coût réel</b> (abonnement 20€/mois fixe)"]
+    cost_lines = ["💳 <b>Coût réel</b> (abonnement 20€/mois fixe)"]
     cost_lines.append(f"  Abonnement proratisé : ~{abo_cost:.2f}€ pour {period_days}j")
     cost_lines.append(f"  ├─ {len(abo)} cycle(s) abonnement — surcoût : 0€")
     if api:
         cost_lines.append(f"  └─ {len(api)} cycle(s) API — coût réel : ${api_cost:.4f}")
     else:
-        cost_lines.append(f"  └─ 0 cycle API — aucun surcoût")
+        cost_lines.append("  └─ 0 cycle API — aucun surcoût")
     api_str = f" + ${api_cost:.4f}" if api_cost > 0 else ""
     cost_lines.append(f"  Total période : ~{abo_cost:.2f}€{api_str}")
 

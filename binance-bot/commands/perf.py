@@ -3,7 +3,6 @@ TP Watcher, stratégie maker. Lecture seule, retourne une str HTML pour Telegram
 import json
 import statistics
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from core.env import PROJECT_DIR
 from core.timing import fmt_local, parse_dt
@@ -40,11 +39,11 @@ def _pnl(t: dict) -> float:
     return t.get("pnl_usdc") or 0
 
 
-def _fees(t: dict) -> Optional[float]:
+def _fees(t: dict) -> float | None:
     return t.get("fees_usdc")
 
 
-def _exit_dt(t: dict) -> Optional[datetime]:
+def _exit_dt(t: dict) -> datetime | None:
     return parse_dt(t.get("exit_date"))
 
 
@@ -209,9 +208,9 @@ def _format_cycle_lines(
     total: int,
     with_buy: int,
     skip_counts: dict,
-    avg_dur: Optional[float] = None,
-    errors: Optional[int] = None,
-    quota: Optional[int] = None,
+    avg_dur: float | None = None,
+    errors: int | None = None,
+    quota: int | None = None,
     source: str = "",
 ) -> list[str]:
     lines = [
@@ -306,7 +305,7 @@ def _bloc_positions(history: list) -> list[str]:
         key=lambda t: t.get("exit_date", ""),
     )
     streak = 0
-    streak_type: Optional[str] = None
+    streak_type: str | None = None
     for t in reversed(sorted_closed):
         win = (t.get("pnl_usdc") or 0) > 0
         cur = "W" if win else "L"

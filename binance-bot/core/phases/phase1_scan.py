@@ -15,16 +15,16 @@ Exécuté par Claude en Phase 1 :
 Stdout : PHASE1_SCAN_DONE|tradable=N|coins=XBT,SOL,...
 Output : $TMPDIR/cycle_{CYCLE_ID}_phase1_output.json
 """
-import sys
-import os
 import json
+import os
 import subprocess
+import sys
 import tempfile
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import binance, _load_config
+from core.trade_helpers import _load_config, binance
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 

@@ -13,16 +13,16 @@ Exécuté par Claude en Phase 7 :
 
 Stdout : PHASE7_MONGO_DONE|status=ok ou PHASE7_MONGO_DONE|status=skipped
 """
-import sys
-import os
 import json
+import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.timing import parse_dt  # noqa: E402
-from core.trade_helpers import tg, _load_config, load_maker_pending_orders  # noqa: E402
+from core.timing import parse_dt
+from core.trade_helpers import _load_config, load_maker_pending_orders, tg
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 

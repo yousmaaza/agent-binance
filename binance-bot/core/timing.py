@@ -1,6 +1,5 @@
 """Utilitaires de temps : calcul du prochain slot 4h UTC, formatage heure locale."""
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from config.app import APP_CONFIG
@@ -60,7 +59,7 @@ def fmt_local(dt_utc: datetime) -> str:
     return local.strftime("%d/%m %H:%M") + " (heure locale)"
 
 
-def parse_dt(raw: Optional[str]) -> Optional[datetime]:
+def parse_dt(raw: str | None) -> datetime | None:
     """Parse un timestamp ISO 8601 en datetime aware UTC. Gère le suffixe +00:00Z redondant."""
     if not raw:
         return None

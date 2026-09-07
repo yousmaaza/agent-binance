@@ -14,9 +14,9 @@ from unittest.mock import MagicMock, patch
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "dashboard"))
 
-import mongo_client  # noqa: E402
-import settings  # noqa: E402
-from cache import cache  # noqa: E402
+import mongo_client
+import settings
+from cache import cache
 
 
 class TestMongoClientBase(unittest.TestCase):

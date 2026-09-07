@@ -32,11 +32,13 @@ from core.lock import acquire_lock, is_locked, release_lock
 from core.state_manager import load_trade_history, save_trade_history
 from core.telegram import send_telegram
 from core.trade_helpers import (
-    binance as _cli,
     _load_config,
     load_maker_pending_orders,
     maker_or_taker_from_ordertype,
     save_maker_pending_orders,
+)
+from core.trade_helpers import (
+    binance as _cli,
 )
 
 _MAKER_FILL_LABEL: str = maker_or_taker_from_ordertype("limit", post_only=True)  # "maker" (#388)

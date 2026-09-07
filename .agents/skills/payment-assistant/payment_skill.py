@@ -10,24 +10,24 @@ This is the CLI entry point. Business logic lives in:
 """
 import argparse
 
-from common import load_config, update_state
+from common import load_config
+
+# Import receive actions
+from receive import action_receive
 
 # Import send actions
 from send import (
     action_config,
-    action_purchase,
-    action_set_amount,
+    action_decode_qr,
+    action_help,
     action_pay_confirm,
     action_poll,
-    action_status,
+    action_purchase,
     action_reset,
     action_resume,
-    action_help,
-    action_decode_qr,
+    action_set_amount,
+    action_status,
 )
-
-# Import receive actions
-from receive import action_receive
 
 
 def main():
@@ -74,9 +74,7 @@ def main():
         action_set_amount(args.amount, args.currency)
     elif args.action == 'pay_confirm':
         action_pay_confirm(config, args.amount, args.currency)
-    elif args.action == 'poll':
-        action_poll(config)
-    elif args.action == 'query':
+    elif args.action == 'poll' or args.action == 'query':
         action_poll(config)
     elif args.action == 'receive':
         action_receive(config, currency=args.currency, amount=args.amount, note=args.note)
