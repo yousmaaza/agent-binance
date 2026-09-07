@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-07 (PR #483) |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-07 (PR #485) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#485](pr-485-supprimer-boucle-rec-auto.md) | [TECH] Supprimer la boucle [REC] automatique | 2026-09-07 |
 | [#483](pr-483-issue-476-kraken-asset-codes.md) | [BUG] Résoudre les codes d'actifs Kraken préfixés dans la vente sur signal | 2026-09-07 |
 | [#475](pr-475-mettre-sous-contrat-vente-signal.md) | [TECH] Mettre sous contrat la vente sur signal (score ≤ 3) | 2026-09-06 |
 | [#474](pr-474-cycles-echec-mongo.md) | [BUG] error_type, coût et durée perdus sur les cycles en échec (update sans upsert) | 2026-09-06 |
