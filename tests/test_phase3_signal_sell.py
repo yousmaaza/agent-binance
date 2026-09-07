@@ -74,8 +74,9 @@ class TestSignalSellNominalWithActiveStop(unittest.TestCase):
              "quantity": 1.0, "entry_fee_usdc": 0.5, "stop_price": 950.0,
              "sl_order_txid": "SLTX0"},
         ]
+        # Clé de solde réelle Kraken (préfixée, #476) — pas la clé brute "ETH".
         kraken_scenario = {
-            "balance": {"ETH": "1.0"},
+            "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             "order_sell_ETHUSDC_market": {"txid": ["SELLTX1"]},
             "query-orders_SELLTX1": {"SELLTX1": {"status": "closed", "cost": "900.0", "vol_exec": "1.0", "fee": "0.6"}},
@@ -109,7 +110,7 @@ class TestSignalSellWithoutActiveStop(unittest.TestCase):
              "sl_order_txid": None},
         ]
         kraken_scenario = {
-            "balance": {"XRP": "100.0"},
+            "balance": {"XXRP": "100.0"},
             "pairs": {"XRPUSDC": {"lot_decimals": 1}},
             "order_sell_XRPUSDC_market": {"txid": ["SELLTX2"]},
             "query-orders_SELLTX2": {"SELLTX2": {"status": "closed", "cost": "48.0", "vol_exec": "100.0"}},
@@ -153,7 +154,7 @@ class TestSignalSellFillNotFoundNeverFabricatesPrice(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
-            "balance": {"ETH": "1.0"},
+            "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"}},
             "order_sell_ETHUSDC_market": {"txid": ["SELLTX3"]},
             # Pas de clé query-orders_SELLTX3 -> vol_exec toujours 0 sur les 3 tentatives
@@ -186,7 +187,7 @@ class TestSignalSellMarketOrderFailureReprotectsPosition(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
-            "balance": {"ETH": "1.0"},
+            "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             # Pas de clé order_sell_ETHUSDC_market (ni de fallback order_sell_ETHUSDC) -> pas de txid
             "order_sell_ETHUSDC_stop-loss": {"txid": ["NEWSLTX5"]},
@@ -215,7 +216,7 @@ class TestSignalSellPartialFillKeepsRemainderTracked(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
-            "balance": {"ETH": "1.0"},
+            "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             "order_sell_ETHUSDC_market": {"txid": ["SELLTX6"]},
             "query-orders_SELLTX6": {"SELLTX6": {"status": "open", "cost": "600.0", "vol_exec": "0.6"}},
@@ -255,7 +256,7 @@ class TestSignalSellBalanceShortfallIsMeasuredAgainstPosition(unittest.TestCase)
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
-            "balance": {"XRP": "60.0"},
+            "balance": {"XXRP": "60.0"},
             "pairs": {"XRPUSDC": {"lot_decimals": 1, "ordermin": "1"}},
             "order_sell_XRPUSDC_market": {"txid": ["SELLTX8"]},
             # Ordre de 60 (plafonné par le solde réel) intégralement rempli.
@@ -311,6 +312,120 @@ class TestSignalSellPnlUsesActuallySoldQuantity(unittest.TestCase):
         self.assertEqual(pos["quantity"], 10.0)
         # pnl_gross = (1.05 - 1.0) * 10.0 = 0.5 (et non (1.05-1.0)*10.004 = 0.5002).
         self.assertAlmostEqual(pos["pnl_gross_usdc"], 0.5)
+        mock_tg.assert_called()
+
+
+class TestSignalSellRealProductionBalanceDict(unittest.TestCase):
+    """#476 : le solde `kraken balance` réel mêle actifs préfixés (XETH, XXBT, XXRP, XXDG) et non
+    préfixés (SOL, ADA, LINK, BNB, TRUMP) dans le même dict — utiliser ce dict tel quel, pas une
+    version simplifiée qui masque le bug. Solde issu du cycle 20260907_040506 (issue #476)."""
+
+    _REAL_BALANCE = {
+        "ADA": "0.06652239", "BNB": "0.00001642", "LINK": "0.0000000000",
+        "SOL": "0.0009199479", "TRUMP": "0.000010", "USDC": "101.18877489",
+        "XETH": "0.0754454797", "XXBT": "0.0001572488",
+        "XXDG": "591.21753490", "XXRP": "72.61162160",
+    }
+
+    def test_prefixed_asset_xrp_is_sold(self):
+        history_data = [
+            {"trade_id": "T9", "coin": "XRP", "status": "open", "entry_price": 3.0,
+             "quantity": 72.6, "entry_fee_usdc": 0.1, "stop_price": 2.7,
+             "sl_order_txid": "SLTX0"},
+        ]
+        kraken_scenario = {
+            "balance": self._REAL_BALANCE,
+            "pairs": {"XRPUSDC": {"lot_decimals": 1}},
+            "order_sell_XRPUSDC_market": {"txid": ["SELLTX10"]},
+            "query-orders_SELLTX10": {"SELLTX10": {"status": "closed", "cost": "217.8", "vol_exec": "72.6", "fee": "0.1"}},
+        }
+        output, mock_tg, mock_save, saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "XRP", "score": 1}], history_data, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        pos = saved_history[0]
+        self.assertEqual(pos["status"], "closed")
+        mock_tg.assert_called()
+
+    def test_non_prefixed_asset_sol_is_sold(self):
+        history_data = [
+            {"trade_id": "T10", "coin": "SOL", "status": "open", "entry_price": 150.0,
+             "quantity": 0.0009199479, "entry_fee_usdc": 0.01, "stop_price": 140.0,
+             "sl_order_txid": "SLTX1"},
+        ]
+        kraken_scenario = {
+            "balance": self._REAL_BALANCE,
+            "pairs": {"SOLUSDC": {"lot_decimals": 8}},
+            "order_sell_SOLUSDC_market": {"txid": ["SELLTX11"]},
+            "query-orders_SELLTX11": {"SELLTX11": {"status": "closed", "cost": "0.138", "vol_exec": "0.0009199479", "fee": "0.0001"}},
+        }
+        output, mock_tg, mock_save, saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "SOL", "score": 2}], history_data, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        pos = saved_history[0]
+        self.assertEqual(pos["status"], "closed")
+        mock_tg.assert_called()
+
+
+class TestSignalSellRealZeroBalanceStillReprotects(unittest.TestCase):
+    """Solde réellement nul pour un actif préfixé (clé XETH présente, valeur "0.0") -> reste
+    distinct d'une clé introuvable : la vente est bloquée et la position reprotégée, comme avant
+    #476 (non-régression de la branche « solde disponible nul »)."""
+
+    def test_zero_balance_for_prefixed_asset_reprotects(self):
+        history_data = [
+            {"trade_id": "T11", "coin": "ETH", "status": "open", "entry_price": 1000.0,
+             "quantity": 1.0, "entry_fee_usdc": 0.5, "stop_price": 950.0,
+             "sl_order_txid": "SLTX0"},
+        ]
+        kraken_scenario = {
+            "balance": {"XETH": "0.0"},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["NEWSLTX12"]},
+        }
+        output, mock_tg, mock_save, saved_history, mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "ETH", "score": 1}], history_data, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 0)
+        pos = saved_history[0]
+        self.assertEqual(pos["status"], "open")
+        self.assertEqual(pos["sl_order_txid"], "NEWSLTX12")
+        self.assertFalse(pos["protection_failed"])
+        mock_tg.assert_called()
+        mock_repose_tg.assert_called()
+
+
+class TestSignalSellUnresolvableAssetFallsBackToTradeQtyNotZero(unittest.TestCase):
+    """Actif introuvable dans le solde (ni clé brute, ni alias connu) -> ne doit jamais être
+    confondu avec un solde réellement nul (#476) : kraken_coin_balance lève KeyError, et le script
+    retombe sur trade_qty comme pour un échec Kraken, au lieu de bloquer la vente et reprotéger
+    comme le ferait un vrai solde nul."""
+
+    def test_missing_asset_key_sells_using_trade_qty(self):
+        history_data = [
+            {"trade_id": "T12", "coin": "WIF", "status": "open", "entry_price": 2.0,
+             "quantity": 50.0, "entry_fee_usdc": 0.1, "stop_price": 1.8,
+             "sl_order_txid": "SLTX0"},
+        ]
+        kraken_scenario = {
+            # WIF absent du solde (ni "WIF" ni alias connu) — #476 exige que ça ne soit pas traité
+            # comme un solde nul.
+            "balance": {"USDC": "500.0"},
+            "pairs": {"WIFUSDC": {"lot_decimals": 1}},
+            "order_sell_WIFUSDC_market": {"txid": ["SELLTX13"]},
+            "query-orders_SELLTX13": {"SELLTX13": {"status": "closed", "cost": "100.0", "vol_exec": "50.0", "fee": "0.1"}},
+        }
+        output, mock_tg, mock_save, saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "WIF", "score": 1}], history_data, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        pos = saved_history[0]
+        self.assertEqual(pos["status"], "closed")
         mock_tg.assert_called()
 
 

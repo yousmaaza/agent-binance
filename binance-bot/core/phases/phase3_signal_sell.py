@@ -42,7 +42,7 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
 from core.maker_exit_watcher import _repose_stop_and_alert  # noqa: E402
-from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl  # noqa: E402
+from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl, kraken_coin_balance  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -91,10 +91,13 @@ for sc in sell_candidates:
             tg(f"⚠️ {coin} : annulation SL échouée avant vente sur signal — stop conservé, {e}")
             continue
 
-    # Step 2 : quantité = min(trade_history, solde réel) tronquée au pas Kraken (#472, XRP 18/08)
+    # Step 2 : quantité = min(trade_history, solde réel) tronquée au pas Kraken (#472, XRP 18/08).
+    # kraken_coin_balance résout les actifs historiques préfixés (ETH -> XETH, etc., #476) ; si
+    # l'actif reste introuvable dans le solde, on retombe sur trade_qty comme pour un échec Kraken
+    # -- jamais sur 0, pour ne pas confondre une clé introuvable avec un solde réellement nul.
     try:
         balance_raw = binance("balance", "-o", "json")
-        coin_balance = float(json.loads(balance_raw).get(coin, 0) or 0)
+        coin_balance = kraken_coin_balance(json.loads(balance_raw), coin)
     except Exception:
         coin_balance = trade_qty
 

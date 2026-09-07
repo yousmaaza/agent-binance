@@ -101,6 +101,30 @@ def save_maker_pending_orders(data: list, project_dir: str = "") -> None:
     _save_json_atomic(data, _maker_pending_orders_path(project_dir))
 
 
+# Actifs historiques Kraken exposés sous un code préfixé dans `kraken balance` (#476) — liste
+# fermée mais arbitraire (SOL, ADA, LINK, BNB, TRUMP n'ont pas de préfixe), donc constatée plutôt
+# que déduite d'une règle générale.
+KRAKEN_ASSET_ALIASES = {
+    "ETH": "XETH",
+    "XBT": "XXBT",
+    "XRP": "XXRP",
+    "XDG": "XXDG",
+}
+
+
+def kraken_coin_balance(balance: dict, coin: str) -> float:
+    """Résout le solde d'un coin dans la réponse `kraken balance -o json` : essaie la clé brute
+    (coin), puis l'alias Kraken connu (KRAKEN_ASSET_ALIASES). Lève KeyError si aucune des deux
+    n'existe -- un actif absent du solde ne doit jamais être confondu avec un solde réellement nul
+    (#476, cf. bug ETH/XBT/XRP/XDG jamais vendus)."""
+    if coin in balance:
+        return float(balance[coin] or 0)
+    alias = KRAKEN_ASSET_ALIASES.get(coin)
+    if alias and alias in balance:
+        return float(balance[alias] or 0)
+    raise KeyError(coin)
+
+
 def compute_net_pnl(entry_price: float, exit_price: float, qty: float, entry_fee_usdc: float, exit_fee_usdc: float) -> dict:
     """PnL net = PnL brut (diff de prix) moins les frais Kraken entrée+sortie (#382).
 
