@@ -149,7 +149,7 @@ for sc in sell_candidates:
             if vol_exec > 0:
                 break
         except Exception:
-            pass
+            pass  # Query introuvable momentanément, retry suivant
 
     if vol_exec <= _QTY_EPSILON:
         # Fill introuvable après 3 tentatives : jamais de prix fabriqué (#469, règle « marquer,
