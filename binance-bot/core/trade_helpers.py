@@ -104,12 +104,24 @@ def save_maker_pending_orders(data: list, project_dir: str = "") -> None:
 
 # Actifs historiques Kraken exposés sous un code préfixé dans `kraken balance` (#476) — liste
 # fermée mais arbitraire (SOL, ADA, LINK, BNB, TRUMP n'ont pas de préfixe), donc constatée plutôt
-# que déduite d'une règle générale.
+# que déduite d'une règle générale. Constatée via `kraken assets -o json` en production (#476 review)
+# -- exclut volontairement XAUT/XION/XTER/XU3O8 (actifs qui s'appellent réellement ainsi, pas des
+# formes préfixées) et XBT.M/XTZ.S (variantes de staking). BTC et DOGE ajoutés en plus de XBT/XDG :
+# le bot a utilisé les deux nominations au fil du temps (trades anciens vs récents).
 KRAKEN_ASSET_ALIASES = {
+    "ETC": "XETC",
     "ETH": "XETH",
+    "LTC": "XLTC",
+    "MLN": "XMLN",
+    "REP": "XREP",
     "XBT": "XXBT",
-    "XRP": "XXRP",
+    "BTC": "XXBT",
     "XDG": "XXDG",
+    "DOGE": "XXDG",
+    "XLM": "XXLM",
+    "XMR": "XXMR",
+    "XRP": "XXRP",
+    "ZEC": "XZEC",
 }
 
 

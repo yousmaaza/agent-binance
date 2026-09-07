@@ -102,11 +102,20 @@ for sc in sell_candidates:
     # kraken_coin_balance résout les actifs historiques préfixés (ETH -> XETH, etc., #476) ; si
     # l'actif reste introuvable dans le solde, on retombe sur trade_qty comme pour un échec Kraken
     # -- jamais sur 0, pour ne pas confondre une clé introuvable avec un solde réellement nul.
+    # Panne de l'appel Kraken (réseau, JSON invalide) vs alias manquant pour un solde pourtant reçu
+    # sont distingués (#476 review) : le second signale un défaut de code (table incomplète), pas un
+    # aléa réseau -- il doit être visible, pas avalé en silence comme le bug initial.
     try:
         balance_raw = binance("balance", "-o", "json")
-        coin_balance = kraken_coin_balance(json.loads(balance_raw), coin)
+        balance = json.loads(balance_raw)
     except (RuntimeError, json.JSONDecodeError, ValueError):
         coin_balance = trade_qty
+    else:
+        try:
+            coin_balance = kraken_coin_balance(balance, coin)
+        except KeyError:
+            tg(f"⚠️ {coin} : actif introuvable dans le solde Kraken — alias manquant, vente sur trade_qty")
+            coin_balance = trade_qty
 
     try:
         pairs_raw = binance("pairs", "--pair", pair, "-o", "json")

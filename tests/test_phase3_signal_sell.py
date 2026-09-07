@@ -405,9 +405,11 @@ class TestSignalSellUnresolvableAssetFallsBackToTradeQtyNotZero(unittest.TestCas
     """Actif introuvable dans le solde (ni clé brute, ni alias connu) -> ne doit jamais être
     confondu avec un solde réellement nul (#476) : kraken_coin_balance lève KeyError, et le script
     retombe sur trade_qty comme pour un échec Kraken, au lieu de bloquer la vente et reprotéger
-    comme le ferait un vrai solde nul."""
+    comme le ferait un vrai solde nul. Un alias manquant signale un défaut de code (table
+    incomplète) -- il doit être visible via une alerte Telegram explicite, distincte de la
+    notification de vente (#476 review)."""
 
-    def test_missing_asset_key_sells_using_trade_qty(self):
+    def test_missing_asset_key_sells_using_trade_qty_and_alerts(self):
         history_data = [
             {"trade_id": "T12", "coin": "WIF", "status": "open", "entry_price": 2.0,
              "quantity": 50.0, "entry_fee_usdc": 0.1, "stop_price": 1.8,
@@ -428,7 +430,37 @@ class TestSignalSellUnresolvableAssetFallsBackToTradeQtyNotZero(unittest.TestCas
         self.assertEqual(output["closed"], 1)
         pos = saved_history[0]
         self.assertEqual(pos["status"], "closed")
-        mock_tg.assert_called()
+        alert_calls = [c.args[0] for c in mock_tg.call_args_list if "alias manquant" in c.args[0]]
+        self.assertEqual(len(alert_calls), 1)
+        self.assertIn("WIF", alert_calls[0])
+
+
+class TestSignalSellKrakenApiFailureFallsBackSilently(unittest.TestCase):
+    """Panne réelle de l'appel `kraken balance` (réseau, CLI) -> même repli sur trade_qty que pour
+    un alias manquant, mais sans alerte : c'est un aléa réseau, pas un défaut de code (#476
+    review) -- distinct du cas ci-dessus où l'alerte "alias manquant" doit être envoyée."""
+
+    def test_balance_call_failure_sells_using_trade_qty_without_alert(self):
+        history_data = [
+            {"trade_id": "T13", "coin": "ETH", "status": "open", "entry_price": 1000.0,
+             "quantity": 1.0, "entry_fee_usdc": 0.5, "stop_price": 950.0,
+             "sl_order_txid": "SLTX0"},
+        ]
+        kraken_scenario = {
+            "balance_fail": True,
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC_market": {"txid": ["SELLTX14"]},
+            "query-orders_SELLTX14": {"SELLTX14": {"status": "closed", "cost": "900.0", "vol_exec": "1.0", "fee": "0.6"}},
+        }
+        output, mock_tg, mock_save, saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "ETH", "score": 2}], history_data, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        pos = saved_history[0]
+        self.assertEqual(pos["status"], "closed")
+        alert_calls = [c.args[0] for c in mock_tg.call_args_list if "alias manquant" in c.args[0]]
+        self.assertEqual(len(alert_calls), 0)
 
 
 if __name__ == "__main__":
