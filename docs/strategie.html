@@ -1,0 +1,758 @@
+<title>La mécanique du bot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Archivo+Expanded:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root{
+  --paper:#F6F5F2;--sheet:#FFFDFA;--rule:#DDD9D0;--rule-2:#C4BFB3;
+  --ink:#17161A;--ink-2:#4A4750;--ink-3:#7C7885;
+  --gain:#2E6B4A;--loss:#97303F;--wait:#8A6212;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#121114;--sheet:#191820;--rule:#2C2A33;--rule-2:#413E4B;
+  --ink:#EDEAF2;--ink-2:#B4B0BE;--ink-3:#837F8E;
+  --gain:#63BC90;--loss:#E8899A;--wait:#D9A845;}}
+:root[data-theme="dark"]{
+  --paper:#121114;--sheet:#191820;--rule:#2C2A33;--rule-2:#413E4B;
+  --ink:#EDEAF2;--ink-2:#B4B0BE;--ink-3:#837F8E;
+  --gain:#63BC90;--loss:#E8899A;--wait:#D9A845;}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Archivo",ui-sans-serif,system-ui,sans-serif;font-size:15px;line-height:1.55}
+.sheet{max-width:940px;margin:0 auto;background:var(--sheet);
+  border-left:1px solid var(--rule);border-right:1px solid var(--rule);min-height:100vh;
+  padding:0 clamp(16px,4vw,44px)}
+header.mast{padding:40px 0 24px;border-bottom:2px solid var(--ink)}
+.kicker{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
+h1{font-family:"Archivo Expanded","Archivo",sans-serif;font-weight:700;
+  font-size:clamp(30px,6.4vw,46px);line-height:.98;letter-spacing:-.015em;margin:0 0 16px;text-wrap:balance}
+.standfirst{font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.45;
+  color:var(--ink-2);max-width:58ch;margin:0}
+.standfirst b{color:var(--ink);font-weight:600}
+
+section{padding:34px 0;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:none}
+h2{font-family:"Archivo Expanded","Archivo",sans-serif;font-weight:600;font-size:21px;
+  letter-spacing:-.01em;margin:0 0 6px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h2 .ph{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--sheet);background:var(--ink);padding:3px 8px;font-weight:500}
+h3{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--ink-3);margin:30px 0 12px;font-weight:500}
+.lede{font-family:"Source Serif 4",Georgia,serif;font-size:15.5px;color:var(--ink-2);
+  margin:0 0 20px;max-width:64ch}
+p{max-width:66ch}
+
+/* formules */
+.f{font-family:"IBM Plex Mono",monospace;font-size:13px;line-height:1.9;
+  border-left:2px solid var(--ink);padding:14px 0 14px 16px;margin:16px 0;overflow-x:auto}
+.f b{font-weight:600;color:var(--ink)}
+.f .cfg{color:var(--wait);font-weight:500}
+.f .cm{color:var(--ink-3);font-size:11.5px}
+/* exemple chiffre accole a une formule */
+.ex{font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.85;
+  background:var(--paper);border:1px solid var(--rule);padding:12px 16px;margin:-8px 0 18px;overflow-x:auto}
+.ex .tag{display:block;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--gain);margin-bottom:7px;font-weight:500}
+.ex b{font-weight:600;color:var(--ink)}
+.ex .cm{color:var(--ink-3);font-size:11px}
+.ex.alt .tag{color:var(--loss)}
+.f{margin-bottom:10px}
+code{font-family:"IBM Plex Mono",monospace;font-size:13px;background:var(--paper);
+  padding:1px 5px;border:1px solid var(--rule)}
+.cfg-inline{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--wait);
+  background:var(--paper);padding:1px 5px;border:1px solid var(--rule)}
+
+/* tableaux */
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* un tableau qui suit un encart ou un paragraphe a besoin de respirer */
+.note + .scroll, p + .scroll{margin-top:22px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:4px}
+th{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;text-align:left;padding:0 12px 8px 0;
+  border-bottom:1px solid var(--rule-2);white-space:nowrap;vertical-align:bottom}
+td{padding:9px 12px 9px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.k{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--wait);white-space:nowrap}
+td.v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:12.5px}
+td.pts{font-family:"IBM Plex Mono",monospace;text-align:center;font-weight:600;width:44px}
+.dead td{color:var(--ink-3)}
+.dead td.k{color:var(--ink-3);text-decoration:line-through}
+
+/* diagrammes */
+figure{margin:22px 0 6px}
+figure svg{display:block;width:100%;height:auto;color:var(--ink)}
+figcaption{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);
+  letter-spacing:.03em;margin-top:10px;max-width:70ch;line-height:1.6}
+.dg-box{fill:none;stroke:currentColor;stroke-width:1}
+.dg-t{font-family:"IBM Plex Mono",monospace;font-size:11px;fill:currentColor}
+.dg-s{font-family:"IBM Plex Mono",monospace;font-size:9.5px;fill:var(--ink-3)}
+.dg-lab{font-family:"IBM Plex Mono",monospace;font-size:9px;fill:var(--ink-3)}
+.dg-skip{fill:var(--loss)}
+.dg-ok{fill:var(--gain)}
+
+/* encarts */
+.note{font-family:"Source Serif 4",Georgia,serif;font-size:15px;color:var(--ink-2);
+  border-left:2px solid var(--wait);padding-left:16px;margin:22px 0 0;max-width:64ch}
+.note b{color:var(--ink);font-weight:600}
+.skips{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;
+  background:var(--rule);border:1px solid var(--rule);margin-top:8px}
+.skip{background:var(--sheet);padding:13px 15px}
+.skip b{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--loss);display:block;margin-bottom:5px}
+.skip span{font-size:12.5px;color:var(--ink-2)}
+footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+  letter-spacing:.05em;color:var(--ink-3);text-align:center}
+</style>
+<div class="sheet">
+<header class="mast">
+  <div class="kicker">Bot de trading Kraken · état du code au 08/09/2026</div>
+  <h1>La mécanique du bot</h1>
+  <p class="standfirst">Toutes les quatre heures, le bot déroule huit phases : il surveille ses positions, balaie l'univers Kraken, note chaque crypto, dimensionne un ordre, l'exécute, puis consigne. Ce document décrit <b>ce que fait le code aujourd'hui</b> — chaque formule et chaque seuil vient d'une lecture du dépôt, pas d'une intention.</p>
+</header>
+
+<section>
+  <h2>Le trade qu'on va suivre</h2>
+  <p class="lede">Pour que les formules ne restent pas abstraites, chacune est accompagnée du même trade réel, repris à chaque étape. Toutes les valeurs viennent de MongoDB et de <code>trade_history.json</code> — rien n'est reconstitué.</p>
+  <div class="ex">
+    <span class="tag">SOL · cycle du 25 août 08:05 → sortie le 27 août</span>
+    portefeuille <b>437,59</b> USDC &nbsp;·&nbsp; budget disponible <b>306,31</b> &nbsp;·&nbsp; 2 positions déjà ouvertes<br>
+    univers du cycle : <b>4 cryptos</b> (ETH, SOL, XBT, XRP) &nbsp;·&nbsp; sentiment <b>Bullish</b><br>
+    résultat : acheté à <b>100,25</b>, vendu à <b>104,30</b>, <b>+3,48 USDC net</b> après 1,03 de frais
+  </div>
+  <p>Il n'a rien d'exceptionnel : un gain modeste, des frais qui pèsent, une entrée servie en ordre limite. C'est précisément pour ça qu'il est représentatif.</p>
+</section>
+
+<section>
+  <h2>Le tamis</h2>
+  <p class="lede">Un cycle est d'abord un entonnoir. Sur ~46 paires USDC disponibles, quelques-unes seulement franchissent chaque filtre — et chaque sortie est étiquetée pour qu'on sache <em>où</em> l'occasion s'est perdue.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 300" role="img" aria-label="Entonnoir du cycle : l'univers Kraken passe par le scan (phase 1), l'analyse (phase 2), le scoring (phase 3), le dimensionnement (phase 4) puis l'exécution (phase 5). Chaque phase rejette des candidats avec un type de skip distinct : TYPE_D au scan, TYPE_A au scoring, TYPE_B au dimensionnement, TYPE_C à l'exécution.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="arx" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--loss)"/>
+        </marker>
+      </defs>
+
+      <!-- chaîne principale -->
+      <g>
+        <rect class="dg-box" x="8"   y="60" width="118" height="46"/>
+        <text class="dg-t" x="67"  y="80"  text-anchor="middle">Univers</text>
+        <text class="dg-s" x="67"  y="95"  text-anchor="middle">~46 paires USDC</text>
+
+        <rect class="dg-box" x="182" y="60" width="118" height="46"/>
+        <text class="dg-t" x="241" y="80"  text-anchor="middle">Scan</text>
+        <text class="dg-s" x="241" y="95"  text-anchor="middle">phase 1</text>
+
+        <rect class="dg-box" x="356" y="60" width="118" height="46"/>
+        <text class="dg-t" x="415" y="80"  text-anchor="middle">Score</text>
+        <text class="dg-s" x="415" y="95"  text-anchor="middle">phases 2-3</text>
+
+        <rect class="dg-box" x="530" y="60" width="118" height="46"/>
+        <text class="dg-t" x="589" y="80"  text-anchor="middle">Taille</text>
+        <text class="dg-s" x="589" y="95"  text-anchor="middle">phase 4</text>
+
+        <rect class="dg-box" x="704" y="60" width="118" height="46"/>
+        <text class="dg-t" x="763" y="80"  text-anchor="middle">Exécution</text>
+        <text class="dg-s" x="763" y="95"  text-anchor="middle">phase 5</text>
+      </g>
+
+      <g stroke="currentColor" stroke-width="1" marker-end="url(#ar)" fill="none">
+        <line x1="126" y1="83" x2="176" y2="83"/>
+        <line x1="300" y1="83" x2="350" y2="83"/>
+        <line x1="474" y1="83" x2="524" y2="83"/>
+        <line x1="648" y1="83" x2="698" y2="83"/>
+      </g>
+
+      <!-- sorties -->
+      <g stroke="var(--loss)" stroke-width="1" marker-end="url(#arx)" fill="none" stroke-dasharray="3 3">
+        <line x1="241" y1="106" x2="241" y2="168"/>
+        <line x1="415" y1="106" x2="415" y2="168"/>
+        <line x1="589" y1="106" x2="589" y2="168"/>
+        <line x1="763" y1="106" x2="763" y2="168"/>
+      </g>
+
+      <g>
+        <rect class="dg-box" x="182" y="172" width="118" height="52" stroke="var(--loss)"/>
+        <text class="dg-t dg-skip" x="241" y="191" text-anchor="middle">TYPE_D</text>
+        <text class="dg-s" x="241" y="205" text-anchor="middle">volume, spread,</text>
+        <text class="dg-s" x="241" y="217" text-anchor="middle">pic isolé</text>
+
+        <rect class="dg-box" x="356" y="172" width="118" height="52" stroke="var(--loss)"/>
+        <text class="dg-t dg-skip" x="415" y="191" text-anchor="middle">TYPE_A</text>
+        <text class="dg-s" x="415" y="205" text-anchor="middle">score faible,</text>
+        <text class="dg-s" x="415" y="217" text-anchor="middle">quota, corrélation</text>
+
+        <rect class="dg-box" x="530" y="172" width="118" height="52" stroke="var(--loss)"/>
+        <text class="dg-t dg-skip" x="589" y="191" text-anchor="middle">TYPE_B</text>
+        <text class="dg-s" x="589" y="205" text-anchor="middle">montant trop petit,</text>
+        <text class="dg-s" x="589" y="217" text-anchor="middle">stop négatif</text>
+
+        <rect class="dg-box" x="704" y="172" width="118" height="52" stroke="var(--loss)"/>
+        <text class="dg-t dg-skip" x="763" y="191" text-anchor="middle">TYPE_C</text>
+        <text class="dg-s" x="763" y="205" text-anchor="middle">dérive du prix,</text>
+        <text class="dg-s" x="763" y="217" text-anchor="middle">solde, non rempli</text>
+      </g>
+
+      <!-- sortie finale -->
+      <line x1="822" y1="83" x2="872" y2="83" stroke="var(--gain)" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text class="dg-t dg-ok" x="866" y="112" text-anchor="middle">achat</text>
+
+      <text class="dg-lab" x="8" y="268">Chaque étape ne voit que ce qui a survécu à la précédente.</text>
+      <text class="dg-lab" x="8" y="283">Le type de skip est enregistré en base pour chaque coin écarté.</text>
+    </svg>
+    <figcaption>Les quatre familles de rejet correspondent aux quatre phases où une décision peut écarter un candidat. Elles sont persistées dans MongoDB, ce qui permet de distinguer un refus stratégique d'une indisponibilité technique.</figcaption>
+  </figure>
+
+  <div class="skips">
+    <div class="skip"><b>TYPE_D · scan</b><span>La paire n'existe pas en USDC, son volume est trop faible, son spread trop large, ou son volume n'est qu'un pic isolé.</span></div>
+    <div class="skip"><b>TYPE_A · scoring</b><span>Le signal est insuffisant, le quota de positions est atteint, ou la corrélation avec les positions existantes est excessive.</span></div>
+    <div class="skip"><b>TYPE_B · dimensionnement</b><span>L'ordre calculé est sous le minimum tradable, ou le stop tombe en territoire négatif.</span></div>
+    <div class="skip"><b>TYPE_C · exécution</b><span>Le prix a trop dérivé depuis le scan, le solde ne suffit plus, ou l'ordre n'a pas été rempli.</span></div>
+  </div>
+</section>
+<section>
+  <h2><span class="ph">Phase 0</span>Avant de chercher, protéger</h2>
+  <p class="lede">Le cycle commence par les positions déjà ouvertes. Cinq contrôles s'enchaînent, et le premier peut tout arrêter.</p>
+
+  <h3>Le coupe-circuit journalier</h3>
+  <div class="f">
+    budget_disponible = portfolio_total × <span class="cfg">usdc_allocation_pct</span><br>
+    <b>Si</b> daily_pnl &lt; −(portfolio_total × <span class="cfg">daily_loss_limit_pct</span>) → <b>arrêt du cycle</b>
+  </div>
+  <div class="ex">
+    <span class="tag">SOL · au moment du cycle</span>
+    budget_disponible = 437,59 × <b>0,70</b> = <b>306,31</b> USDC<br>
+    seuil d'arrêt = −(437,59 × <b>0,05</b>) = <b>−21,88</b> USDC &nbsp;<span class="cm">// perte du jour : 0,00 → le cycle continue</span>
+  </div>
+  <p>À 5 % du portefeuille perdu sur la journée, le bot cesse d'ouvrir des positions. C'est le seul garde-fou qui interrompt le cycle entier.</p>
+
+  <h3>Le recalibrage de la cible</h3>
+  <p>À chaque cycle, la cible de chaque position ouverte est recalculée — le marché a bougé depuis l'achat, la résistance aussi.</p>
+  <div class="f">
+    stop_distance_pct = (entry_price − stop_price) / entry_price<br>
+    tp_mecanique = entry_price × (1 + (stop_distance_pct + <span class="cfg">fee_round_trip_pct</span>) × <span class="cfg">reward_risk_ratio</span> + <span class="cfg">fee_round_trip_pct</span>)<br>
+    tp_plancher  = entry_price × (1 + 2 × <span class="cfg">fee_round_trip_pct</span>)<br>
+    tp_plafond   = entry_price × (1 + <span class="cfg">max_tp_pct</span>)<br><br>
+    tp_candidat = min(tp_mecanique, tp_plafond)<br>
+    <b>Si</b> r2_4h &gt; entry_price → tp_candidat = min(tp_candidat, r2_4h × 0.98)<br>
+    <b>Si</b> tp_candidat ≥ tp_plancher → tp_smart = tp_candidat<br>
+    <b>Sinon</b> → tp_smart = tp_mecanique <span class="cm">// un plafond sous le plancher donnerait une cible perdante</span><br><br>
+    Mise à jour si |tp_smart − tp_actuel| / tp_actuel &gt; 0.005
+  </div>
+  <div class="ex">
+    <span class="tag">SOL · deux jours après l'achat</span>
+    Le stop suiveur a remonté le stop de 93,23 à <b>99,11</b>. La distance n'est plus 7 % mais 1,137 %,<br>
+    donc la cible se resserre à son tour :<br><br>
+    tp = 100,25 × (1 + (0,01137 + <b>0,009</b>) × <b>1,5</b> + <b>0,009</b>) = <b>104,2156</b><br>
+    plancher 102,05 &lt; 104,22 &lt; plafond 106,27 → conservée telle quelle<br><br>
+    <span class="cm">// valeur en base : 104.21562511 — la formule redonne 104,215625, zéro écart</span>
+  </div>
+  <p class="note">Trois plafonds se disputent la cible : le <b>ratio mécanique</b>, la <b>résistance 4h</b> et le <b>plafond absolu</b>. Le plancher les arbitre : une cible qui ne couvrirait même pas deux fois les frais n'est pas une cible, c'est une perte programmée — dans ce cas tous les plafonds sont ignorés.</p>
+
+  <h3>La prise de profit</h3>
+  <div class="f">
+    pnl_pct = (current_price − entry_price) / entry_price × 100<br>
+    pnl_pct_net_est = pnl_pct − <span class="cfg">fee_round_trip_pct</span> × 100<br>
+    <b>Si</b> pnl_pct_net_est ≥ <span class="cfg">min_profit_pct_take</span> → vente au marché <span class="cm">// close_reason: profit_target_phase0</span>
+  </div>
+  <div class="ex">
+    <span class="tag">SOL · le 27 août au matin</span>
+    pnl_pct = (104,30 − 100,25) / 100,25 × 100 = <b>+4,04 %</b><br>
+    pnl_pct_net_est = 4,04 − 0,9 = <b>+3,14 %</b> &nbsp;<span class="cm">// sous le seuil de 5 %</span><br>
+    → pas de vente anticipée ; c'est la <b>cible</b> qui a déclenché la sortie, pas ce contrôle
+  </div>
+  <p>Une position qui dépasse 5 % de gain <em>net estimé</em> est fermée sans attendre sa cible. Les frais sont déduits avant la comparaison, sans quoi le seuil serait franchi trop tôt.</p>
+
+  <h3>Le stop suiveur</h3>
+  <div class="f">
+    trail_dist = entry_price − stop_actuel <span class="cm">// la distance d'origine est conservée</span><br>
+    new_stop = prix_courant − trail_dist<br><br>
+    <b>Refusé si</b> new_stop ≤ stop_actuel + trail_dist × 0.20 <span class="cm">// progrès trop faible</span><br>
+    <b>Refusé si</b> new_stop ≥ prix_courant × 0.98 <span class="cm">// trop collé au marché</span>
+  </div>
+  <div class="ex">
+    <span class="tag">SOL · le déplacement qui a eu lieu</span>
+    trail_dist = 100,25 − 93,23 = <b>7,02</b> &nbsp;<span class="cm">// distance figée à l'achat</span><br>
+    prix courant ≈ 106,13 → new_stop = 106,13 − 7,02 = <b>99,11</b><br><br>
+    contrôle 1 : 99,11 &gt; 93,23 + 7,02 × 0,20 = 94,63 &nbsp;<b>✓</b><br>
+    contrôle 2 : 99,11 &lt; 106,13 × 0,98 = 104,01 &nbsp;<b>✓</b> → stop déplacé
+  </div>
+  <p>Le stop ne descend jamais. Il ne remonte que si le gain justifie le déplacement — au moins 20 % de la distance initiale — et jamais à moins de 2 % sous le prix courant, pour ne pas se faire sortir par une mèche.</p>
+</section>
+
+<section>
+  <h2><span class="ph">Phases 1-2</span>Qui a le droit d'être regardé</h2>
+  <p class="lede">Le scan interroge toutes les paires USDC de Kraken puis applique trois filtres successifs. Les cryptos de <span class="cfg-inline">portfolio_coins</span> franchissent tout : on veut pouvoir gérer une position même si sa liquidité s'est dégradée.</p>
+
+  <div class="f">
+    spread_pct = (ask − bid) / ask<br>
+    volume_24h = volume_base × prix<br><br>
+    <b>Rejeté si</b> volume_24h &lt; <span class="cfg">min_volume_usdc</span><br>
+    <b>Rejeté si</b> spread_pct &gt; <span class="cfg">max_spread_pct</span><br>
+    <b>Rejeté si</b> le volume n'est pas soutenu :<br>
+    &nbsp;&nbsp;sur les <span class="cfg">volume_persistence_periods</span> dernières bougies 4h,<br>
+    &nbsp;&nbsp;il faut (périodes ÷ 2 + 1) bougies au-dessus de <span class="cfg">min_volume_usdc</span> ÷ périodes
+  </div>
+
+  <div class="ex">
+    <span class="tag">SOL · phase 1 de ce cycle</span>
+    4 cryptos ont franchi les trois filtres : <b>ETH, SOL, XBT, XRP</b><br>
+    <span class="cm">// XBT, XRP et SOL sont dans portfolio_coins : ils entrent quoi qu'il arrive</span><br>
+    <span class="cm">// ETH a donc passé volume, spread et persistance par ses propres moyens</span>
+  </div>
+  <p class="note">Le troisième filtre est né d'un incident. Le 22 août, TRUMP est apparu dans l'univers avec un volume multiplié par 27 en une nuit et un spread douze fois plus large que XBT. Le stop-loss a glissé de 2,3 % à l'exécution. Un volume instantané ne dit rien ; <b>un volume qui tient sur la majorité de six bougies</b> dit quelque chose.</p>
+
+  <h3>Ce que l'analyse extrait</h3>
+  <p>Pour chaque crypto retenue, une analyse TradingView en 4h fournit le signal, le RSI, le MACD, l'ADX et les résistances. Le signal 4h est reclassé selon le RSI :</p>
+  <div class="f">
+    signal BUY et RSI &lt; 55 → <b>STRONG_BUY</b><br>
+    signal BUY et RSI ≥ 55 → <b>BUY</b><br>
+    signal SELL → <b>SELL</b> &nbsp;·&nbsp; sinon → <b>NEUTRAL</b>
+  </div>
+  <p>L'analyse journalière n'est lancée que pour les cryptos déjà positives en 4h — c'est une économie d'appels, et la source du <b>mode dégradé</b> décrit plus bas.</p>
+</section>
+<section>
+  <h2><span class="ph">Phase 3</span>La note sur dix</h2>
+  <p class="lede">Huit critères, dix points possibles. Le score seul ne suffit pas : il ouvre une porte que quatre verrous peuvent refermer.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Critère</th><th class="pts">Pts</th><th>Condition exacte</th></tr></thead>
+      <tbody>
+        <tr><td>Signal 4h haussier</td><td class="pts">+2</td><td>signal_4h ∈ {BUY, STRONG_BUY}</td></tr>
+        <tr><td>Signal journalier haussier</td><td class="pts">+2</td><td>signal_1d ∈ {BUY, STRONG_BUY}</td></tr>
+        <tr><td>RSI dans la zone</td><td class="pts">+1</td><td><span class="cfg-inline">rsi_zone_min</span> ≤ rsi_4h ≤ <span class="cfg-inline">rsi_zone_max</span></td></tr>
+        <tr><td>MACD haussier</td><td class="pts">+1</td><td>macd_bullish_4h</td></tr>
+        <tr><td>Dans les plus fortes hausses</td><td class="pts">+1</td><td>coin ∈ top_gainers</td></tr>
+        <tr><td>En cassure</td><td class="pts">+1</td><td>coin ∈ breakout_symbols</td></tr>
+        <tr><td>Marché haussier</td><td class="pts">+1</td><td>sentiment == "Bullish"</td></tr>
+        <tr><td>Volume remarquable</td><td class="pts">+1</td><td>volume_24h &gt; 2 × volume médian du cycle</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ex">
+    <span class="tag">SOL · le détail de son 6/10</span>
+    signal 4h <b>BUY</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>+2</b><br>
+    signal 1D <b>BUY</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>+2</b><br>
+    RSI 4h = <b>70,74</b> → hors de la zone 30-65 &nbsp;&nbsp;&nbsp;<span class="cm">+0</span><br>
+    MACD haussier &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>+1</b><br>
+    sentiment <b>Bullish</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>+1</b><br>
+    <span class="cm">────────────────────────────────</span><br>
+    total <b>6/10</b> &nbsp;·&nbsp; seuil <b>6</b> → <b>tout juste retenu</b><br><br>
+    <span class="cm">// un RSI à 70,74 signale un actif déjà tendu : le point perdu est</span><br>
+    <span class="cm">// exactement ce qui sépare ce trade d'un signal confortable</span>
+  </div>
+
+  <h3>Les quatre verrous après le score</h3>
+  <figure>
+    <svg viewBox="0 0 900 340" role="img" aria-label="Arbre de décision du scoring : après avoir vérifié que le score atteint le seuil et que le signal 4h est haussier, quatre conditions successives peuvent transformer un achat en HOLD ou en SKIP TYPE_A — déjà en portefeuille, mode dégradé avec RSI hors zone, quota de positions atteint, corrélation excessive.">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect class="dg-box" x="300" y="8" width="300" height="40"/>
+      <text class="dg-t" x="450" y="26" text-anchor="middle">score ≥ seuil effectif</text>
+      <text class="dg-s" x="450" y="40" text-anchor="middle">ET signal_4h haussier</text>
+
+      <g stroke="currentColor" stroke-width="1" fill="none" marker-end="url(#a2)">
+        <line x1="450" y1="48"  x2="450" y2="72"/>
+        <line x1="450" y1="112" x2="450" y2="136"/>
+        <line x1="450" y1="176" x2="450" y2="200"/>
+        <line x1="450" y1="240" x2="450" y2="264"/>
+        <line x1="450" y1="304" x2="450" y2="322"/>
+      </g>
+
+      <g>
+        <rect class="dg-box" x="300" y="72"  width="300" height="40"/>
+        <text class="dg-t" x="450" y="90"  text-anchor="middle">déjà en portefeuille ?</text>
+        <text class="dg-s" x="450" y="104" text-anchor="middle">in_portfolio</text>
+
+        <rect class="dg-box" x="300" y="136" width="300" height="40"/>
+        <text class="dg-t" x="450" y="154" text-anchor="middle">mode dégradé ET RSI hors zone ?</text>
+        <text class="dg-s" x="450" y="168" text-anchor="middle">RSI inconnu compte comme hors zone</text>
+
+        <rect class="dg-box" x="300" y="200" width="300" height="40"/>
+        <text class="dg-t" x="450" y="218" text-anchor="middle">quota de positions atteint ?</text>
+        <text class="dg-s" x="450" y="232" text-anchor="middle">ouvertes + retenues ce cycle ≥ max</text>
+
+        <rect class="dg-box" x="300" y="264" width="300" height="40"/>
+        <text class="dg-t" x="450" y="282" text-anchor="middle">trop de corrélées ?</text>
+        <text class="dg-s" x="450" y="296" text-anchor="middle">groupe SOL · SUI · STX · ETH</text>
+      </g>
+
+      <!-- branches oui -->
+      <g stroke="var(--loss)" stroke-width="1" fill="none" marker-end="url(#a2)" stroke-dasharray="3 3">
+        <line x1="600" y1="92"  x2="700" y2="92"/>
+        <line x1="600" y1="156" x2="700" y2="156"/>
+        <line x1="600" y1="220" x2="700" y2="220"/>
+        <line x1="600" y1="284" x2="700" y2="284"/>
+      </g>
+      <g>
+        <text class="dg-t" x="710" y="96"  fill="var(--wait)">HOLD</text>
+        <text class="dg-t dg-skip" x="710" y="160">SKIP TYPE_A</text>
+        <text class="dg-t dg-skip" x="710" y="224">SKIP TYPE_A</text>
+        <text class="dg-t dg-skip" x="710" y="288">SKIP TYPE_A</text>
+        <text class="dg-lab" x="620" y="84">oui</text>
+        <text class="dg-lab" x="620" y="148">oui</text>
+        <text class="dg-lab" x="620" y="212">oui</text>
+        <text class="dg-lab" x="620" y="276">oui</text>
+      </g>
+      <g>
+        <text class="dg-lab" x="458" y="66">non</text>
+        <text class="dg-lab" x="458" y="130">non</text>
+        <text class="dg-lab" x="458" y="194">non</text>
+        <text class="dg-lab" x="458" y="258">non</text>
+      </g>
+
+      <text class="dg-t dg-ok" x="450" y="332" text-anchor="middle">BUY — candidat retenu</text>
+    </svg>
+    <figcaption>Les verrous sont évalués dans cet ordre exact. Le troisième compte les positions déjà retenues <em>dans le même cycle</em> : sans cela, quatre candidats à 7/10 ouvriraient quatre positions alors que le quota en autorise moins.</figcaption>
+  </figure>
+
+  <div class="ex">
+    <span class="tag">SOL · les verrous, un par un</span>
+    déjà en portefeuille ? <b>non</b> &nbsp;<span class="cm">// 2 positions ouvertes, mais pas SOL</span><br>
+    mode dégradé ? <b>non</b> &nbsp;<span class="cm">// l'analyse 1D a répondu</span><br>
+    quota atteint ? <b>non</b> &nbsp;<span class="cm">// 2 ouvertes + 2 retenues = 4, pile la limite… franchi de justesse</span><br>
+    trop de corrélées ? ETH et SOL sont tous deux du groupe → <b>2 sur 2 autorisées</b><br>
+    → <b>BUY</b>
+  </div>
+  <p class="note">Ce cycle a retenu ETH puis SOL, les deux seuls membres du groupe corrélé autorisés. Un troisième — STX ou SUI — aurait été écarté en TYPE_A, quel que soit son score.</p>
+
+  <h3>La vente</h3>
+  <div class="f">
+    <b>Si</b> score ≤ 3 <b>ET</b> déjà en portefeuille → <b>SELL</b>
+  </div>
+  <p>Une position dont le signal s'est effondré est vendue, indépendamment de son gain ou de sa perte. C'est le motif de sortie le plus fréquent dans l'historique.</p>
+
+  <h3>Le mode dégradé</h3>
+  <p>Quand TradingView limite les appels, l'analyse journalière peut manquer <em>pour toutes</em> les cryptos haussières en 4h. Deux points sur dix deviennent alors inatteignables et le seuil s'abaisse :</p>
+  <div class="f">
+    all_rl = il existe des coins BUY 4h <b>et</b> tous ont signal_1d indisponible<br>
+    <b>Si</b> all_rl → seuil effectif = <span class="cfg">min_signal_score_degraded</span> <span class="cm">// au lieu de min_signal_score</span><br>
+    <b>Et</b> le RSI cesse d'être un bonus : il devient une condition d'éligibilité
+  </div>
+  <p class="note">Le durcissement du RSI est la contrepartie de l'abaissement du seuil. Sans confirmation journalière, on refuse d'acheter un actif suracheté — et <b>un RSI inconnu compte comme hors zone</b> : deux incertitudes ne s'annulent pas.</p>
+</section>
+<section>
+  <h2><span class="ph">Phase 4</span>Combien acheter</h2>
+  <p class="lede">Le dimensionnement part du risque accepté, pas du capital disponible. On décide d'abord combien on est prêt à perdre, et la quantité en découle.</p>
+
+  <div class="f">
+    risk_usdc = portfolio_total × <span class="cfg">risk_per_trade_pct</span><br>
+    stop_distance_pct = atr_pct × <span class="cfg">atr_stop_multiplier</span><br><br>
+    prix_entry = prix_actuel × (1 − <span class="cfg">limit_offset_pct</span>)<br>
+    prix_stop  = prix_entry × (1 − stop_distance_pct)<br>
+    prix_tp    = prix_entry × (1 + (stop_distance_pct + <span class="cfg">fee_round_trip_pct</span>) × <span class="cfg">reward_risk_ratio</span> + <span class="cfg">fee_round_trip_pct</span>)<br><br>
+    <span class="cm">// plafond et plancher, comme en phase 0</span><br>
+    prix_tp = min(prix_tp, prix_entry × (1 + <span class="cfg">max_tp_pct</span>))<br>
+    <b>si</b> prix_tp &lt; prix_entry × (1 + 2 × <span class="cfg">fee_round_trip_pct</span>) → retour au TP mécanique<br><br>
+    <b>quantite = risk_usdc ÷ (prix_entry × (stop_distance_pct + <span class="cfg">fee_round_trip_pct</span>))</b><br>
+    montant = quantite × prix_entry
+  </div>
+
+  <div class="ex">
+    <span class="tag">SOL · le calcul exact du cycle</span>
+    risk_usdc = 437,59 × <b>0,02</b> = <b>8,7518</b> USDC<br>
+    ATR mesuré = 2,0 % → stop_distance = 2,0 × <b>3,5</b> = <b>7,0 %</b><br><br>
+    prix scanné = 100,0300<br>
+    prix_entry = 100,03 × (1 − <b>0,005</b>) = <b>99,52985</b><br>
+    prix_stop &nbsp;= 99,52985 × (1 − 0,07) = <b>92,5627605</b><br>
+    prix_tp &nbsp;&nbsp;&nbsp;= 99,52985 × (1 + (0,07 + <b>0,009</b>) × <b>1,5</b> + <b>0,009</b>) = <b>112,219905875</b><br><br>
+    quantite = 8,7518 ÷ (99,52985 × (0,07 + <b>0,009</b>)) = <b>1,11305582</b> SOL<br>
+    montant &nbsp;= <b>110,78</b> USDC<br><br>
+    <span class="cm">// valeurs en base : 92.5627605 · 112.219905875 · 1.11305581</span><br>
+    <span class="cm">// écart sur la cible : 0,000000000 — écart sur la quantité : 1e-8 (arrondi du pas)</span>
+  </div>
+  <p class="note">Les frais figurent <b>trois fois</b> dans ces formules, et ce n'est pas une redondance. Dans la cible, ils garantissent que le ratio de 1,5 porte sur un gain <b>net</b>. Dans le dénominateur de la quantité, ils garantissent que la perte réelle au stop — glissement <em>plus</em> frais — reste dans le budget de risque. Avant août, les frais étaient absents partout : le ratio affiché de 2,0 valait 1,2 en réalité.</p>
+
+  <h3>Les bornes appliquées ensuite</h3>
+  <div class="f">
+    <b>Rejeté si</b> prix_stop ≤ 0 <span class="cm">// volatilité extrême → TYPE_B</span><br>
+    <b>Rejeté si</b> montant &lt; <span class="cfg">min_order_usdc</span> <span class="cm">// → TYPE_B</span><br>
+    <b>Écrêté si</b> montant &gt; budget_disponible × <span class="cfg">max_single_position_pct</span><br><br>
+    <span class="cm">// puis les contraintes propres à la paire, lues chez Kraken</span><br>
+    quantite arrondie vers le bas au pas <code>lot_decimals</code><br>
+    <b>Rejeté si</b> quantite &lt; <code>ordermin</code> &nbsp;ou&nbsp; montant &lt; <code>costmin</code>
+  </div>
+  <div class="ex">
+    <span class="tag">SOL · les bornes ne mordent pas</span>
+    montant 110,78 &gt; <b>9</b> → passe le minimum<br>
+    plafond = 306,31 × <b>0,65</b> = <b>199,10</b> → 110,78 &lt; 199,10, pas d'écrêtage<br>
+    prix_stop 92,56 &gt; 0 → pas de skip TYPE_B
+  </div>
+
+  <div class="ex alt">
+    <span class="tag">Contre-exemple · TRUMP du 22 août, avant les corrections</span>
+    stop_distance = <b>7,0 %</b> — identique à SOL<br>
+    prix_tp = 2,496 × (1 + 2 × 0,07) = <b>2,8454</b> <span class="cm">// ancienne formule : ratio 2, aucun frais</span><br>
+    quantite = 9,22 ÷ (2,496 × 0,07) = <b>52,76</b> <span class="cm">// pas de frais au dénominateur</span><br><br>
+    <span class="cm">— avec la configuration d'aujourd'hui —</span><br>
+    tp mécanique = 2,496 × (1 + (0,07 + <b>0,009</b>) × <b>1,5</b> + <b>0,009</b>) = 2,8147 <span class="cm">(+12,8 %)</span><br>
+    plafond = 2,496 × (1 + <b>0,06</b>) = <b>2,6458</b> <span class="cm">(+6,0 %)</span> → <b>le plafond s'applique</b><br>
+    quantite = 9,22 ÷ (2,496 × 0,079) = <b>46,68</b> <span class="cm">// 12 % de moins</span><br><br>
+    résultat réel : stop touché, <b>−13,20 USDC</b>, la plus grosse perte de l'historique
+  </div>
+  <p class="note">La cible en base pour TRUMP vaut <code>2.8454399276</code>, soit <b>exactement</b> l'entrée majorée de 14 %. Aucun frais nulle part. Le plafond ramènerait aujourd'hui cette cible à +6 %, une hauteur que le marché atteint réellement : la mesure faite sur l'historique donne une hausse médiane de 4,9 % pendant la détention, et <b>sur 43 cibles fixées au-delà de 8 %, <b>2 seulement ont été touchées</b> — la plus haute atteinte est à +11,27 %</b>. Je ne peux pas affirmer que ce trade serait devenu gagnant — il est descendu au stop en moins de quatre heures — mais sa cible aurait été atteignable au lieu d'être hors de portée par construction.</p>
+</section>
+
+<section>
+  <h2><span class="ph">Phase 5</span>Passer l'ordre sans payer le prix fort</h2>
+  <p class="lede">Chez Kraken, le tarif preneur est le double du tarif apporteur — 0,60 % contre 0,30 % au palier actuel. Depuis août, le bot entre systématiquement en ordre limite pour rester du bon côté.</p>
+
+  <div class="f">
+    drift = |prix_refetch − prix_entry| / prix_entry<br>
+    <b>Rejeté si</b> drift &gt; <span class="cfg">price_deviation_max_pct</span> <span class="cm">// → TYPE_C</span><br>
+    <b>Rejeté si</b> solde USDC insuffisant <span class="cm">// → TYPE_C</span>
+  </div>
+
+  <div class="ex">
+    <span class="tag">SOL · l'exécution</span>
+    ordre limite post-only posé au meilleur achat<br>
+    servi après <b>141 secondes</b>, à <b>100,25</b> — au-dessus des 99,53 planifiés<br>
+    <span class="cm">// l'ordre est posé au bid du moment de l'exécution, pas au prix de planification</span><br><br>
+    frais d'entrée <b>0,33</b> USDC en tarif <b>apporteur</b><br>
+    <span class="cm">// au tarif preneur, la même entrée aurait coûté ~0,67 : 0,34 USDC économisés</span>
+  </div>
+  <p>L'ordre est ensuite posé en <code>limit --oflags post</code> au meilleur achat. Le drapeau <code>post</code> garantit le tarif apporteur : si l'ordre était exécutable immédiatement, Kraken le rejette au lieu de le passer en preneur.</p>
+
+  <h3>Le suivi de l'ordre, toutes les 20 secondes</h3>
+  <figure>
+    <svg viewBox="0 0 900 250" role="img" aria-label="Arbre de décision du watcher maker, évalué à chaque tick : rempli, terminé de façon inattendue, prix invalidé, budget de concession épuisé ou délai dépassé, bid déplacé, ou rien à faire.">
+      <defs>
+        <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <text class="dg-t" x="8" y="18">à chaque tick, dans cet ordre :</text>
+
+      <g>
+        <line x1="16" y1="30" x2="16" y2="222" stroke="currentColor" stroke-width="1" opacity=".3"/>
+
+        <circle cx="16" cy="46"  r="3.5" fill="var(--gain)"/>
+        <text class="dg-t" x="30" y="50">rempli</text>
+        <text class="dg-s" x="120" y="50">→ position enregistrée en <tspan fill="var(--gain)">maker</tspan>, stop-loss posé</text>
+
+        <circle cx="16" cy="82"  r="3.5" fill="currentColor" opacity=".5"/>
+        <text class="dg-t" x="30" y="86">terminé hors de notre fait</text>
+        <text class="dg-s" x="230" y="86">→ remplissage partiel si présent, sinon abandon</text>
+
+        <circle cx="16" cy="118" r="3.5" fill="var(--loss)"/>
+        <text class="dg-t" x="30" y="122">prix invalidé</text>
+        <text class="dg-s" x="150" y="122">→ annulation, <tspan fill="var(--loss)">pas de repli marché</tspan> — la thèse du trade est morte</text>
+
+        <circle cx="16" cy="154" r="3.5" fill="var(--wait)"/>
+        <text class="dg-t" x="30" y="158">concession épuisée ou délai dépassé</text>
+        <text class="dg-s" x="300" y="158">→ annulation puis <tspan fill="var(--wait)">achat au marché</tspan></text>
+
+        <circle cx="16" cy="190" r="3.5" fill="currentColor"/>
+        <text class="dg-t" x="30" y="194">le meilleur achat a bougé</text>
+        <text class="dg-s" x="220" y="194">→ <tspan font-weight="600">amend</tspan> au nouveau prix, la place dans le carnet est conservée</text>
+
+        <circle cx="16" cy="218" r="3" fill="currentColor" opacity=".3"/>
+        <text class="dg-s" x="30" y="222">sinon : rien jusqu'au tick suivant</text>
+      </g>
+    </svg>
+    <figcaption>L'ordre est <em>modifié</em>, jamais annulé puis reposé : annuler ferait perdre l'antériorité dans le carnet d'ordres, donc les chances d'être servi.</figcaption>
+  </figure>
+
+  <p class="note">La distinction entre le troisième et le quatrième cas est le cœur de la stratégie. Si le <b>prix s'est invalidé</b>, la raison d'acheter a disparu : on renonce. Si seul le <b>temps</b> ou le <b>budget de concession</b> est épuisé, la raison d'acheter tient toujours : on paie le tarif preneur plutôt que de rater le trade.</p>
+
+  <div class="ex">
+    <span class="tag">SOL · la sortie, deux jours plus tard</span>
+    prix atteint <b>104,30</b> ≥ cible 104,2156 → vente déclenchée par le watcher<br><br>
+    gain brut = (104,30 − 100,25) × 1,113 = <b>+4,51</b> USDC<br>
+    frais &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 0,33 (entrée, apporteur) + 0,70 (sortie, preneur) = <b>−1,03</b><br>
+    <span class="cm">────────────────────────────────</span><br>
+    gain net &nbsp;= <b>+3,48</b> USDC &nbsp;<span class="cm">// les frais ont pris 23 % du gain brut</span>
+  </div>
+  <p class="note">La sortie est un ordre au marché : elle paie le tarif preneur, deux fois plus cher que l'entrée. C'est l'objet du chantier suivant — appliquer la même stratégie d'ordre limite aux sorties.</p>
+
+  <p>Le délai de soixante minutes semblait généreux — cinq minutes avaient été envisagées. Les cinq remplissages observés ont pris 94, 105, 110, 141 et <b>405 secondes</b>. Avec un délai court, le dernier serait parti au marché et aurait payé double.</p>
+</section>
+<section>
+  <h2>Le rôle de chaque réglage</h2>
+  <p class="lede">Trente-six clés dans <code>config.json</code>. Voici où chacune agit, et ce qu'elle déplace.</p>
+
+  <h3>Risque et dimensionnement</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Réglage</th><th>Valeur</th><th>Où</th><th>Ce qu'il fait</th></tr></thead>
+    <tbody>
+      <tr><td class="k">risk_per_trade_pct</td><td class="v">0.02</td><td>phase 4</td><td>Part du portefeuille risquée par trade. Fixe <code>risk_usdc</code>, donc la quantité.</td></tr>
+      <tr><td class="k">atr_stop_multiplier</td><td class="v">1.75</td><td>phase 4</td><td>Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible.</td></tr>
+      <tr><td class="k">reward_risk_ratio</td><td class="v">1.5</td><td>phases 0 et 4</td><td>Gain net visé rapporté à la perte nette. Porte sur du net depuis août.</td></tr>
+      <tr><td class="k">fee_round_trip_pct</td><td class="v">0.009</td><td>phases 0, 4, 5</td><td>Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit.</td></tr>
+      <tr><td class="k">max_tp_pct</td><td class="v">0.06</td><td>phases 0 et 4</td><td>Plafond absolu de la cible. Le marché a délivré 4,9 % en médiane pendant la détention ; viser plus revenait à ne jamais toucher.</td></tr>
+      <tr><td class="k">usdc_allocation_pct</td><td class="v">0.70</td><td>phase 0</td><td>Part du solde USDC mobilisable.</td></tr>
+      <tr><td class="k">max_single_position_pct</td><td class="v">0.65</td><td>phase 4</td><td>Plafond d'une position seule, en part du budget disponible.</td></tr>
+      <tr><td class="k">min_order_usdc</td><td class="v">9</td><td>phase 4</td><td>Montant minimal d'un ordre. En dessous, skip TYPE_B.</td></tr>
+      <tr><td class="k">limit_offset_pct</td><td class="v">0.005</td><td>phase 4</td><td>Décote appliquée au prix de référence pour calculer le prix d'entrée.</td></tr>
+      <tr><td class="k">daily_loss_limit_pct</td><td class="v">0.05</td><td>phase 0</td><td>Perte journalière au-delà de laquelle le cycle s'arrête.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Sélection et signal</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Réglage</th><th>Valeur</th><th>Où</th><th>Ce qu'il fait</th></tr></thead>
+    <tbody>
+      <tr><td class="k">min_signal_score</td><td class="v">6</td><td>phase 3</td><td>Score minimal pour acheter, sur 10.</td></tr>
+      <tr><td class="k">min_signal_score_degraded</td><td class="v">4</td><td>phase 3</td><td>Seuil de repli quand l'analyse journalière est indisponible pour toutes les cryptos haussières.</td></tr>
+      <tr><td class="k">rsi_zone_min / max</td><td class="v">30 / 65</td><td>phase 3</td><td>Zone RSI qui donne un point. En mode dégradé, sortir de la zone devient éliminatoire.</td></tr>
+      <tr><td class="k">max_open_positions</td><td class="v">4</td><td>phase 3</td><td>Nombre de positions simultanées. Compte aussi les candidats retenus dans le cycle en cours.</td></tr>
+      <tr><td class="k">max_correlated_positions</td><td class="v">2</td><td>phase 3</td><td>Plafond de positions dans le groupe SOL · SUI · STX · ETH.</td></tr>
+      <tr><td class="k">min_volume_usdc</td><td class="v">500 000</td><td>phase 1</td><td>Volume 24h minimal pour entrer dans l'univers.</td></tr>
+      <tr><td class="k">max_spread_pct</td><td class="v">0.0008</td><td>phase 1</td><td>Écart achat-vente maximal. Relevé de 0,05 % à 0,08 % : ADA était exclue pour quatre millièmes de point.</td></tr>
+      <tr><td class="k">volume_persistence_periods</td><td class="v">6</td><td>phase 1</td><td>Nombre de bougies 4h sur lesquelles le volume doit tenir. Écarte les pics isolés.</td></tr>
+      <tr><td class="k">portfolio_coins</td><td class="v">XBT XRP SOL</td><td>phase 1</td><td>Cryptos toujours incluses dans l'univers, quels que soient les filtres.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Exécution et sorties</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Réglage</th><th>Valeur</th><th>Où</th><th>Ce qu'il fait</th></tr></thead>
+    <tbody>
+      <tr><td class="k">maker_entry_enabled</td><td class="v">true</td><td>phase 5</td><td>Active l'entrée en ordre limite. À false, retour au marché direct.</td></tr>
+      <tr><td class="k">maker_tick_seconds</td><td class="v">20</td><td>watcher</td><td>Fréquence de réévaluation de l'ordre en attente.</td></tr>
+      <tr><td class="k">maker_max_concession_pct</td><td class="v">0.003</td><td>watcher</td><td>Budget de poursuite du prix. Épuisé, l'ordre bascule au marché.</td></tr>
+      <tr><td class="k">maker_timeout_seconds</td><td class="v">3600</td><td>watcher</td><td>Délai maximal de chasse. Un remplissage à 405 s a validé ce choix.</td></tr>
+      <tr><td class="k">price_deviation_max_pct</td><td class="v">0.02</td><td>phase 5, watcher</td><td>Dérive de prix tolérée. Dépassée, la thèse du trade est considérée morte.</td></tr>
+      <tr><td class="k">min_profit_pct_take</td><td class="v">5.0</td><td>phase 0</td><td>Gain net déclenchant une vente anticipée, sans attendre la cible.</td></tr>
+      <tr><td class="k">max_oco_retry</td><td class="v">3</td><td>phase 0</td><td>Tentatives de repose d'une protection OCO manquante.</td></tr>
+      <tr><td class="k">max_hold_days</td><td class="v">14</td><td>hors cycle</td><td>Durée de détention maximale — n'agit que dans le flux de gestion de position, pas dans le cycle de trading.</td></tr>
+      <tr><td class="k">display_timezone</td><td class="v">Europe/Paris</td><td>affichage</td><td>Fuseau de tout affichage. L'interne reste en UTC.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Cinq réglages qui ne servent à rien</h3>
+  <p>Ils figurent dans <code>config.json</code> mais aucun code ne les lit. Les modifier n'a aucun effet.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Réglage</th><th>Valeur</th><th>Ce qu'on croirait qu'il fait</th></tr></thead>
+    <tbody>
+      <tr class="dead"><td class="k">min_adx</td><td class="v">20</td><td>Filtrer sur la force de tendance. L'ADX est bien lu en phase 2, mais aucun seuil ne l'utilise.</td></tr>
+      <tr class="dead"><td class="k">timeframes_required</td><td class="v">["4h"]</td><td>Choisir les horizons analysés. Ils sont écrits en dur.</td></tr>
+      <tr class="dead"><td class="k">universe_scan_top_n</td><td class="v">20</td><td>Limiter l'univers scanné. Le scan prend toutes les paires USDC.</td></tr>
+      <tr class="dead"><td class="k">usdc_blacklist</td><td class="v">[]</td><td>Exclure des cryptos. Aucune exclusion n'est appliquée.</td></tr>
+      <tr class="dead"><td class="k">approval_timeout_minutes</td><td class="v">30</td><td>Délai d'approbation manuelle. Vestige d'un flux abandonné.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Ces clés ne sont pas dangereuses, mais elles sont <b>trompeuses</b> : lire <code>min_adx: 20</code> laisse croire qu'un filtre de tendance protège les entrées. Il n'y en a pas.</p>
+</section>
+
+<section>
+  <h2><span class="ph">Septembre</span>Ce que la configuration produit vraiment</h2>
+  <p class="note" style="border-left-color:var(--loss)"><b>Errata du 07/09.</b> Une première version de cette section, publiée quelques heures plus tôt, annonçait des ratios trop favorables : le calcul oubliait de retrancher les frais de sortie du gain. Les valeurs ci-dessous sont corrigées et vérifiées par un contrôle simple — sans plafond, la formule doit redonner exactement le <code>reward_risk_ratio</code> configuré, soit 1,50. C'est désormais le cas.</p>
+  <p class="lede">Les formules ci-dessus sont justes, mais elles cachent une conséquence que personne n'avait calculée : <b>le plafond de la cible annule le ratio que le dimensionnement cherche à obtenir</b>. Cette section est un ajout du 07/09, écrit après une mesure sur les 43 trades ouverts depuis le 1<sup>er</sup> août.</p>
+
+  <h3>Le ratio est de l'arithmétique pure</h3>
+  <p>Le gain visé et le risque se ramènent tous deux à un pourcentage de l'entrée, et la quantité s'ajuste au budget de risque. Le rapport entre les deux ne dépend donc que de la distance du stop et du plafond — aucune donnée de marché n'entre dans ce calcul.</p>
+  <div class="f">
+    perte au stop &nbsp;= <span class="cfg">risk_usdc</span> <span class="cm">// par construction : le dimensionnement l'y ramène</span><br>
+    gain à la cible = <span class="cfg">risk_usdc</span> × (tp_pct − <span class="cfg">fee_round_trip_pct</span>) ÷ (sd + <span class="cfg">fee_round_trip_pct</span>)<br><br>
+    <b>ratio = (tp_pct − <span class="cfg">fee_round_trip_pct</span>) ÷ (sd + <span class="cfg">fee_round_trip_pct</span>)</b><br>
+    &nbsp;&nbsp;avec tp_pct = min( (sd + F) × <span class="cfg">reward_risk_ratio</span> + F , <span class="cfg">max_tp_pct</span> )<br>
+    <span class="cm">// sd = distance du stop = atr_pct × atr_stop_multiplier</span><br>
+    <span class="cm">// contrôle : sans plafond, la formule redonne exactement 1,50 — le reward_risk_ratio</span>
+  </div>
+  <p>En résolvant l'égalité, on obtient le point exact où le plafond commence à mordre :</p>
+  <div class="ex">
+    <span class="tag">le seuil de bascule</span>
+    le plafond commence à mordre dès que le stop dépasse <b>2,50 %</b> (ATR au-dessus de 0,71 %)<br>
+    le gain visé tombe sous le risque dès que le stop dépasse <b>4,20 %</b><br>
+    &nbsp;&nbsp;<span class="cm">// soit exactement max_tp_pct − 2 × fee_round_trip_pct</span><br><br>
+    <span class="cm">// sur du 4h en crypto, l'ATR médian mesuré par le bot est de 1,73 %</span><br>
+    <span class="cm">// le plafond mord donc sur la quasi-totalité des trades</span>
+  </div>
+
+  <h3>Le tableau complet</h3>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>ATR mesuré</th><th>Stop (×3,5)</th><th>Plafond 6 %</th><th>Plafond 8 %</th><th>Plafond 10 %</th></tr></thead>
+      <tbody>
+        <tr><td>0,71 %</td><td class="v">2,5 %</td><td class="v">1,50</td><td class="v">1,50</td><td class="v">1,50</td></tr>
+        <tr><td>1,00 %</td><td class="v">3,5 %</td><td class="v">1,15</td><td class="v">1,50</td><td class="v">1,50</td></tr>
+        <tr><td>1,50 %</td><td class="v">5,2 %</td><td class="v">0,82</td><td class="v">1,15</td><td class="v">1,48</td></tr>
+        <tr><td><b>1,73 %</b> — la médiane réelle</td><td class="v"><b>6,1 %</b></td><td class="v"><b>0,73</b></td><td class="v">1,02</td><td class="v">1,31</td></tr>
+        <tr><td>2,50 %</td><td class="v">8,8 %</td><td class="v">0,52</td><td class="v">0,73</td><td class="v">0,93</td></tr>
+        <tr><td>4,00 %</td><td class="v">14,0 %</td><td class="v">0,34</td><td class="v">0,47</td><td class="v">0,61</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Sur les <b>43 trades ouverts depuis le 1<sup>er</sup> août</b>, <b>39 risquent plus qu'ils ne visent</b> — soit 91 %. Le ratio médian net est de <b>0,73</b>, là où la configuration croit demander 1,5. Autrement dit : le bot mise 100 pour espérer 73.</p>
+
+  <h3>Comment ces distances ont été retrouvées</h3>
+  <p>Le champ <code>stop_price</code> de l'historique ne convient pas : le stop suiveur le réécrit à chaque cycle, au point que certaines positions affichent un stop <em>au-dessus</em> de leur prix d'entrée. La quantité, elle, est figée à l'achat, ce qui permet d'inverser la formule de dimensionnement :</p>
+  <div class="f">
+    sd_origine = <span class="cfg">risk_usdc</span> ÷ (entry_price × quantity) − <span class="cfg">fee_round_trip_pct</span>
+  </div>
+  <div class="ex">
+    <span class="tag">contrôle de la méthode</span>
+    sur les <b>8 trades</b> dont le stop n'a jamais été déplacé, la reconstitution<br>
+    tombe à <b>0,06 point</b> près de la valeur enregistrée<br><br>
+    <span class="cm">// sur les 34 autres, l'écart mesure le déplacement du stop suiveur, pas une erreur</span>
+  </div>
+
+  <h3>Les deux leviers</h3>
+  <p>Le plafond restant à 6 %, voici ce que donne chaque multiplicateur sur les 43 trades. La bascule est brutale entre 2,43 et 2,0 parce que les ATR mesurés sont très resserrés — premier quartile 1,67 %, troisième 1,74 % — donc les trades franchissent le seuil presque tous ensemble.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>atr_stop_multiplier</th><th>Stop médian</th><th>Ratio net médian</th><th>Risque &gt; gain</th></tr></thead>
+      <tbody>
+        <tr><td class="k">3,5 — d'origine</td><td class="v">6,07 %</td><td class="v"><b>0,73</b></td><td class="v">39/43</td></tr>
+        <tr><td class="k">3,0</td><td class="v">5,20 %</td><td class="v">0,84</td><td class="v">35/43</td></tr>
+        <tr><td class="k">2,5</td><td class="v">4,34 %</td><td class="v">0,97</td><td class="v">32/43</td></tr>
+        <tr><td class="k">2,43 — parité exacte</td><td class="v">4,21 %</td><td class="v">1,00</td><td class="v">29/43</td></tr>
+        <tr><td class="k">2,0</td><td class="v">3,47 %</td><td class="v"><b>1,17</b></td><td class="v">5/43</td></tr>
+        <tr><td class="k"><b>1,75 — retenu le 07/09</b></td><td class="v"><b>3,03 %</b></td><td class="v"><b>1,30</b></td><td class="v"><b>5/43</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Pourquoi c'est le stop qu'il faut regarder, pas le plafond</h3>
+  <p>Relever le plafond répare le ratio sur le papier. Mais il faut alors que le marché aille chercher ces cibles, et l'historique est mesurable sur ce point :</p>
+  <div class="ex">
+    <span class="tag">89 ventes · ce que le marché a réellement donné</span>
+    hausse à la sortie, sur les 47 sorties au-dessus de l'entrée :<br>
+    &nbsp;&nbsp;médiane <b>+3,23 %</b> &nbsp;·&nbsp; troisième quartile <b>+5,91 %</b><br><br>
+    cibles fixées au-delà de +8 % : <b>43</b> &nbsp;·&nbsp; réellement atteintes : <b>2</b><br>
+    cible la plus haute jamais touchée : <b>+11,27 %</b><br><br>
+    <span class="cm">// une cible au-delà de 8 % est atteinte environ une fois sur vingt</span>
+  </div>
+  <p class="note">Le plafond de 6 % tombe donc à peu près au troisième quartile de la hausse réellement observée : <b>il est bien placé</b>. C'est la distance du stop — 6,07 % en médiane — qui est disproportionnée face à un mouvement dont la taille habituelle est de 3,2 %. Le bot risque six pour aller chercher trois. <b>Le levier le plus sûr est le multiplicateur du stop, pas le plafond de la cible.</b></p>
+
+  <h3>Le poids des frais</h3>
+  <div class="ex alt">
+    <span class="tag">87 ventes dont le brut et le net sont connus</span>
+    gain cumulé sur les prix &nbsp;&nbsp;<b>+42,42</b> USDC<br>
+    frais payés &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>−68,51</b> USDC<br>
+    <span class="cm">─────────────────────────</span><br>
+    résultat net &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>−26,09</b> USDC<br><br>
+    <b>11 ventes sur 87</b> ont été gagnantes au prix et perdantes après frais :<br>
+    +2,98 de gain sur les prix devenus <b>−6,35</b> encaissés
+  </div>
+  <p>Les choix d'entrée et de sortie sont donc collectivement gagnants. Ce sont les frais — une fois et demie le gain brut — qui rendent le bilan négatif. Un ratio gain/risque inférieur à 1 et des frais de cet ordre se combinent : chaque trade doit franchir 0,9 % de frais avant d'exister, et vise un gain plafonné sous son propre risque.</p>
+
+  <h3>Ce qui a été décidé le 07/09</h3>
+  <p><span class="cfg-inline">atr_stop_multiplier</span> est passé de <b>3,5 à 1,75</b>. Le plafond <span class="cfg-inline">max_tp_pct</span> n'a pas été touché : la hausse médiane réellement observée à la sortie est de +3,23 % et son troisième quartile de +5,91 %, donc 6 % est bien placé. C'était la distance du stop qui était disproportionnée.</p>
+  <div class="ex">
+    <span class="tag">effet du changement</span>
+    stop médian &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6,07 % → <b>3,03 %</b><br>
+    ratio net &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0,73 → <b>1,30</b><br>
+    trades défavorables &nbsp;39/43 → <b>5/43</b>
+  </div>
+  <p class="note">Deux contreparties assumées. <b>Le stop passe sous le mouvement médian</b> (3,03 % contre 3,23 % de hausse médiane à la sortie) : il se trouve désormais dans la zone où le prix respire, donc davantage de sorties possibles sur du bruit — non mesurable ici, voir ci-dessous. Et <b>le capital engagé par position dépasse le plafond</b> <span class="cfg-inline">max_single_position_pct</span> : à risque constant, un stop plus serré agrandit la position (211,68 USDC calculés contre 189,13 autorisés au portefeuille du 07/09), qui sera donc écrêtée. Ce n'est plus le budget de risque qui pilote la taille, mais le plafond de position — le risque réel par trade descend sous les 2 % annoncés.</p>
+
+  <h3>Ce que cette mesure ne dit pas</h3>
+  <p class="note">Tout ce qui précède est de l'arithmétique sur des réglages, pas une simulation de résultat. <b>Je n'ai pas le chemin des prix</b> entre l'entrée et la sortie de chaque trade — seulement les deux extrémités. Impossible, donc, de dire si un stop plus serré aurait été touché avant que le trade ne parte dans le bon sens : resserrer le stop améliore le ratio par construction, mais augmente la probabilité d'être sorti par du bruit, et cette probabilité-là n'est pas mesurable ici. Répondre demanderait de rejouer les bougies 4h de chaque détention. Les chiffres ci-dessus disent <b>ce que la configuration promet</b>, pas ce qu'elle aurait rapporté.</p>
+</section>
+
+
+<footer>Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py</footer>
+</div>
