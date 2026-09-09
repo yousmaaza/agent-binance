@@ -2597,5 +2597,32 @@
     "pnl_pct": -4.623324957508677,
     "close_reason": "signal_sell_score1",
     "cycle_id": "20260907_141537"
+  },
+  {
+    "trade_id": "9cf128cf",
+    "date": "2026-09-09T08:13:31.269986+00:00",
+    "coin": "ETH",
+    "side": "BUY",
+    "signal_score": 7,
+    "entry_price": 2517.3700055356126,
+    "stop_price": 2433.67,
+    "tp_price": 2668.4122058677494,
+    "quantity": 0.07572784,
+    "risk_usdc": 8.3298,
+    "entry_order_id": "OBQWCI-MWTUC-IMZDHY",
+    "sl_order_txid": "OFWZ5P-HHKKD-PRMBNV",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.571905,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 100.659782,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
