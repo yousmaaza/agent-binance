@@ -11,25 +11,31 @@ Lit sell_candidates depuis /tmp/cycle_{CYCLE_ID}_phase3_signal_sell_input.json :
 
 Séquence par candidat, reproduite à l'identique du comportement improvisé constaté en prod (#472,
 cf. commentaire de l'issue) :
-1. Retrouver le trade "open" du coin -> sinon passer.
+1. Retrouver le trade "open" du coin -> sinon passer. Une sortie maker déjà en chasse pour ce
+   trade -> passer aussi, ne jamais la doubler d'une seconde vente.
 2. Annuler le stop actif (sl_order_txid) s'il existe (contrainte hold_trade de Kraken, cf. #390) —
    si l'annulation échoue, le stop reste en place, rien d'autre à faire.
-3. Vendre au marché min(quantity trade_history, solde réel) tronqué au pas de la paire (#472,
-   incident XRP du 18/08 : la quantité brute de trade_history a produit deux
-   EOrder:Insufficient funds).
-4. Query du fill (3 tentatives, 2s) :
+3. Calculer min(quantity trade_history, solde réel) tronqué au pas de la paire (#472, incident XRP
+   du 18/08 : la quantité brute de trade_history a produit deux EOrder:Insufficient funds).
+4. maker_exit_enabled (défaut) -> déléguer à attempt_maker_exit() : un score retombé n'est pas une
+   urgence (contrairement à un stop touché), la vente peut donc chasser l'ask en LIMIT post-only,
+   core/maker_exit_watcher.py assurant le repli au marché et la clôture du trade. Le trade n'est
+   PAS clôturé ici (compté dans maker_pending, pas dans closed).
+5. Sinon, vendre au marché, puis query du fill (3 tentatives, 2s) :
    - SELL échoué, fill introuvable après 3 tentatives, ou remplissage partiel -> jamais de prix
      fabriqué (#469) ni de position nue laissée après annulation du stop : reprotection via
      _repose_stop_and_alert() (core/maker_exit_watcher.py), le trade n'est pas clôturé.
    - Remplissage complet -> PnL net (compute_net_pnl), close_reason=f"signal_sell_score{score}",
      cycle_id=CYCLE_ID.
-5. Notification Telegram, sauvegarde atomique de l'historique dès qu'un état a changé.
+6. Notification Telegram, sauvegarde atomique de l'historique dès qu'un état a changé.
 
 Exécuté par Claude en Phase 3, après phase3_scoring.py :
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase3_signal_sell.py __CYCLE_ID__
 
 Stdout : PHASE3_SIGNAL_SELL_DONE|closed=N
 Output : /tmp/cycle_{CYCLE_ID}_phase3_signal_sell_output.json
+         {"closed": N, "maker_pending": M} — M = ventes déléguées au watcher de sortie maker,
+         clôturées plus tard hors de ce script.
 """
 import sys
 import os
@@ -41,7 +47,12 @@ import datetime
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.maker_exit_watcher import _repose_stop_and_alert  # noqa: E402
+from core.maker_exit_watcher import (  # noqa: E402
+    _repose_stop_and_alert,
+    attempt_maker_exit,
+    load_maker_exit_pending_orders,
+    save_maker_exit_pending_orders,
+)
 from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl, kraken_coin_balance  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
@@ -60,7 +71,13 @@ cfg = inp.get("config") or _load_config()
 with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
     history = json.load(f)
 
+# maker_exit_enabled (#390) : même traitement que tp_watcher.py et phase0_profit.py.
+maker_exit_enabled = cfg.get("maker_exit_enabled", True)
+exit_pending = load_maker_exit_pending_orders() if maker_exit_enabled else []
+exit_pending_ids = {p["trade_id"] for p in exit_pending}
+
 closed_count = 0
+maker_pending_count = 0
 history_changed = False
 
 for sc in sell_candidates:
@@ -70,6 +87,10 @@ for sc in sell_candidates:
 
     open_trade = next((t for t in history if t.get("status") == "open" and t.get("coin") == coin), None)
     if not open_trade:
+        continue
+    # Sortie maker déjà en cours de chasse (#390) : son stop est déjà annulé et son volume déjà
+    # engagé dans une limite vivante -> une seconde vente ici partirait en Insufficient funds.
+    if open_trade.get("trade_id") in exit_pending_ids:
         continue
 
     sl_txid = open_trade.get("sl_order_txid")
@@ -93,6 +114,11 @@ for sc in sell_candidates:
         except Exception as e:
             tg(f"⚠️ {coin} : annulation SL échouée avant vente sur signal — stop conservé, {e}")
             continue
+        # Le stop n'existe plus : purger le txid évite qu'attempt_maker_exit() (Step 3) en
+        # tente une seconde annulation, que Kraken rejette — la position resterait alors à la
+        # fois nue et non vendue.
+        open_trade["sl_order_txid"] = None
+        history_changed = True
 
     # Step 2 : quantité = min(trade_history, solde réel) tronquée au pas Kraken (#472, XRP 18/08).
     # kraken_coin_balance résout les actifs historiques préfixés (ETH -> XETH, etc., #476) ; si
@@ -133,7 +159,28 @@ for sc in sell_candidates:
         history_changed = True
         continue
 
-    # Step 3 : SELL MARKET. Le stop est déjà annulé (Step 1) : `except Exception` large et non un
+    # Step 3 : sortie maker (#390). Écartée si le solde réel ne couvre pas toute la position :
+    # le watcher clôture le trade entier dès que sa limite est remplie, il n'a aucune notion de
+    # vente partielle -- ce cas dégradé reste sur le chemin marché ci-dessous, qui mesure le
+    # reliquat contre trade_qty et le reprotège (#472 review).
+    if maker_exit_enabled and trade_qty - sell_qty <= untradeable_threshold:
+        new_pending = attempt_maker_exit(
+            open_trade, f"signal_sell_score{score}", cfg, cycle_id=CYCLE_ID, quantity=sell_qty,
+            # Le watcher notifie la pose de la limite puis la clôture ; préfixer ses messages
+            # garde le motif de la vente (le score retombé) visible côté Telegram, succès comme
+            # échec, sans ajouter une seconde notification.
+            notify=lambda msg, coin=coin, score=score: tg(f"📉 Signal SELL {coin} (score {score}/10)\n{msg}"),
+        )
+        if new_pending:
+            exit_pending.append(new_pending)
+            save_maker_exit_pending_orders(exit_pending)
+            maker_pending_count += 1
+        # Le trade n'est pas clôturé ici, mais attempt_maker_exit() a pu reposer le stop (échec de
+        # pose de la limite) : dans les deux cas l'état de open_trade a changé.
+        history_changed = True
+        continue
+
+    # Step 4 : SELL MARKET. Le stop est déjà annulé (Step 1) : `except Exception` large et non un
     # sous-ensemble de types précis (ValueError, RuntimeError...) est délibéré ici -- ça inclut
     # notamment subprocess.TimeoutExpired et OSError levés par binance() (#476 review), pour
     # garantir que toute panne à cet endroit déclenche la reprotection plutôt que de laisser le
@@ -150,7 +197,7 @@ for sc in sell_candidates:
         history_changed = True
         continue
 
-    # Step 4 : query du fill, 3 tentatives / 2s (identique au comportement constaté en prod, #472)
+    # Step 5 : query du fill, 3 tentatives / 2s (identique au comportement constaté en prod, #472)
     vol_exec = 0.0
     cost = 0.0
     fee = 0.0
@@ -189,7 +236,7 @@ for sc in sell_candidates:
         history_changed = True
         continue
 
-    # Step 5 : PnL net sur la quantité RÉELLEMENT vendue (vol_exec), jamais sur trade_qty — un
+    # Step 6 : PnL net sur la quantité RÉELLEMENT vendue (vol_exec), jamais sur trade_qty — un
     # reliquat inférieur à untradeable_threshold n'est pas vendable, il est absorbé silencieusement
     # (#472 review) plutôt que de gonfler artificiellement le PnL enregistré.
     exit_price = cost / vol_exec
@@ -229,4 +276,4 @@ print(f"PHASE3_SIGNAL_SELL_DONE|closed={closed_count}")
 # bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
 out_path = f"/tmp/cycle_{CYCLE_ID}_phase3_signal_sell_output.json"  # nosec B108
 with open(out_path, "w") as f:
-    json.dump({"closed": closed_count}, f)
+    json.dump({"closed": closed_count, "maker_pending": maker_pending_count}, f)

@@ -128,19 +128,26 @@ def _place_stop_loss(pair: str, qty: float, stop_price: float):
         return None, True, f" {e}", stop_price
 
 
-def attempt_maker_exit(pos: dict, close_reason: str, cfg: dict, notify=None, cycle_id: str | None = None) -> dict | None:
+def attempt_maker_exit(pos: dict, close_reason: str, cfg: dict, notify=None, cycle_id: str | None = None,
+                       quantity: float | None = None) -> dict | None:
     """Enchaînement imposé (#390) : annule le stop, pose une vente LIMIT post-only au meilleur
     vendeur (ask courant). Retourne l'enregistrement à ajouter à
     state/maker_exit_pending_orders.json — maker_exit_watcher_loop() prend le relais.
 
     Si l'annulation du stop ou la pose de la limite échoue, repose le stop immédiatement (jamais
     de position à la fois non protégée et non vendue) et retourne None : le déclencheur (TP
-    watcher / Phase 0) réessaiera au prochain tick/cycle.
+    watcher / Phase 0 / vente sur signal) réessaiera au prochain tick/cycle.
+
+    quantity (défaut : toute la position) laisse l'appelant imposer un volume qu'il a déjà
+    plafonné au solde réel et tronqué au pas de la paire — ce que fait la vente sur signal depuis
+    l'incident XRP du 18/08 (#472), où la quantité brute de trade_history a produit deux
+    EOrder:Insufficient funds. Un pos["sl_order_txid"] déjà purgé (stop annulé par l'appelant)
+    évite ici une seconde annulation, que Kraken rejette.
     """
     notify = notify or send_telegram
     coin = pos["coin"]
     pair = f"{coin}USDC"
-    qty = float(pos.get("quantity", 0))
+    qty = float(quantity if quantity is not None else pos.get("quantity", 0))
     sl_txid = pos.get("sl_order_txid")
     stop_price = pos.get("stop_price")
 
