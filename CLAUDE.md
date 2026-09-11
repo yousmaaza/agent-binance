@@ -131,7 +131,23 @@ Même en cas d'exit code non-zéro. Ne supprime jamais cette capture — c'est l
 
 L'auto-scheduler vit dans `main_loop()` de `webhook_server.py` — il déclenche `run_trade_workflow(trigger="auto")` au prochain slot 4h. Ne le déplace pas vers cron : la loop de polling Telegram est déjà toujours active, donc autant en profiter pour scheduler.
 
+### 8. Toute modification de la stratégie met à jour `docs/strategie.html`
 
+`docs/strategie.html` décrit la mécanique du bot : les huit phases, leurs formules, le rôle de chaque réglage et les mesures qui justifient les valeurs retenues. C'est la **source** ; `docs/strategie.md` en est **généré** par `scripts/strategie_to_md.py` et ne doit jamais être édité à la main (même motif que `docs/visuals/`, où les `.svg` sont générés depuis les `.d2`/`.mmd`).
+
+Une PR doit mettre le document à jour dès qu'elle touche :
+
+- une formule des phases 0, 3, 4 ou 5 (dimensionnement, scoring, cible, stop, exécution) ;
+- une des clés de `config.json` qui pilotent la stratégie : `atr_stop_multiplier`, `max_tp_pct`, `reward_risk_ratio`, `fee_round_trip_pct`, `risk_per_trade_pct`, `min_signal_score`, `min_signal_score_degraded`, `rsi_zone_min`/`rsi_zone_max`, `min_profit_pct_take`, `max_open_positions`, `max_correlated_positions`, `daily_loss_limit_pct`, `usdc_allocation_pct`, `max_single_position_pct` ;
+- le seuil de vente sur signal (`phase3_scoring.py`) ou le comportement du stop suiveur.
+
+```bash
+# après avoir modifié docs/strategie.html
+.venv/bin/python scripts/strategie_to_md.py           # régénère le markdown
+.venv/bin/python scripts/strategie_to_md.py --check   # échoue si le markdown est périmé
+```
+
+Le document affirme des chiffres mesurés : quand une valeur change, la mesure qui la justifiait devient fausse. La mettre à jour fait partie du changement, pas d'un suivi séparé.
 
 ## Workflow type d'une modification
 
