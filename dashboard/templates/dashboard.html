@@ -488,7 +488,7 @@
           <th>Coin</th><th>Entrée</th><th>Sortie</th><th class="num">Durée</th>
           <th class="num">Investi</th><th class="num">Retiré</th>
           <th class="num">Brut</th><th class="num">Frais</th><th class="num">Net</th>
-          <th>Motif</th><th>Déclencheur</th><th>Cycle</th>
+          <th>Motif</th><th>Déclencheur</th><th>Mode sortie</th><th>Cycle</th>
         </tr></thead>
         <tbody>
           <tr class="totaux">
@@ -500,11 +500,11 @@
             <td class="num {{ 'gain' if t.gross >= 0 else 'loss' }}">{{ "%+.2f"|format(t.gross) }}</td>
             <td class="num wait">−{{ "%.2f"|format(t.fees) }}</td>
             <td class="num {{ 'gain' if t.net >= 0 else 'loss' }}">{{ "%+.2f"|format(t.net) }}</td>
-            <td colspan="3"></td>
+            <td colspan="4"></td>
           </tr>
         {% for r in s.rows %}
           <tr{% if r.suspect %} class="suspect"{% endif %}>
-            <td class="cn">{{ r.coin }}{% if r.maker_or_taker == 'maker' %} <span class="pill-m">maker</span>{% endif %}</td>
+            <td class="cn">{{ r.coin }}{% if r.maker_or_taker == 'maker' %} <span class="pill-m" title="achat en apporteur">entrée maker</span>{% endif %}</td>
             <td class="mut">{{ r.entry_local }}</td>
             <td class="mut">{{ r.exit_local }}</td>
             <td class="num">{{ r.hold_label }}</td>
@@ -515,6 +515,15 @@
             <td class="num {{ 'gain' if r.is_win else 'loss' }}">{{ "%+.2f"|format(r.pnl_usdc or 0) }}</td>
             <td class="mut">{{ r.reason_label }}{% if r.suspect %}<span class="flag bad" title="{{ r.suspect }}">douteux</span>{% endif %}</td>
             <td class="mut"><span class="trig trig-{{ r.trigger }}" title="{{ r.trigger_detail }}">{{ r.trigger }}</span>{% if r.anomaly %}<span class="flag bad" title="{{ r.anomaly }}">écart</span>{% endif %}</td>
+            <td class="mut">
+              {%- if r.exit_maker_or_taker == 'maker' -%}
+              <span class="pill-m" title="frais de sortie ~0.30 %{% if r.exit_fee_rate_pct is not none %} (mesuré {{ "%.2f"|format(r.exit_fee_rate_pct) }} %){% endif %}">apporteur</span>
+              {%- elif r.exit_maker_or_taker == 'taker' -%}
+              <span class="pill-t" title="frais de sortie ~0.60 %{% if r.exit_fee_rate_pct is not none %} (mesuré {{ "%.2f"|format(r.exit_fee_rate_pct) }} %){% endif %}">preneur</span>
+              {%- else -%}
+              <span title="vente antérieure au suivi du mode de sortie">inconnu</span>
+              {%- endif -%}
+            </td>
             <td class="mut">{% if "cycle_id" not in r %}<span title="vente antérieure à l'enregistrement du cycle">—</span>{% elif r.cycle_id is none %}hors cycle{% elif r.cycle_linkable %}<a href="{{ url_for('dashboard_home') }}?tab=cycles#cyc-{{ r.cycle_id }}">{{ r.cycle_id }}</a>{% else %}{{ r.cycle_id }}{% endif %}</td>
           </tr>
         {% endfor %}

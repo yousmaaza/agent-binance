@@ -421,7 +421,8 @@ class TestClosedTradesProjection(unittest.TestCase):
         row = rows[0]
         for field in ("coin", "entry_date", "exit_date", "hold_hours", "entry_price", "exit_price",
                       "tp_price", "stop_price", "quantity", "pnl_gross_usdc", "fees_usdc",
-                      "pnl_usdc", "close_reason", "maker_or_taker", "fees_estimated", "cycle_id"):
+                      "pnl_usdc", "close_reason", "maker_or_taker", "fees_estimated", "cycle_id",
+                      "exit_maker_or_taker"):
             self.assertIn(field, row, field)
         # projection etroite : pas d'identifiants d'ordres
         self.assertNotIn("entry_order_id", row)
@@ -440,6 +441,24 @@ class TestClosedTradesProjection(unittest.TestCase):
         rows = ns["_closed_trades"]([{"coin": "SOL"}])
         self.assertIn("cycle_id", rows[0])
         self.assertIsNone(rows[0]["cycle_id"])
+
+    def test_exit_maker_or_taker_present_is_forwarded(self):
+        """#490 : le mode de sortie écrit par core/maker_exit_watcher.py doit sortir du bot."""
+        ns = self._module()
+        rows = ns["_closed_trades"]([
+            {"coin": "SOL", "exit_maker_or_taker": "maker"},
+            {"coin": "ADA", "exit_maker_or_taker": "taker"},
+        ])
+        self.assertEqual(rows[0]["exit_maker_or_taker"], "maker")
+        self.assertEqual(rows[1]["exit_maker_or_taker"], "taker")
+
+    def test_exit_maker_or_taker_absent_becomes_explicit_none(self):
+        """#490 : une vente antérieure à #488 (ou sortie hors watcher) n'a jamais le champ —
+        jamais confondue avec un mode de sortie connu."""
+        ns = self._module()
+        rows = ns["_closed_trades"]([{"coin": "XRP"}])
+        self.assertIn("exit_maker_or_taker", rows[0])
+        self.assertIsNone(rows[0]["exit_maker_or_taker"])
 
     def test_hold_hours_computed_from_the_two_dates(self):
         ns = self._module()

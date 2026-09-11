@@ -240,5 +240,50 @@ class TestSalesTabCycleLink(DashboardAppTestBase):
         self.assertIn("vente antérieure à l'enregistrement du cycle", body)
 
 
+class TestSalesTabExitMode(DashboardAppTestBase):
+    """#490 : une vente en apporteur, une en preneur, et une vente antérieure à #488 (champ
+    absent) doivent produire trois rendus distincts dans la colonne Mode sortie — jamais
+    confondus entre eux, et jamais présentés comme une information connue quand elle ne l'est
+    pas."""
+
+    def test_three_exit_modes_are_rendered_distinctly(self):
+        closed_trades = [
+            {"coin": "SOL", "entry_date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00",
+             "hold_hours": 52.0, "entry_price": 100.0, "exit_price": 104.0, "tp_price": 104.0, "quantity": 1.0,
+             "pnl_gross_usdc": 4.0, "fees_usdc": 1.0, "pnl_usdc": 3.0, "close_reason": "tp_watcher",
+             "maker_or_taker": "maker", "fees_estimated": False,
+             "exit_maker_or_taker": "maker", "exit_fee_usdc": 0.312},
+            {"coin": "DOT", "entry_date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00",
+             "hold_hours": 52.0, "entry_price": 5.0, "exit_price": 5.2, "tp_price": 5.3, "quantity": 10.0,
+             "pnl_gross_usdc": 2.0, "fees_usdc": 0.31, "pnl_usdc": 1.7, "close_reason": "signal_sell_score1",
+             "maker_or_taker": "taker", "fees_estimated": False,
+             "exit_maker_or_taker": "taker", "exit_fee_usdc": 0.312},
+            {"coin": "ADA", "entry_date": "2026-08-20T08:00:00+00:00", "exit_date": "2026-08-21T08:00:00+00:00",
+             "hold_hours": 24.0, "entry_price": 0.2, "exit_price": 0.19, "tp_price": 0.22, "quantity": 100.0,
+             "pnl_gross_usdc": -1.0, "fees_usdc": 0.5, "pnl_usdc": -1.5, "close_reason": "sl_hit",
+             "maker_or_taker": None, "fees_estimated": True},  # vente antérieure : pas de champ du tout
+        ]
+        state = dict(SAMPLE_STATE, updated_at=datetime.now(timezone.utc).isoformat(), closed_trades=closed_trades)
+        with patch("app.get_dashboard_state", return_value=state), \
+             patch("app.get_recent_cycles", return_value=SAMPLE_CYCLES), \
+             patch("app.get_prices", return_value={"BNB": 510.0}):
+            self._login()
+            r = self.client.get("/?tab=ventes&periode=tout")
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+
+        # Logique naïve à rejeter : les trois libellés doivent tous apparaître, chacun une
+        # seule fois dans la colonne Mode sortie — jamais deux confondus sous le même libellé.
+        self.assertEqual(body.count('class="pill-m" title="frais de sortie'), 1)
+        self.assertEqual(body.count('class="pill-t" title="frais de sortie'), 1)
+        self.assertIn("vente antérieure au suivi du mode de sortie", body)
+        self.assertEqual(body.count("vente antérieure au suivi du mode de sortie"), 1)
+
+        # Le taux de frais mesuré (bonus de vérification, #490) accompagne les deux ventes
+        # classées, jamais la vente inconnue.
+        self.assertIn("mesuré 0.30 %", body)
+        self.assertIn("mesuré 0.60 %", body)
+
+
 if __name__ == "__main__":
     unittest.main()
