@@ -476,6 +476,13 @@ def _suspect_exit(trade: dict) -> str | None:
     return None
 
 
+def _exit_fee_rate_pct(trade: dict) -> float | None:
+    fee, price, qty = trade.get("exit_fee_usdc"), trade.get("exit_price"), trade.get("quantity")
+    if fee is None or not price or not qty:
+        return None
+    return fee / (price * qty) * 100
+
+
 def build_sales_rows(closed_trades: list, tz_name: str, known_cycle_ids=None) -> list:
     known_cycle_ids = known_cycle_ids or ()
     rows = []
@@ -498,6 +505,9 @@ def build_sales_rows(closed_trades: list, tz_name: str, known_cycle_ids=None) ->
             "trigger": sale_trigger(trade.get("close_reason"))[0],
             "trigger_detail": sale_trigger(trade.get("close_reason"))[1],
             "anomaly": sale_anomaly(trade),
+            # taux de frais réel de la sortie : permet de vérifier exit_maker_or_taker sans lui
+            # faire confiance (0,30 % apporteur / 0,60 % preneur mesurés) — #490
+            "exit_fee_rate_pct": _exit_fee_rate_pct(trade),
             # #470, retour de review : un cycle hors de la fenêtre du journal (CYCLES_JOURNAL_LIMIT)
             # n'a pas d'ancre dans le DOM — le lien casserait silencieusement. On ne lie que ce
             # qui est effectivement affiché dans l'onglet Cycles.

@@ -19,8 +19,10 @@ from commands import maker  # noqa: E402
 
 BASE_CFG = {
     "maker_entry_enabled": True,
+    "maker_exit_enabled": True,
     "maker_tick_seconds": 20,
     "maker_max_concession_pct": 0.003,
+    "maker_exit_max_concession_pct": 0.003,
 }
 
 
@@ -37,11 +39,15 @@ class MakerCommandTestCase(unittest.TestCase):
         base = tmpdir.name
         self.watcher_state_path = os.path.join(base, "maker_watcher_state.json")
         self.pending_orders_path = os.path.join(base, "maker_pending_orders.json")
+        self.exit_watcher_state_path = os.path.join(base, "maker_exit_watcher_state.json")
+        self.exit_pending_orders_path = os.path.join(base, "maker_exit_pending_orders.json")
         self.history_path = os.path.join(base, "trade_history.json")
 
         for attr, value in (
             ("_WATCHER_STATE_PATH", self.watcher_state_path),
             ("_PENDING_ORDERS_PATH", self.pending_orders_path),
+            ("_EXIT_WATCHER_STATE_PATH", self.exit_watcher_state_path),
+            ("_EXIT_PENDING_ORDERS_PATH", self.exit_pending_orders_path),
             ("_HISTORY_PATH", self.history_path),
         ):
             p = patch.object(maker, attr, value)
@@ -337,6 +343,70 @@ class TestEfficiencyBlock(MakerCommandTestCase):
         self._write(self.history_path, recent + old)
         out = maker.run_maker()
         self.assertIn("Tendance 7j : échantillon insuffisant (4 trade(s) classé(s))", out)
+
+
+class TestExitBlock(MakerCommandTestCase):
+    """#490 : /maker doit rendre compte des sorties (core/maker_exit_watcher.py, #390), pas
+    seulement des entrées — sans jamais planter sur les fichiers absents en prod actuelle."""
+
+    def test_missing_exit_files_do_not_crash_and_show_no_data(self):
+        """Critère #490 : maker_exit_pending_orders.json absent ou vide — état actuel en prod."""
+        out = maker.run_maker()
+        self.assertIn("Watcher sortie maker", out)
+        self.assertIn("Ordres de sortie en attente", out)
+        self.assertIn("Efficacité des sorties", out)
+
+    def test_empty_exit_pending_list_shows_no_orders(self):
+        self._write(self.exit_pending_orders_path, [])
+        out = maker.run_maker()
+        exit_pending = out.split("Ordres de sortie en attente")[1]
+        self.assertIn("Aucun ordre en attente", exit_pending)
+
+    def test_maker_exit_disabled_shows_disabled_switch(self):
+        self.cfg["maker_exit_enabled"] = False
+        out = maker.run_maker()
+        self.assertIn("Désactivé", out)
+        self.assertIn("maker_exit_enabled", out)
+
+    def test_exit_pending_order_is_listed(self):
+        self._write(self.exit_pending_orders_path, [{
+            "coin": "ETH", "quantity": 0.1,
+            "initial_limit_price": 2000.0, "current_limit_price": 2001.0,
+            "adjustments": 3, "placed_at": _iso(120),
+        }])
+        out = maker.run_maker()
+        exit_pending = out.split("Ordres de sortie en attente")[1].split("Efficacité")[0]
+        self.assertIn("ETH", exit_pending)
+
+    def test_no_classified_exits_shows_no_data(self):
+        self._write(self.history_path, [
+            {"coin": "SYN", "status": "closed"},  # legacy, pas d'exit_maker_or_taker
+        ])
+        out = maker.run_maker()
+        exit_efficiency = out.split("Efficacité des sorties")[1]
+        self.assertIn("Pas encore de données", exit_efficiency)
+
+    def test_exit_fill_rate_never_confuses_entries_with_exits(self):
+        """Piège explicite : un trade parfaitement maker à l'entrée mais preneur à la sortie ne
+        doit pas se compter comme 100% apporteur côté sorties."""
+        self._write(self.history_path, [
+            {"coin": "ETH", "maker_or_taker": "maker", "exit_maker_or_taker": "taker",
+             "date": _iso(3600), "exit_date": _iso(60), "entry_fee_usdc": 0.3, "exit_fee_usdc": 0.6},
+        ])
+        out = maker.run_maker()
+        entry_efficiency = out.split("Efficacité cumulée")[1].split("Watcher sortie maker")[0]
+        exit_efficiency = out.split("Efficacité des sorties")[1]
+        self.assertIn("100%", entry_efficiency)  # entrée : 1/1 maker
+        self.assertIn("Taux de sortie en apporteur : 0%", exit_efficiency)  # sortie : 0/1 maker
+
+    def test_fees_avoided_sums_exit_fee_of_maker_exits_only(self):
+        self._write(self.history_path, [
+            {"coin": "ETH", "exit_maker_or_taker": "maker", "exit_date": _iso(3600), "exit_fee_usdc": 0.30},
+            {"coin": "SOL", "exit_maker_or_taker": "taker", "exit_date": _iso(3600), "exit_fee_usdc": 0.60},
+        ])
+        out = maker.run_maker()
+        exit_efficiency = out.split("Efficacité des sorties")[1]
+        self.assertIn("0.30 USDC", exit_efficiency)
 
 
 class TestRunMakerRespondsQuickly(unittest.TestCase):

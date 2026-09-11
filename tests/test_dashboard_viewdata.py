@@ -675,5 +675,37 @@ class TestSalesViewCycleId(unittest.TestCase):
         self.assertFalse(view["rows"][0]["cycle_linkable"])
 
 
+class TestExitMakerOrTaker(unittest.TestCase):
+    """#490 : le mode de sortie (apporteur/preneur écrit par core/maker_exit_watcher.py, #390)
+    doit rester distinguable d'une vente antérieure qui n'a jamais eu le champ — jamais
+    confondu, ni avec l'autre valeur connue ni avec l'absence d'information."""
+
+    def test_three_states_are_distinguished_not_confused(self):
+        trades = [
+            {**TestBuildSalesView.TRADES[0], "coin": "MAKER", "exit_maker_or_taker": "maker"},
+            {**TestBuildSalesView.TRADES[0], "coin": "TAKER", "exit_maker_or_taker": "taker"},
+            {k: v for k, v in TestBuildSalesView.TRADES[0].items() if k != "exit_maker_or_taker"},
+        ]
+        rows = {r["coin"]: r for r in viewdata.build_sales_rows(trades, "UTC")}
+
+        self.assertEqual(rows["MAKER"]["exit_maker_or_taker"], "maker")
+        self.assertEqual(rows["TAKER"]["exit_maker_or_taker"], "taker")
+        self.assertNotIn("exit_maker_or_taker", rows["SOL"])
+
+        # Logique naïve à rejeter : confondre l'absence avec l'une des deux valeurs connues.
+        values = {r.get("exit_maker_or_taker") for r in rows.values()}
+        self.assertEqual(values, {"maker", "taker", None})
+
+    def test_exit_fee_rate_pct_matches_measured_fee_schedule(self):
+        maker_trade = {"exit_fee_usdc": 0.312, "exit_price": 104.0, "quantity": 1.0}
+        taker_trade = {"exit_fee_usdc": 0.624, "exit_price": 104.0, "quantity": 1.0}
+        self.assertAlmostEqual(viewdata._exit_fee_rate_pct(maker_trade), 0.30, places=2)
+        self.assertAlmostEqual(viewdata._exit_fee_rate_pct(taker_trade), 0.60, places=2)
+
+    def test_exit_fee_rate_pct_is_none_without_enough_data(self):
+        self.assertIsNone(viewdata._exit_fee_rate_pct({}))
+        self.assertIsNone(viewdata._exit_fee_rate_pct({"exit_fee_usdc": 0.3, "exit_price": 104.0}))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -187,6 +187,8 @@ def _closed_trades(closed: list, limit: int = CLOSED_TRADES_LIMIT) -> list:
             "close_reason": trade.get("close_reason"),
             "cycle_id": trade.get("cycle_id"),
             "maker_or_taker": trade.get("maker_or_taker"),
+            "exit_maker_or_taker": trade.get("exit_maker_or_taker"),
+            "exit_fee_usdc": trade.get("exit_fee_usdc"),
             "fees_estimated": bool(trade.get("fees_estimated")),
         })
     rows.sort(key=lambda r: r.get("exit_date") or "", reverse=True)

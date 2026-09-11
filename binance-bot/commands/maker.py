@@ -1,7 +1,9 @@
 """Commande /maker — retourne une str (compatible Telegram et CLI).
 
-Lecture seule : lit state/maker_watcher_state.json, state/maker_pending_orders.json et
-state/trade_history.json, ne modifie jamais l'état ni n'interfère avec core/maker_watcher.py (#388).
+Lecture seule : lit state/maker_watcher_state.json, state/maker_pending_orders.json,
+state/maker_exit_watcher_state.json, state/maker_exit_pending_orders.json et
+state/trade_history.json. Couvre les entrées (core/maker_watcher.py, #388) et les sorties
+(core/maker_exit_watcher.py, #390) — ne modifie jamais l'état ni n'interfère avec les watchers.
 """
 import json
 import statistics
@@ -13,6 +15,8 @@ from core.trade_helpers import _load_config
 
 _WATCHER_STATE_PATH = f"{PROJECT_DIR}/state/maker_watcher_state.json"
 _PENDING_ORDERS_PATH = f"{PROJECT_DIR}/state/maker_pending_orders.json"
+_EXIT_WATCHER_STATE_PATH = f"{PROJECT_DIR}/state/maker_exit_watcher_state.json"
+_EXIT_PENDING_ORDERS_PATH = f"{PROJECT_DIR}/state/maker_exit_pending_orders.json"
 _HISTORY_PATH = f"{PROJECT_DIR}/state/trade_history.json"
 
 _MAX_ORDERS_SHOWN = 8
@@ -93,15 +97,15 @@ def _format_health_section(cfg: dict, state: dict | None) -> list[str]:
 # Bloc 2 — Ordres en cours de poursuite
 # ---------------------------------------------------------------------------
 
-def _format_pending_section(cfg: dict) -> list[str]:
-    pending_orders = _load_json(_PENDING_ORDERS_PATH, [])
-    lines = ["\n📋 <b>Ordres en cours de poursuite</b>"]
+def _format_pending_section(cfg: dict, path: str, budget_key: str, title: str) -> list[str]:
+    pending_orders = _load_json(path, [])
+    lines = [f"\n📋 <b>{title}</b>"]
 
     if not pending_orders:
         lines.append("  Aucun ordre en attente.")
         return lines
 
-    budget_pct = cfg.get("maker_max_concession_pct", 0.003)
+    budget_pct = cfg.get(budget_key, 0.003)
     shown = pending_orders[:_MAX_ORDERS_SHOWN]
     for o in shown:
         coin = o.get("coin", "?")
@@ -132,10 +136,10 @@ def _format_pending_section(cfg: dict) -> list[str]:
 # Bloc 3 — Efficacité cumulée
 # ---------------------------------------------------------------------------
 
-def _fill_rate_pct(trades: list) -> float | None:
+def _fill_rate_pct(trades: list, key: str = "maker_or_taker") -> float | None:
     if not trades:
         return None
-    makers = sum(1 for t in trades if t.get("maker_or_taker") == "maker")
+    makers = sum(1 for t in trades if t.get(key) == "maker")
     return makers / len(trades) * 100
 
 
@@ -231,10 +235,119 @@ def _format_efficiency_section(state: dict | None) -> list[str]:
     return lines
 
 
+# ---------------------------------------------------------------------------
+# Bloc 4 — Sorties maker (#390, visibilité #490)
+# ---------------------------------------------------------------------------
+
+def _format_exit_health_section(cfg: dict, state: dict | None) -> list[str]:
+    lines = ["\n🎯 <b>Watcher sortie maker</b>"]
+
+    if not cfg.get("maker_exit_enabled", True):
+        lines.append("  🔴 Désactivé (<code>maker_exit_enabled: false</code>) — sorties en vente au marché direct")
+        return lines
+
+    if state is None:
+        lines.append("  ⏳ En attente du premier tick (watcher tout juste démarré)")
+        return lines
+
+    tick_seconds = cfg.get("maker_tick_seconds", 20)
+    last_tick_dt = parse_dt(state.get("last_tick"))
+    if last_tick_dt is not None:
+        age_seconds = (datetime.now(timezone.utc) - last_tick_dt).total_seconds()
+        stale = age_seconds > tick_seconds * _STALE_TICK_FACTOR
+        tick_str = fmt_local(last_tick_dt)
+    else:
+        stale = True
+        tick_str = "–"
+
+    last_error = state.get("last_error")
+    if last_error:
+        health = "🔴 Erreur"
+    elif stale:
+        health = "⚠️ Lent / inactif"
+    else:
+        health = "✅ OK"
+
+    lines.append(f"  Statut : {health}")
+    lines.append(f"  Dernier tick : {tick_str}")
+    if last_error:
+        lines.append(f"  Dernière erreur : {last_error}")
+    lines.append(
+        f"  Cumul : {state.get('total_ticks', 0)} ticks, "
+        f"{state.get('total_fills', 0)} remplis maker, {state.get('total_fallbacks', 0)} replis marché"
+    )
+    return lines
+
+
+def _format_exit_funnel(state: dict | None) -> list[str]:
+    total_fills = (state or {}).get("total_fills", 0)
+    total_fallbacks = (state or {}).get("total_fallbacks", 0)
+    total_attempts = total_fills + total_fallbacks
+
+    if not total_attempts:
+        return ["  Funnel watcher (compteurs internes) : n/d (aucune tentative enregistrée)"]
+
+    fills_pct = total_fills / total_attempts * 100
+    fallbacks_pct = total_fallbacks / total_attempts * 100
+    return [
+        f"  Funnel watcher (compteurs internes, remis à zéro si l'état est perdu — "
+        f"{total_attempts} tentative(s)) :",
+        f"    Remplis {fills_pct:.0f}% ({total_fills}) / Replis marché {fallbacks_pct:.0f}% ({total_fallbacks})",
+    ]
+
+
+def _format_exit_efficiency_section(state: dict | None) -> list[str]:
+    history = _load_json(_HISTORY_PATH, [])
+    lines = ["\n📈 <b>Efficacité des sorties</b>"]
+
+    # Les ventes sans exit_maker_or_taker (antérieures à #488, ou sorties qui ne passent pas par
+    # le watcher : stop Kraken direct) sont exclues, jamais comptées à tort comme taker (#490).
+    classified = [t for t in history if t.get("exit_maker_or_taker") in ("maker", "taker")]
+
+    if not classified:
+        lines.append("  Pas encore de données (aucune sortie classée maker/taker).")
+        lines.extend(_format_exit_funnel(state))
+        return lines
+
+    rate_all = _fill_rate_pct(classified, "exit_maker_or_taker")
+    lines.append(
+        f"  Taux de sortie en apporteur : {rate_all:.0f}% (sur {len(classified)} vente(s) classée(s))"
+    )
+
+    fees_avoided = sum(
+        t["exit_fee_usdc"] for t in classified
+        if t.get("exit_maker_or_taker") == "maker" and t.get("exit_fee_usdc") is not None
+    )
+    lines.append(f"  Frais évités vs preneur : ~{fees_avoided:.2f} USDC")
+
+    cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
+    week_trades = [t for t in classified if (dt := parse_dt(t.get("exit_date"))) and dt >= cutoff_7d]
+    if len(week_trades) < _MIN_TREND_SAMPLE:
+        lines.append(
+            f"  Tendance 7j : échantillon insuffisant ({len(week_trades)} vente(s) classée(s)) "
+            "— pas de tendance fiable à ce stade"
+        )
+    else:
+        rate_7d = _fill_rate_pct(week_trades, "exit_maker_or_taker")
+        lines.append(
+            f"  Tendance 7j : {rate_7d:.0f}% de sorties en apporteur (sur {len(week_trades)} vente(s)) "
+            f"vs {rate_all:.0f}% depuis le début"
+        )
+
+    lines.extend(_format_exit_funnel(state))
+    return lines
+
+
 def run_maker() -> str:
     cfg = _load_config(PROJECT_DIR)
     state = _load_json(_WATCHER_STATE_PATH, None)
+    exit_state = _load_json(_EXIT_WATCHER_STATE_PATH, None)
     lines = _format_health_section(cfg, state)
-    lines.extend(_format_pending_section(cfg))
+    lines.extend(_format_pending_section(
+        cfg, _PENDING_ORDERS_PATH, "maker_max_concession_pct", "Ordres en cours de poursuite"))
     lines.extend(_format_efficiency_section(state))
+    lines.extend(_format_exit_health_section(cfg, exit_state))
+    lines.extend(_format_pending_section(
+        cfg, _EXIT_PENDING_ORDERS_PATH, "maker_exit_max_concession_pct", "Ordres de sortie en attente"))
+    lines.extend(_format_exit_efficiency_section(exit_state))
     return "\n".join(lines)
