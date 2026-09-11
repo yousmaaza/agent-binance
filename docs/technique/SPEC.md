@@ -1,7 +1,7 @@
 # Spécification technique — agent-binance
 
 > **Généré par** : `binance-doc-tech` one-shot (mise à jour PR-mergée)
-> **Dernière mise à jour** : 2026-09-07 (PR #485)
+> **Dernière mise à jour** : 2026-09-11 (PR #489)
 > **Commit** : (HEAD)
 
 ---
@@ -259,7 +259,7 @@ webhook_server.py (process principal)
 | `save_maker_pending_orders()` | core/trade_helpers.py:114 | Sauvegarde atomique `state/maker_pending_orders.json` via tempfile + os.replace() ; liste des ordres LIMIT en attente |
 | `maker_or_taker_from_ordertype()` | core/trade_helpers.py:105 | Dérive le statut maker/taker : retourne `"maker"` pour ordres LIMIT avec `post_only=True` (#388), `"taker"` pour MARKET/stop-loss, `None` pour autres |
 | **[Watcher sorties maker — PR #457]** | | |
-| `attempt_maker_exit()` | core/maker_exit_watcher.py:131 | **Orchestration sortie** : annule le stop-loss de la position, pose une vente LIMIT post-only au prix ask courant. Retourne un enregistrement pour `maker_exit_pending_orders.json` ou `None` si échec (repose immédiatement le stop pour garantir protection). Paramètre `cycle_id` optionnel (#470) : stocké dans le pending, transporté à la position finalisée par `_finalize_position()` |
+| `attempt_maker_exit()` | core/maker_exit_watcher.py:131 | **Orchestration sortie** : annule le stop-loss de la position, pose une vente LIMIT post-only au prix ask courant. Retourne un enregistrement pour `maker_exit_pending_orders.json` ou `None` si échec (repose immédiatement le stop pour garantir protection). Paramètres optionnels : `cycle_id` (#470, stocké+transporté) ; `quantity` (#489, volant imposé par l'appelant — vente sur signal plafonne elle-même au solde réel, évite double annulation SL si déjà purgé). Trois appelants discrétionnaires : TP watcher, objectif profit, vente sur signal (#489). |
 | `maker_exit_watcher_loop()` | core/maker_exit_watcher.py:194 | **Thread daemon** : boucle infinie, tick toutes les 20s (config `maker_tick_seconds`), appelle `_maker_exit_watcher_tick()`, gère exceptions gracieusement |
 | `_maker_exit_watcher_tick()` | core/maker_exit_watcher.py:414 | **Cœur du watcher** : charge `maker_exit_pending_orders.json`, query chaque ordre Kraken, applique arbre décision (rempli → clôture, prix redescendu/délai/concession → annule limite + vente marché, ask bougé → amend limite), écrit état atomiquement |
 | `_finalize_position()` | core/maker_exit_watcher.py:210 | Clôture position dans `trade_history.json` : prix sortie, frais, PnL calculé, **nouveau champ** `exit_maker_or_taker` (distinct de `maker_or_taker` qui désigne l'ENTRÉE) — enrichit position + notification Telegram |
@@ -550,4 +550,7 @@ webhook_server.py (process principal)
 | [#265](pr-265-supprimer-vars-claude-code.md) | 2026-06-24 | Fix : supprime les 5 variables `CLAUDE_CODE_*` du sous-processus Claude (`_run_claude()`) — empêche la réutilisation d'une session parent expirée en nettoyant l'env avant le lancement du CLI enfant (issue #264) |
 | [#323](pr-323-enrichir-status-tp-watcher.md) | 2026-07-04 | [FEAT] Enrichir `/status` avec prix courant et état TP Watcher : nouvelles fonctions `_fetch_current_price()`, `_format_watcher_section()`, `_write_watcher_state()` + état persistant `state/tp_watcher_state.json` + affichage PnL%/distance TP par position |
 | [#316](pr-316-fix-phase5-nonetype-guard.md) | 2026-07-03 | [BUG] Fix phase5_execution.py crash `TypeError: 'NoneType' object is not subscriptable` quand `trade=null` (0 ordres exécutés en Phase 4) — ajout garde `if not trade:` + sortie propre `PHASE5_DONE\|executed=0\|skipped=0` + `sys.exit(0)` |
+| [#489](pr-489-sortie-maker-signal.md) | 2026-09-11 | [M1] Sortie maker sur la vente sur signal (score ≤ 3) : extension `attempt_maker_exit()` avec param `quantity` optionnel ; vente sur signal dédoublée (maker si solde couvre, marché sinon) ; comptage `maker_pending` distinct de `closed` en sortie JSON ; 5 tests sur cas limites (doublure, annulation stop, arrondi, solde insuffisant, échec pose) |
+| [#485](pr-485-supprimer-boucle-rec-auto.md) | 2026-09-07 | [TECH] Supprimer la boucle [REC] automatique : workflow `binance-dev-auto` ne crée plus de tickets [REC] automatiquement au post-review ; les recommandations tech-lead restent du domaine du code-review et des PR manuelles |
+| [#483](pr-483-issue-476-kraken-asset-codes.md) | 2026-09-07 | [BUG] Résoudre les codes d'actifs Kraken préfixés : nouvelle fonction `kraken_coin_balance()` + table `KRAKEN_ASSET_ALIASES` (13 actifs historiques : XBT/BTC, XDG/DOGE, XETH/ETH, etc.) pour résoudre les soldes via alias #476 |
 | [#302](pr-302-migrer-helpers-position.md) | 2026-07-03 | Refactoring : élimination de la duplication complète entre `trade_helpers.py` et `position_helpers.py` en faisant du second un ré-export symétrique du premier (réduction 89 → 16 lignes) — fonte unique `trade_helpers.py` pour `tg`, `binance`, `_load_config`, `_save_trade_history_atomic`, `_save_config_atomic` → gains maintenabilité ticket #274 |
