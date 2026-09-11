@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#487](pr-487-versionner-strategie.md) | [DOC] Versionner le document de stratégie et le tenir à jour | 2026-09-11 |
 | [#485](pr-485-supprimer-boucle-rec-auto.md) | [TECH] Supprimer la boucle [REC] automatique | 2026-09-07 |
 | [#483](pr-483-issue-476-kraken-asset-codes.md) | [BUG] Résoudre les codes d'actifs Kraken préfixés dans la vente sur signal | 2026-09-07 |
 | [#475](pr-475-mettre-sous-contrat-vente-signal.md) | [TECH] Mettre sous contrat la vente sur signal (score ≤ 3) | 2026-09-06 |
