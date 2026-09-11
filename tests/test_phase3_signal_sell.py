@@ -12,6 +12,10 @@ politique nouvelle est précisément l'objet du ticket #472, donc il n'est pas m
 appels Kraken transitent par le même stub fake_kraken.py que le reste du script, et sa notification
 (core.maker_exit_watcher.send_telegram) est mockée séparément de tg() (core.trade_helpers.tg).
 
+La config par défaut du helper désactive la sortie maker (`maker_exit_enabled: False`) : tous les
+tests écrits avant #390 décrivent le chemin SELL MARKET, qui reste le repli d'urgence. Les tests
+du chemin maker passent explicitement `config={"maker_exit_enabled": True}`.
+
 Helpers partagés : voir tests/fixtures/test_harness.py.
 """
 import contextlib
@@ -20,7 +24,7 @@ import os
 import subprocess
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
@@ -39,13 +43,16 @@ _REAL_SUBPROCESS_RUN = subprocess.run
 def _run_phase3_signal_sell(sell_candidates, history_data, config=None, kraken_scenario=None, extra_patchers=None):
     """Exécute phase3_signal_sell.py. Retourne (output, mock_tg, mock_save, saved_history,
     mock_repose_tg)."""
+    # Chemin historique par défaut (SELL MARKET) : la délégation au watcher de sortie maker se
+    # teste explicitement, cf. TestSignalSellMakerExitHandoff (#390).
+    cfg = config if config is not None else {"maker_exit_enabled": False}
     cycle_id = harness.new_cycle_id()
     in_path = f"/tmp/cycle_{cycle_id}_phase3_signal_sell_input.json"
     out_path = f"/tmp/cycle_{cycle_id}_phase3_signal_sell_output.json"
     scenario_path = harness.write_kraken_scenario(kraken_scenario)
     text = json.dumps(history_data)
 
-    input_data = {"sell_candidates": sell_candidates, "config": config or {}}
+    input_data = {"sell_candidates": sell_candidates, "config": cfg}
     with open(in_path, "w") as f:
         json.dump(input_data, f)
 
@@ -54,7 +61,7 @@ def _run_phase3_signal_sell(sell_candidates, history_data, config=None, kraken_s
         with contextlib.ExitStack() as stack:
             mock_tg = stack.enter_context(patch("core.trade_helpers.tg"))
             mock_save = stack.enter_context(patch("core.trade_helpers._save_trade_history_atomic"))
-            stack.enter_context(patch("core.trade_helpers._load_config", return_value=config or {}))
+            stack.enter_context(patch("core.trade_helpers._load_config", return_value=cfg))
             stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", harness.FAKE_KRAKEN_PATH))
             stack.enter_context(patch("builtins.open", side_effect=harness.fake_open_factory(text)))
             mock_repose_tg = stack.enter_context(patch("core.maker_exit_watcher.send_telegram"))
@@ -506,6 +513,159 @@ class TestSignalSellUnlistedExceptionDuringMarketSellReprotects(unittest.TestCas
         self.assertFalse(pos["protection_failed"])
         mock_tg.assert_called()
         mock_repose_tg.assert_called()
+
+
+def _maker_exit_patchers(already_pending=None):
+    """Patche l'état persistant des sorties maker (state/maker_exit_pending_orders.json) : les
+    tests ne doivent jamais lire ni écrire le vrai fichier. Retourne (patchers, mock_save)."""
+    mock_save = MagicMock()
+    patchers = [
+        patch("core.maker_exit_watcher.load_maker_exit_pending_orders",
+              return_value=list(already_pending or [])),
+        patch("core.maker_exit_watcher.save_maker_exit_pending_orders", mock_save),
+    ]
+    return patchers, mock_save
+
+
+_MAKER_HISTORY = [
+    {"trade_id": "T20", "coin": "ETH", "status": "open", "entry_price": 1000.0,
+     "quantity": 1.0, "entry_fee_usdc": 0.5, "stop_price": 950.0, "sl_order_txid": "SLTX0"},
+]
+_MAKER_SCENARIO = {
+    "balance": {"XETH": "1.0"},
+    "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+    "ticker": {"ETHUSDC": {"a": ["1100.5", "0.01"], "c": ["1100.0", "0.01"]}},
+    "order_sell_ETHUSDC_limit": {"txid": ["LIMITTX20"]},
+}
+
+
+class TestSignalSellMakerExitHandoff(unittest.TestCase):
+    """#390 étendu à la vente sur signal : un score retombé n'est pas une urgence (contrairement à
+    un stop touché), la vente part donc en LIMIT post-only suivie par core/maker_exit_watcher.py
+    plutôt qu'en SELL MARKET. Le trade n'est pas clôturé par ce script — le watcher s'en charge."""
+
+    def _run(self, history=None, scenario=None, already_pending=None, candidates=None):
+        patchers, mock_save_pending = _maker_exit_patchers(already_pending)
+        output, mock_tg, mock_save, saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            candidates or [{"coin": "ETH", "score": 2}],
+            json.loads(json.dumps(history if history is not None else _MAKER_HISTORY)),
+            config={"maker_exit_enabled": True},
+            kraken_scenario=scenario or _MAKER_SCENARIO,
+            extra_patchers=patchers,
+        )
+        return output, mock_tg, mock_save, saved_history, mock_save_pending
+
+    def test_sale_is_delegated_to_the_maker_exit_watcher_not_sold_at_market(self):
+        output, _tg, _save, saved_history, mock_save_pending = self._run()
+
+        # Pas de clôture ici : la limite est vivante, le watcher la suivra.
+        self.assertEqual(output["closed"], 0)
+        self.assertEqual(output["maker_pending"], 1)
+        self.assertEqual(saved_history[0]["status"], "open")
+
+        mock_save_pending.assert_called_once()
+        pending = mock_save_pending.call_args[0][0]
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["trade_id"], "T20")
+        self.assertEqual(pending[0]["txid"], "LIMITTX20")
+        # Le motif de la vente survit à la délégation : c'est lui qui alimente /perf et Mongo.
+        self.assertEqual(pending[0]["close_reason"], "signal_sell_score2")
+        self.assertEqual(pending[0]["stop_price"], 950.0)
+        self.assertIsNotNone(pending[0]["cycle_id"])
+        # Vente posée au meilleur vendeur (ask), pas au dernier prix.
+        self.assertAlmostEqual(pending[0]["initial_limit_price"], 1100.5)
+
+    def test_cancelled_stop_txid_is_purged_so_the_watcher_never_cancels_it_twice(self):
+        """Le stop est annulé par ce script (Step 1) ; laisser son txid dans l'historique ferait
+        échouer la seconde annulation tentée par attempt_maker_exit() — la position resterait
+        alors à la fois nue et non vendue."""
+        _output, _tg, mock_save, saved_history, _pending = self._run()
+
+        mock_save.assert_called()
+        self.assertIsNone(saved_history[0]["sl_order_txid"])
+
+    def test_telegram_notification_keeps_the_score_that_triggered_the_sale(self):
+        _output, mock_tg, _save, _history, _pending = self._run()
+
+        messages = [c.args[0] for c in mock_tg.call_args_list if c.args]
+        self.assertTrue(any("score 2/10" in m and "LIMIT SELL post-only" in m for m in messages),
+                        f"notification sans le motif de la vente : {messages}")
+
+    def test_order_volume_is_truncated_to_the_pair_step_not_the_raw_position(self):
+        """La quantité posée en limite passe par le même plafonnement solde/pas de paire que la
+        vente au marché (#472) — une quantité brute de trade_history produit un
+        EOrder:Insufficient funds, sur une limite comme sur un ordre au marché."""
+        history = [
+            {"trade_id": "T21", "coin": "ADA", "status": "open", "entry_price": 1.0,
+             "quantity": 10.004, "entry_fee_usdc": 0.0, "stop_price": 0.9, "sl_order_txid": "SLTX0"},
+        ]
+        scenario = {
+            "balance": {"ADA": "10.004"},
+            "pairs": {"ADAUSDC": {"lot_decimals": 2}},  # pas de 0.01 -> 10.004 tronqué à 10.00
+            "ticker": {"ADAUSDC": {"a": ["1.05", "10"], "c": ["1.04", "10"]}},
+            "order_sell_ADAUSDC_limit": {"txid": ["LIMITTX21"]},
+        }
+        output, _tg, _save, _history, mock_save_pending = self._run(
+            history=history, scenario=scenario, candidates=[{"coin": "ADA", "score": 1}],
+        )
+
+        self.assertEqual(output["maker_pending"], 1)
+        self.assertAlmostEqual(mock_save_pending.call_args[0][0][0]["quantity"], 10.0)
+
+    def test_significant_balance_shortfall_falls_back_to_the_market_path(self):
+        """Le watcher clôture le trade entier dès que sa limite est remplie : il n'a aucune notion
+        de vente partielle. Quand le solde réel ne couvre qu'une fraction de la position, la vente
+        reste donc sur le chemin marché, seul à mesurer le reliquat contre la position et à le
+        reprotéger (#472 review)."""
+        history = [
+            {"trade_id": "T22", "coin": "XRP", "status": "open", "entry_price": 0.50,
+             "quantity": 100.0, "entry_fee_usdc": 0.05, "stop_price": 0.45, "sl_order_txid": "SLTX0"},
+        ]
+        scenario = {
+            "balance": {"XXRP": "60.0"},  # 40 XRP manquants : très au-dessus du pas de la paire
+            "pairs": {"XRPUSDC": {"lot_decimals": 1, "ordermin": "1"}},
+            "ticker": {"XRPUSDC": {"a": ["0.60", "100"], "c": ["0.60", "100"]}},
+            "order_sell_XRPUSDC_market": {"txid": ["SELLTX22"]},
+            "query-orders_SELLTX22": {"SELLTX22": {"status": "closed", "cost": "36.0", "vol_exec": "60.0", "fee": "0.06"}},
+            "order_sell_XRPUSDC_stop-loss": {"txid": ["NEWSLTX22"]},
+        }
+        output, _tg, _save, saved_history, mock_save_pending = self._run(
+            history=history, scenario=scenario, candidates=[{"coin": "XRP", "score": 2}],
+        )
+
+        mock_save_pending.assert_not_called()
+        self.assertEqual(output["maker_pending"], 0)
+        self.assertEqual(output["closed"], 0)
+        # Chemin marché : le reliquat de 40 XRP est reprotégé, la position n'est pas clôturée.
+        self.assertEqual(saved_history[0]["status"], "open")
+        self.assertEqual(saved_history[0]["sl_order_txid"], "NEWSLTX22")
+
+    def test_position_already_chasing_a_maker_exit_is_not_sold_a_second_time(self):
+        """Son stop est déjà annulé et son volume déjà engagé dans une limite vivante : une
+        seconde vente partirait en Insufficient funds."""
+        already = [{"trade_id": "T20", "coin": "ETH", "pair": "ETHUSDC", "txid": "LIMITTX_OLD"}]
+        output, _tg, mock_save, _history, mock_save_pending = self._run(already_pending=already)
+
+        self.assertEqual(output["closed"], 0)
+        self.assertEqual(output["maker_pending"], 0)
+        mock_save_pending.assert_not_called()
+        mock_save.assert_not_called()
+
+    def test_limit_placement_failure_reposes_the_stop_instead_of_leaving_the_position_naked(self):
+        """Le stop a déjà été annulé quand la pose de la limite échoue : la position doit être
+        reprotégée immédiatement, jamais laissée à la fois nue et non vendue."""
+        scenario = dict(_MAKER_SCENARIO)
+        scenario["order_sell_ETHUSDC_limit"] = {}  # pas de txid -> pose refusée
+        scenario["order_sell_ETHUSDC_stop-loss"] = {"txid": ["NEWSLTX20"]}
+        output, _tg, mock_save, saved_history, mock_save_pending = self._run(scenario=scenario)
+
+        self.assertEqual(output["maker_pending"], 0)
+        mock_save_pending.assert_not_called()
+        mock_save.assert_called()
+        pos = saved_history[0]
+        self.assertEqual(pos["status"], "open")
+        self.assertEqual(pos["sl_order_txid"], "NEWSLTX20")
+        self.assertFalse(pos["protection_failed"])
 
 
 if __name__ == "__main__":

@@ -62,9 +62,14 @@ __PROJECT_DIR__/.venv/bin/python3 __PROJECT_DIR__/binance-bot/core/phases/phase3
 Le script lit /tmp/cycle___CYCLE_ID___phase3_signal_sell_input.json et écrit /tmp/cycle___CYCLE_ID___phase3_signal_sell_output.json.
 Stdout attendu : PHASE3_SIGNAL_SELL_DONE|closed=N
 
-Lis /tmp/cycle___CYCLE_ID___phase3_signal_sell_output.json pour récupérer closed. Le script gère
-lui-même l'annulation du stop, la vente au marché, le calcul du PnL, le close_reason et le
+Lis /tmp/cycle___CYCLE_ID___phase3_signal_sell_output.json pour récupérer closed et maker_pending.
+Le script gère lui-même l'annulation du stop, la vente, le calcul du PnL, le close_reason et le
 cycle_id — n'improvise aucune vente toi-même à partir de sell_candidates.
+
+maker_pending compte les ventes posées en LIMIT post-only et confiées au watcher de sortie maker :
+la position est bien en cours de vente, mais elle sera clôturée plus tard, hors de ce cycle — elle
+ne compte donc pas dans closed. Ne la présente jamais comme une vente ratée ni comme une absence
+de vente.
 
 Mets à jour les variables de synthèse :
 - top_score, skipped, skip_type, skip_detail

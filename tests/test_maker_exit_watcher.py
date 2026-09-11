@@ -147,6 +147,56 @@ class TestAttemptMakerExitPostsPostOnlySellOrder(unittest.TestCase):
         self.assertTrue(fake_cli.calls_with("order", "cancel"))  # SL annulé avant la pose
 
 
+class TestAttemptMakerExitQuantityOverride(unittest.TestCase):
+    """La vente sur signal plafonne elle-même le volume au solde réel et le tronque au pas de la
+    paire avant d'appeler attempt_maker_exit() (#472, incident XRP du 18/08) : la quantité passée
+    doit primer sur celle de trade_history, sinon la limite repart en Insufficient funds."""
+
+    def _fake_cli(self):
+        return _FakeCli(**{
+            "ticker_ETHUSDC": {"a": ["1105.0", "0.01"], "c": ["1100.0", "0.01"]},
+            "order_sell_ETHUSDC_limit": {"txid": ["SELLTX1"]},
+        })
+
+    def test_explicit_quantity_is_used_instead_of_the_position_quantity(self):
+        pos = _position(quantity=1.004)
+        fake_cli = self._fake_cli()
+
+        with patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
+            record = maker_exit_watcher.attempt_maker_exit(
+                pos, "signal_sell_score2", BASE_CONFIG, notify=lambda *_a, **_k: None,
+                quantity=1.0,
+            )
+
+        self.assertAlmostEqual(record["quantity"], 1.0)
+        self.assertIn("1.0", fake_cli.calls_with("order", "sell")[0])
+
+    def test_without_quantity_the_whole_position_is_sold(self):
+        pos = _position(quantity=1.004)
+        fake_cli = self._fake_cli()
+
+        with patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
+            record = maker_exit_watcher.attempt_maker_exit(
+                pos, "tp_watcher", BASE_CONFIG, notify=lambda *_a, **_k: None,
+            )
+
+        self.assertAlmostEqual(record["quantity"], 1.004)
+
+    def test_already_cancelled_stop_is_not_cancelled_a_second_time(self):
+        """L'appelant qui a déjà annulé le stop purge son txid : une seconde annulation serait
+        rejetée par Kraken et laisserait la position à la fois nue et non vendue."""
+        pos = _position(sl_order_txid=None)
+        fake_cli = self._fake_cli()
+
+        with patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
+            record = maker_exit_watcher.attempt_maker_exit(
+                pos, "signal_sell_score1", BASE_CONFIG, notify=lambda *_a, **_k: None,
+            )
+
+        self.assertIsNotNone(record)
+        self.assertFalse(fake_cli.calls_with("order", "cancel"))
+
+
 class TestFullFillClosesPositionAsMaker(unittest.TestCase):
     def test_fill_closes_position_maker_label_no_stop_reposed(self):
         pending = _pending()
@@ -484,19 +534,23 @@ class TestLockedTickNeverTouchesWatcherLock(unittest.TestCase):
         mock_write_state.assert_called_once_with("locked", None, 1, 0, 0)
 
 
-class TestSignalSellNeverUsesMakerExitPath(unittest.TestCase):
-    """Une vente sur signal retombé n'emprunte jamais ce chemin (#390 — hors périmètre) :
-    attempt_maker_exit() n'est appelée que par tp_watcher.py et phase0_profit.py, jamais par le
-    code de vente sur signal (commands/ ou prompts), qui continue de vendre au marché direct."""
+class TestOnlyDiscretionaryExitsUseMakerExitPath(unittest.TestCase):
+    """Liste close des appelants de attempt_maker_exit() : seules les sorties DISCRÉTIONNAIRES
+    l'empruntent — TP atteint (tp_watcher.py), objectif de profit (phase0_profit.py) et score
+    retombé (phase3_signal_sell.py). Ces trois-là peuvent attendre un remplissage ; un stop touché
+    et une protection épuisée (phase0_oco_retry.py) non : chasser l'ask pendant que le prix
+    s'effondre transforme une perte bornée en perte ouverte. Tout nouvel appelant doit être ajouté
+    ici sciemment, jamais par inadvertance."""
 
-    def test_maker_exit_watcher_module_has_no_signal_sell_caller(self):
+    def test_maker_exit_callers_are_the_three_discretionary_exits_only(self):
         import subprocess as _sp
         grep = _sp.run(
             ["grep", "-rl", "--include=*.py", "attempt_maker_exit", os.path.join(PROJECT_DIR, "binance-bot")],
             capture_output=True, text=True,
         )
         callers = {os.path.basename(p) for p in grep.stdout.strip().splitlines()}
-        self.assertEqual(callers, {"maker_exit_watcher.py", "tp_watcher.py", "phase0_profit.py"})
+        self.assertEqual(callers, {"maker_exit_watcher.py", "tp_watcher.py", "phase0_profit.py",
+                                   "phase3_signal_sell.py"})
 
 
 class _StopLoop(BaseException):
