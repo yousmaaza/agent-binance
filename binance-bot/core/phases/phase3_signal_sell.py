@@ -13,29 +13,34 @@ Séquence par candidat, reproduite à l'identique du comportement improvisé con
 cf. commentaire de l'issue) :
 1. Retrouver le trade "open" du coin -> sinon passer. Une sortie maker déjà en chasse pour ce
    trade -> passer aussi, ne jamais la doubler d'une seconde vente.
-2. Annuler le stop actif (sl_order_txid) s'il existe (contrainte hold_trade de Kraken, cf. #390) —
+2. Position en perte sur le prix (prix courant <= entry_price) -> le stop-loss existant gère déjà
+   les pertes, conserver la position sans y toucher (#492, mesure sur 31 ventes historiques : la
+   vente inconditionnelle détruisait de la valeur). Cours indisponible -> même repli, on ne prend
+   pas de décision de sortie sur un prix inconnu.
+3. Annuler le stop actif (sl_order_txid) s'il existe (contrainte hold_trade de Kraken, cf. #390) —
    si l'annulation échoue, le stop reste en place, rien d'autre à faire.
-3. Calculer min(quantity trade_history, solde réel) tronqué au pas de la paire (#472, incident XRP
+4. Calculer min(quantity trade_history, solde réel) tronqué au pas de la paire (#472, incident XRP
    du 18/08 : la quantité brute de trade_history a produit deux EOrder:Insufficient funds).
-4. maker_exit_enabled (défaut) -> déléguer à attempt_maker_exit() : un score retombé n'est pas une
+5. maker_exit_enabled (défaut) -> déléguer à attempt_maker_exit() : un score retombé n'est pas une
    urgence (contrairement à un stop touché), la vente peut donc chasser l'ask en LIMIT post-only,
    core/maker_exit_watcher.py assurant le repli au marché et la clôture du trade. Le trade n'est
    PAS clôturé ici (compté dans maker_pending, pas dans closed).
-5. Sinon, vendre au marché, puis query du fill (3 tentatives, 2s) :
+6. Sinon, vendre au marché, puis query du fill (3 tentatives, 2s) :
    - SELL échoué, fill introuvable après 3 tentatives, ou remplissage partiel -> jamais de prix
      fabriqué (#469) ni de position nue laissée après annulation du stop : reprotection via
      _repose_stop_and_alert() (core/maker_exit_watcher.py), le trade n'est pas clôturé.
    - Remplissage complet -> PnL net (compute_net_pnl), close_reason=f"signal_sell_score{score}",
      cycle_id=CYCLE_ID.
-6. Notification Telegram, sauvegarde atomique de l'historique dès qu'un état a changé.
+7. Notification Telegram, sauvegarde atomique de l'historique dès qu'un état a changé.
 
 Exécuté par Claude en Phase 3, après phase3_scoring.py :
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase3_signal_sell.py __CYCLE_ID__
 
 Stdout : PHASE3_SIGNAL_SELL_DONE|closed=N
 Output : /tmp/cycle_{CYCLE_ID}_phase3_signal_sell_output.json
-         {"closed": N, "maker_pending": M} — M = ventes déléguées au watcher de sortie maker,
-         clôturées plus tard hors de ce script.
+         {"closed": N, "maker_pending": M, "held": H} — M = ventes déléguées au watcher de sortie
+         maker, clôturées plus tard hors de ce script ; H = positions conservées faute de profit
+         sur le prix (ou cours indisponible), le stop reste chargé de la sortie (#492).
 """
 import sys
 import os
@@ -78,6 +83,7 @@ exit_pending_ids = {p["trade_id"] for p in exit_pending}
 
 closed_count = 0
 maker_pending_count = 0
+held_count = 0
 history_changed = False
 
 for sc in sell_candidates:
@@ -104,7 +110,26 @@ for sc in sell_candidates:
         "stop_price": open_trade.get("stop_price"),
     }
 
-    # Step 1 : annuler le stop actif avant de vendre (contrainte hold_trade Kraken, cf. #390). À
+    # Step 1 : ne vendre que si le prix courant est au-dessus du prix d'entrée (#492) — profit brut
+    # sur le prix, frais non déduits (arbitrage explicite). Le stop-loss existant gère déjà les
+    # pertes ; la mesure sur 31 ventes historiques montre que la vente inconditionnelle détruit de
+    # la valeur (−60,39 USDC à 48h contre +33,64 en conservant). Avant toute annulation de stop ou
+    # pose d'ordre, et sans effet de bord si on conserve : sl_order_txid reste intact.
+    try:
+        ticker_raw = binance("ticker", pair, "-o", "json")
+        current_price = float(json.loads(ticker_raw).get(pair, {}).get("c", [entry_price])[0])
+    except Exception:
+        tg(f"🛡️ {coin} : cours indisponible, vente sur signal (score {score}/10) annulée par précaution — position conservée")
+        held_count += 1
+        continue
+
+    if current_price <= entry_price:
+        latent_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price else 0.0
+        tg(f"🛡️ {coin} : signal retombé (score {score}/10) mais position en perte latente ({latent_pct:+.1f}%) — conservée, le stop gère la sortie")
+        held_count += 1
+        continue
+
+    # Step 2 : annuler le stop actif avant de vendre (contrainte hold_trade Kraken, cf. #390). À
     # partir d'ici la position peut être sans stop : tout `except` de ce script reste volontairement
     # large (`Exception`, jamais un sous-ensemble de types précis) -- sur ce chemin, une exception
     # non rattrapée coûte une position non protégée, la précision du typage passe après (#476 review).
@@ -114,13 +139,13 @@ for sc in sell_candidates:
         except Exception as e:
             tg(f"⚠️ {coin} : annulation SL échouée avant vente sur signal — stop conservé, {e}")
             continue
-        # Le stop n'existe plus : purger le txid évite qu'attempt_maker_exit() (Step 3) en
+        # Le stop n'existe plus : purger le txid évite qu'attempt_maker_exit() (Step 4) en
         # tente une seconde annulation, que Kraken rejette — la position resterait alors à la
         # fois nue et non vendue.
         open_trade["sl_order_txid"] = None
         history_changed = True
 
-    # Step 2 : quantité = min(trade_history, solde réel) tronquée au pas Kraken (#472, XRP 18/08).
+    # Step 3 : quantité = min(trade_history, solde réel) tronquée au pas Kraken (#472, XRP 18/08).
     # kraken_coin_balance résout les actifs historiques préfixés (ETH -> XETH, etc., #476) ; si
     # l'actif reste introuvable dans le solde, on retombe sur trade_qty comme pour un échec Kraken
     # -- jamais sur 0, pour ne pas confondre une clé introuvable avec un solde réellement nul.
@@ -159,7 +184,7 @@ for sc in sell_candidates:
         history_changed = True
         continue
 
-    # Step 3 : sortie maker (#390). Écartée si le solde réel ne couvre pas toute la position :
+    # Step 4 : sortie maker (#390). Écartée si le solde réel ne couvre pas toute la position :
     # le watcher clôture le trade entier dès que sa limite est remplie, il n'a aucune notion de
     # vente partielle -- ce cas dégradé reste sur le chemin marché ci-dessous, qui mesure le
     # reliquat contre trade_qty et le reprotège (#472 review).
@@ -180,7 +205,7 @@ for sc in sell_candidates:
         history_changed = True
         continue
 
-    # Step 4 : SELL MARKET. Le stop est déjà annulé (Step 1) : `except Exception` large et non un
+    # Step 5 : SELL MARKET. Le stop est déjà annulé (Step 2) : `except Exception` large et non un
     # sous-ensemble de types précis (ValueError, RuntimeError...) est délibéré ici -- ça inclut
     # notamment subprocess.TimeoutExpired et OSError levés par binance() (#476 review), pour
     # garantir que toute panne à cet endroit déclenche la reprotection plutôt que de laisser le
@@ -197,7 +222,7 @@ for sc in sell_candidates:
         history_changed = True
         continue
 
-    # Step 5 : query du fill, 3 tentatives / 2s (identique au comportement constaté en prod, #472)
+    # Step 6 : query du fill, 3 tentatives / 2s (identique au comportement constaté en prod, #472)
     vol_exec = 0.0
     cost = 0.0
     fee = 0.0
@@ -225,7 +250,7 @@ for sc in sell_candidates:
         continue
 
     # Reliquat mesuré contre la position (trade_qty), pas contre l'ordre (sell_qty) : sell_qty
-    # est déjà plafonné au solde réel (Step 2), donc un reliquat mesuré contre sell_qty masque la
+    # est déjà plafonné au solde réel (Step 3), donc un reliquat mesuré contre sell_qty masque la
     # partie de la position que ce plafonnement a exclue de la vente (#472 review).
     remaining_qty = trade_qty - vol_exec
     if remaining_qty > untradeable_threshold:
@@ -236,7 +261,7 @@ for sc in sell_candidates:
         history_changed = True
         continue
 
-    # Step 6 : PnL net sur la quantité RÉELLEMENT vendue (vol_exec), jamais sur trade_qty — un
+    # Step 7 : PnL net sur la quantité RÉELLEMENT vendue (vol_exec), jamais sur trade_qty — un
     # reliquat inférieur à untradeable_threshold n'est pas vendable, il est absorbé silencieusement
     # (#472 review) plutôt que de gonfler artificiellement le PnL enregistré.
     exit_price = cost / vol_exec
@@ -276,4 +301,4 @@ print(f"PHASE3_SIGNAL_SELL_DONE|closed={closed_count}")
 # bandit temporaire, à lever avec le déplacement /tmp -> state/ (#392, #403)
 out_path = f"/tmp/cycle_{CYCLE_ID}_phase3_signal_sell_output.json"  # nosec B108
 with open(out_path, "w") as f:
-    json.dump({"closed": closed_count, "maker_pending": maker_pending_count}, f)
+    json.dump({"closed": closed_count, "maker_pending": maker_pending_count, "held": held_count}, f)
