@@ -90,6 +90,7 @@ class TestSignalSellNominalWithActiveStop(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
             "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             "order_sell_ETHUSDC_market": {"txid": ["SELLTX1"]},
@@ -124,6 +125,7 @@ class TestSignalSellWithoutActiveStop(unittest.TestCase):
              "sl_order_txid": None},
         ]
         kraken_scenario = {
+            "ticker": {"XRPUSDC": {"c": ["0.55", "0.01"]}},
             "balance": {"XXRP": "100.0"},
             "pairs": {"XRPUSDC": {"lot_decimals": 1}},
             "order_sell_XRPUSDC_market": {"txid": ["SELLTX2"]},
@@ -168,6 +170,7 @@ class TestSignalSellFillNotFoundNeverFabricatesPrice(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
             "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"}},
             "order_sell_ETHUSDC_market": {"txid": ["SELLTX3"]},
@@ -201,6 +204,7 @@ class TestSignalSellMarketOrderFailureReprotectsPosition(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
             "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             # Pas de clé order_sell_ETHUSDC_market (ni de fallback order_sell_ETHUSDC) -> pas de txid
@@ -230,6 +234,7 @@ class TestSignalSellPartialFillKeepsRemainderTracked(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
             "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             "order_sell_ETHUSDC_market": {"txid": ["SELLTX6"]},
@@ -270,6 +275,7 @@ class TestSignalSellBalanceShortfallIsMeasuredAgainstPosition(unittest.TestCase)
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"XRPUSDC": {"c": ["0.55", "0.01"]}},
             "balance": {"XXRP": "60.0"},
             "pairs": {"XRPUSDC": {"lot_decimals": 1, "ordermin": "1"}},
             "order_sell_XRPUSDC_market": {"txid": ["SELLTX8"]},
@@ -308,6 +314,7 @@ class TestSignalSellPnlUsesActuallySoldQuantity(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"ADAUSDC": {"c": ["1.05", "0.01"]}},
             "balance": {"ADA": "10.004"},
             # lot_decimals=2 -> pas de 0.01 : sell_qty tronqué à 10.00 (perd le résidu 0.004,
             # inférieur au pas -> non significatif).
@@ -348,6 +355,7 @@ class TestSignalSellRealProductionBalanceDict(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"XRPUSDC": {"c": ["3.2", "0.01"]}},
             "balance": self._REAL_BALANCE,
             "pairs": {"XRPUSDC": {"lot_decimals": 1}},
             "order_sell_XRPUSDC_market": {"txid": ["SELLTX10"]},
@@ -369,6 +377,7 @@ class TestSignalSellRealProductionBalanceDict(unittest.TestCase):
              "sl_order_txid": "SLTX1"},
         ]
         kraken_scenario = {
+            "ticker": {"SOLUSDC": {"c": ["155.0", "0.01"]}},
             "balance": self._REAL_BALANCE,
             "pairs": {"SOLUSDC": {"lot_decimals": 8}},
             "order_sell_SOLUSDC_market": {"txid": ["SELLTX11"]},
@@ -396,6 +405,7 @@ class TestSignalSellRealZeroBalanceStillReprotects(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
             "balance": {"XETH": "0.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             "order_sell_ETHUSDC_stop-loss": {"txid": ["NEWSLTX12"]},
@@ -428,6 +438,7 @@ class TestSignalSellUnresolvableAssetFallsBackToTradeQtyNotZero(unittest.TestCas
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"WIFUSDC": {"c": ["2.2", "0.01"]}},
             # WIF absent du solde (ni "WIF" ni alias connu) — #476 exige que ça ne soit pas traité
             # comme un solde nul.
             "balance": {"USDC": "500.0"},
@@ -459,6 +470,7 @@ class TestSignalSellKrakenApiFailureFallsBackSilently(unittest.TestCase):
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
             "balance_fail": True,
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             "order_sell_ETHUSDC_market": {"txid": ["SELLTX14"]},
@@ -490,6 +502,7 @@ class TestSignalSellUnlistedExceptionDuringMarketSellReprotects(unittest.TestCas
              "sl_order_txid": "SLTX0"},
         ]
         kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
             "balance": {"XETH": "1.0"},
             "pairs": {"ETHUSDC": {"lot_decimals": 8}},
             "order_sell_ETHUSDC_stop-loss": {"txid": ["NEWSLTX15"]},
@@ -666,6 +679,106 @@ class TestSignalSellMakerExitHandoff(unittest.TestCase):
         self.assertEqual(pos["status"], "open")
         self.assertEqual(pos["sl_order_txid"], "NEWSLTX20")
         self.assertFalse(pos["protection_failed"])
+
+
+class TestSignalSellProfitFilter(unittest.TestCase):
+    """#492 : ne vendre sur signal qu'une position en profit sur le prix (brut, frais non
+    déduits) — le stop-loss existant gère déjà les pertes. Cours récupéré comme
+    core/phases/phase0_profit.py:54-56 (binance ticker -> champ c[0])."""
+
+    def test_profit_position_is_still_sold_as_before(self):
+        history_data = [
+            {"trade_id": "T30", "coin": "ETH", "status": "open", "entry_price": 1000.0,
+             "quantity": 1.0, "entry_fee_usdc": 0.5, "stop_price": 950.0,
+             "sl_order_txid": "SLTX0"},
+        ]
+        kraken_scenario = {
+            "ticker": {"ETHUSDC": {"c": ["1100.0", "0.01"]}},
+            "balance": {"XETH": "1.0"},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC_market": {"txid": ["SELLTX30"]},
+            "query-orders_SELLTX30": {"SELLTX30": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0", "fee": "0.5"}},
+        }
+        output, mock_tg, mock_save, saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "ETH", "score": 2}], history_data, kraken_scenario=kraken_scenario,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        self.assertEqual(output["held"], 0)
+        self.assertEqual(saved_history[0]["status"], "closed")
+        mock_save.assert_called()
+        mock_tg.assert_called()
+
+    def test_loss_position_is_held_without_touching_stop_or_placing_orders(self):
+        """En perte, ni annulation de stop ni ordre posé -- sl_order_txid strictement inchangé. Un
+        second candidat en profit (BTC absent des commandes gardées) force la sauvegarde de
+        l'historique, ce qui permet d'inspecter directement l'état final de la position en perte."""
+        history_data = [
+            {"trade_id": "T31", "coin": "BTC", "status": "open", "entry_price": 50000.0,
+             "quantity": 0.01, "entry_fee_usdc": 0.5, "stop_price": 47000.0,
+             "sl_order_txid": "SLTX_BTC"},
+            {"trade_id": "T32", "coin": "ETH", "status": "open", "entry_price": 1000.0,
+             "quantity": 1.0, "entry_fee_usdc": 0.5, "stop_price": 950.0,
+             "sl_order_txid": "SLTX_ETH"},
+        ]
+        kraken_scenario = {
+            "ticker": {
+                "BTCUSDC": {"c": ["48000.0", "0.01"]},  # en perte : 48000 < entrée 50000
+                "ETHUSDC": {"c": ["1100.0", "0.01"]},   # en profit : sert à forcer la sauvegarde
+            },
+            "balance": {"XETH": "1.0"},
+            "pairs": {"ETHUSDC": {"lot_decimals": 8}},
+            "order_sell_ETHUSDC_market": {"txid": ["SELLTX32"]},
+            "query-orders_SELLTX32": {"SELLTX32": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0", "fee": "0.5"}},
+        }
+
+        def _fake_run(cmd, *args, **kwargs):
+            if "BTC" in " ".join(str(c) for c in cmd) and ("sell" in cmd or "cancel" in cmd):
+                self.fail(f"aucune vente/annulation ne doit être tentée sur BTC en perte : {cmd}")
+            return _REAL_SUBPROCESS_RUN(cmd, *args, **kwargs)
+
+        extra_patchers = [patch("core.trade_helpers.subprocess.run", side_effect=_fake_run)]
+        output, mock_tg, mock_save, saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "BTC", "score": 1}, {"coin": "ETH", "score": 2}], history_data,
+            kraken_scenario=kraken_scenario, extra_patchers=extra_patchers,
+        )
+
+        self.assertEqual(output["closed"], 1)
+        self.assertEqual(output["held"], 1)
+        btc_pos = next(p for p in saved_history if p["coin"] == "BTC")
+        self.assertEqual(btc_pos["status"], "open")
+        self.assertEqual(btc_pos["sl_order_txid"], "SLTX_BTC")
+        eth_pos = next(p for p in saved_history if p["coin"] == "ETH")
+        self.assertEqual(eth_pos["status"], "closed")
+        mock_tg.assert_called()
+
+    def test_unavailable_price_holds_position_without_selling(self):
+        """L'appel ticker échoue -> aucune vente, position intacte (#492) : on ne prend pas de
+        décision de sortie sur un prix inconnu."""
+        history_data = [
+            {"trade_id": "T33", "coin": "ETH", "status": "open", "entry_price": 1000.0,
+             "quantity": 1.0, "entry_fee_usdc": 0.5, "stop_price": 950.0,
+             "sl_order_txid": "SLTX0"},
+        ]
+        kraken_scenario = {}
+
+        def _fake_run(cmd, *args, **kwargs):
+            if "ticker" in cmd:
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=30)
+            if "sell" in cmd or "cancel" in cmd:
+                self.fail(f"aucune vente/annulation ne doit être tentée sur cours indisponible : {cmd}")
+            return _REAL_SUBPROCESS_RUN(cmd, *args, **kwargs)
+
+        extra_patchers = [patch("core.trade_helpers.subprocess.run", side_effect=_fake_run)]
+        output, mock_tg, mock_save, _saved_history, _mock_repose_tg = _run_phase3_signal_sell(
+            [{"coin": "ETH", "score": 1}], history_data, kraken_scenario=kraken_scenario,
+            extra_patchers=extra_patchers,
+        )
+
+        self.assertEqual(output["closed"], 0)
+        self.assertEqual(output["held"], 1)
+        mock_save.assert_not_called()
+        mock_tg.assert_called()
 
 
 if __name__ == "__main__":

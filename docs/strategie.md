@@ -230,10 +230,31 @@ trop de corrélées ? ETH et SOL sont tous deux du groupe → 2 sur 2 autorisée
 ### La vente
 
 ```text
-Si score ≤ 3 ET déjà en portefeuille → SELL
+Si score ≤ 3 ET déjà en portefeuille ET prix_courant > prix_entrée → SELL
+Sinon (en perte, ou cours indisponible) → position conservée, stop inchangé
 ```
 
-Une position dont le signal s'est effondré est vendue, indépendamment de son gain ou de sa perte. C'est le motif de sortie le plus fréquent dans l'historique.
+Un signal effondré ne suffit plus à vendre : encore faut-il que la position soit en profit *sur le prix* (frais non déduits, arbitrage assumé). En perte, elle est conservée telle quelle — le stop-loss existant reste seul chargé de la sortie — et signalée par une notification plutôt que vendue en silence. Un cours introuvable au moment de décider vaut la même conservation : on ne prend pas de décision de sortie sur un prix inconnu.
+
+```text
+[Mesure sur les 31 ventes sur signal de l'historique (juillet-septembre)]
+
+Contrefactuel : garder la position à son stop d'alors, sortir au stop si le plus bas le touche, sinon au cours de fin de fenêtre.
+```
+
+| Horizon | Bilan de la règle inconditionnelle | Garder aurait été mieux |
+|---|---|---|
+| 24 h | −25,25 USDC | 17 / 31 |
+| 48 h | **−60,39 USDC** | 16 / 31 |
+
+| Horizon | Bilan des 20 ventes en perte, si gardées | Stops touchés |
+|---|---|---|
+| 24 h | +1,21 USDC | 1 / 20 |
+| 48 h | **+33,64 USDC** | **1 / 20** |
+| 96 h | +111,89 USDC | 3 / 20 |
+| 7 jours | +145,61 USDC | 4 / 20 |
+
+> Ces 20 ventes en perte ont encaissé **−50,78 USDC net** réellement — des pertes latentes converties en pertes réelles. Le point décisif n'est pas le total mais l'asymétrie : le stop ne s'est déclenché qu'**une fois sur vingt à 48 h**, quatre fois sur vingt en une semaine. Effet secondaire : les ventes sur signal passent de 31 à 11, les frais de sortie sur ce chemin divisés par près de trois. Limites connues : le gain est concentré (à 48 h, retirer les deux meilleures ventes ramène +33,64 à +5,26 USDC), ETH — la crypto la plus vendue — va dans le sens contraire (−8,76 à 48 h), et l'échantillon ne couvre qu'un seul régime de marché. Ce changement mérite d'être remesuré dans un mois.
 
 ### Le mode dégradé
 

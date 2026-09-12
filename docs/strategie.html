@@ -429,9 +429,36 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 
   <h3>La vente</h3>
   <div class="f">
-    <b>Si</b> score ≤ 3 <b>ET</b> déjà en portefeuille → <b>SELL</b>
+    <b>Si</b> score ≤ 3 <b>ET</b> déjà en portefeuille <b>ET</b> prix_courant &gt; prix_entrée → <b>SELL</b><br>
+    <b>Sinon</b> (en perte, ou cours indisponible) → position <b>conservée</b>, stop inchangé
   </div>
-  <p>Une position dont le signal s'est effondré est vendue, indépendamment de son gain ou de sa perte. C'est le motif de sortie le plus fréquent dans l'historique.</p>
+  <p>Un signal effondré ne suffit plus à vendre : encore faut-il que la position soit en profit <em>sur le prix</em> (frais non déduits, arbitrage assumé). En perte, elle est conservée telle quelle — le stop-loss existant reste seul chargé de la sortie — et signalée par une notification plutôt que vendue en silence. Un cours introuvable au moment de décider vaut la même conservation : on ne prend pas de décision de sortie sur un prix inconnu.</p>
+
+  <div class="ex">
+    <span class="tag">Mesure sur les 31 ventes sur signal de l'historique (juillet-septembre)</span>
+    Contrefactuel : garder la position à son stop d'alors, sortir au stop si le plus bas le touche, sinon au cours de fin de fenêtre.
+  </div>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Horizon</th><th>Bilan de la règle inconditionnelle</th><th>Garder aurait été mieux</th></tr></thead>
+      <tbody>
+        <tr><td>24 h</td><td class="v">−25,25 USDC</td><td class="v">17 / 31</td></tr>
+        <tr><td>48 h</td><td class="v"><b>−60,39 USDC</b></td><td class="v">16 / 31</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Horizon</th><th>Bilan des 20 ventes en perte, si gardées</th><th>Stops touchés</th></tr></thead>
+      <tbody>
+        <tr><td>24 h</td><td class="v">+1,21 USDC</td><td class="v">1 / 20</td></tr>
+        <tr><td>48 h</td><td class="v"><b>+33,64 USDC</b></td><td class="v"><b>1 / 20</b></td></tr>
+        <tr><td>96 h</td><td class="v">+111,89 USDC</td><td class="v">3 / 20</td></tr>
+        <tr><td>7 jours</td><td class="v">+145,61 USDC</td><td class="v">4 / 20</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Ces 20 ventes en perte ont encaissé <b>−50,78 USDC net</b> réellement — des pertes latentes converties en pertes réelles. Le point décisif n'est pas le total mais l'asymétrie : le stop ne s'est déclenché qu'<b>une fois sur vingt à 48 h</b>, quatre fois sur vingt en une semaine. Effet secondaire : les ventes sur signal passent de 31 à 11, les frais de sortie sur ce chemin divisés par près de trois. Limites connues : le gain est concentré (à 48 h, retirer les deux meilleures ventes ramène +33,64 à +5,26 USDC), ETH — la crypto la plus vendue — va dans le sens contraire (−8,76 à 48 h), et l'échantillon ne couvre qu'un seul régime de marché. Ce changement mérite d'être remesuré dans un mois.</p>
 
   <h3>Le mode dégradé</h3>
   <p>Quand TradingView limite les appels, l'analyse journalière peut manquer <em>pour toutes</em> les cryptos haussières en 4h. Deux points sur dix deviennent alors inatteignables et le seuil s'abaisse :</p>
