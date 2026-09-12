@@ -707,5 +707,104 @@ class TestExitMakerOrTaker(unittest.TestCase):
         self.assertIsNone(viewdata._exit_fee_rate_pct({"exit_fee_usdc": 0.3, "exit_price": 104.0}))
 
 
+class TestBuildMakerOrders(unittest.TestCase):
+    """#493 : une carte par ordre maker en attente, plafond calculé (jamais deviné)."""
+
+    CONFIG = {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600}
+
+    def test_computes_cap_price_concession_and_time_budget(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        placed_at = now - timedelta(minutes=18)  # 18/60 = 30 % du délai
+        orders = [{
+            "coin": "BTC", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+            "initial_limit_price": 100.0, "current_limit_price": 100.1,  # +0.1 % de concession
+            "adjustments": 2, "placed_at": placed_at.isoformat(),
+        }]
+        result = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)
+        self.assertEqual(len(result), 1)
+        row = result[0]
+        self.assertAlmostEqual(row["cap_price"], 100.0 * 1.003)
+        # concession 0.1 % / plafond 0.3 % = 33.3 % du budget consommé
+        self.assertAlmostEqual(row["concession_budget_pct"], 33.3, places=1)
+        self.assertAlmostEqual(row["time_budget_pct"], 30.0, places=1)
+        self.assertEqual(row["status"], "en_chasse")
+        self.assertEqual(row["status_label"], "en chasse")
+
+    def test_concession_budget_above_80_percent_flips_to_soon_canceled(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        orders = [{
+            "coin": "ETH", "score": 8, "montant_ordre": 30.0, "quantity": 0.01,
+            "initial_limit_price": 100.0, "current_limit_price": 100.28,  # 0.28 % / 0.3 % = 93 %
+            "adjustments": 5, "placed_at": now.isoformat(),
+        }]
+        row = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)[0]
+        self.assertGreaterEqual(row["concession_budget_pct"], 80)
+        self.assertEqual(row["status"], "bientot_annule")
+        self.assertEqual(row["status_label"], "bientôt annulé")
+
+    def test_time_budget_above_80_percent_flips_to_soon_canceled_even_with_low_concession(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        placed_at = now - timedelta(seconds=3200)  # 3200/3600 = 89 % du délai
+        orders = [{
+            "coin": "SOL", "score": 6, "montant_ordre": 20.0, "quantity": 0.5,
+            "initial_limit_price": 50.0, "current_limit_price": 50.0,  # aucune concession
+            "adjustments": 0, "placed_at": placed_at.isoformat(),
+        }]
+        row = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)[0]
+        self.assertEqual(row["concession_budget_pct"], 0.0)
+        self.assertGreaterEqual(row["time_budget_pct"], 80)
+        self.assertEqual(row["status"], "bientot_annule")
+
+    def test_scale_geometry_is_proportional_between_initial_price_and_cap(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        orders = [{
+            "coin": "BTC", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+            "initial_limit_price": 100.0, "current_limit_price": 100.15,  # à mi-chemin du plafond
+            "adjustments": 1, "placed_at": now.isoformat(),
+        }]
+        row = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)[0]
+        scale = row["scale"]
+        midpoint = (scale["x_initial"] + scale["x_cap"]) / 2
+        self.assertAlmostEqual(scale["x_current"], midpoint, delta=1.0)
+
+    def test_missing_config_keys_fall_back_to_known_bot_defaults(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        orders = [{
+            "coin": "BTC", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+            "initial_limit_price": 100.0, "current_limit_price": 100.1,
+            "adjustments": 0, "placed_at": now.isoformat(),
+        }]
+        row = viewdata.build_maker_orders(orders, {}, "UTC", now=now)[0]
+        self.assertAlmostEqual(row["cap_price"], 100.0 * 1.003)
+
+    def test_empty_pending_orders_yields_empty_list(self):
+        self.assertEqual(viewdata.build_maker_orders([], self.CONFIG, "UTC"), [])
+
+
+class TestBuildMakerLastFill(unittest.TestCase):
+    """#493 : l'état vide doit dire pourquoi il est vide, pas juste « aucun ordre »."""
+
+    def test_no_maker_fill_found_returns_not_found(self):
+        self.assertEqual(viewdata.build_maker_last_fill([], []), {"found": False})
+
+    def test_finds_most_recent_maker_fill_across_positions_and_trades(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        open_positions = [
+            {"coin": "BTC", "maker_or_taker": "maker", "opened_at": (now - timedelta(hours=10)).isoformat()},
+            {"coin": "ETH", "maker_or_taker": "taker", "opened_at": (now - timedelta(hours=1)).isoformat()},
+        ]
+        closed_trades = [
+            {"coin": "SOL", "maker_or_taker": "maker", "entry_date": (now - timedelta(hours=3)).isoformat()},
+        ]
+        result = viewdata.build_maker_last_fill(open_positions, closed_trades, now=now)
+        self.assertTrue(result["found"])
+        self.assertEqual(result["coin"], "SOL")  # le plus récent des deux remplissages maker
+        self.assertEqual(result["elapsed_label"], "3 h")
+
+    def test_taker_only_activity_is_not_counted_as_maker_fill(self):
+        open_positions = [{"coin": "ETH", "maker_or_taker": "taker", "opened_at": "2026-08-28T10:00:00+00:00"}]
+        self.assertEqual(viewdata.build_maker_last_fill(open_positions, []), {"found": False})
+
+
 if __name__ == "__main__":
     unittest.main()

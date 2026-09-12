@@ -100,7 +100,11 @@ def _build_results_view(state, prices, cycles, tz_name):
     open_positions = state.get("open_positions") or []
     financials = state.get("financials") or {}
     by_period = financials.get("by_period") or {}
-    maker = viewdata.build_maker_summary(state.get("watchers") or {})
+    watchers = state.get("watchers") or {}
+    maker = viewdata.build_maker_summary(watchers)
+    maker["orders"] = viewdata.build_maker_orders(
+        watchers.get("maker_pending_orders") or [], state.get("config") or {}, tz_name)
+    maker["last_fill"] = viewdata.build_maker_last_fill(open_positions, state.get("closed_trades") or [])
     cadence = viewdata.build_cadence_band(cycles)
     weekly_note = analysis.weekly_note(by_period, cadence, maker)
 

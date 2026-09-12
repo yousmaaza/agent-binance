@@ -285,5 +285,71 @@ class TestSalesTabExitMode(DashboardAppTestBase):
         self.assertIn("mesuré 0.60 %", body)
 
 
+class TestMakerOrdersCards(DashboardAppTestBase):
+    """#493 : le HTML réellement produit pour les cartes d'ordres maker, pas seulement les
+    données de la vue — c'est le gabarit qui a trompé l'utilisateur la dernière fois."""
+
+    def _get(self, watchers, config=None):
+        state = dict(
+            SAMPLE_STATE,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+            watchers=watchers,
+            config=dict(SAMPLE_STATE["config"], **(config or {})),
+        )
+        with patch("app.get_dashboard_state", return_value=state), \
+             patch("app.get_recent_cycles", return_value=SAMPLE_CYCLES), \
+             patch("app.get_prices", return_value={"BNB": 510.0}):
+            self._login()
+            return self.client.get("/")
+
+    def test_multiple_pending_orders_each_get_their_own_card(self):
+        now = datetime.now(timezone.utc)
+        placed_at = (now - timedelta(minutes=10)).isoformat()
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "BTC", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+                 "initial_limit_price": 60000.0, "current_limit_price": 60060.0,
+                 "adjustments": 2, "placed_at": placed_at},
+                {"coin": "ETH", "score": 6, "montant_ordre": 30.0, "quantity": 0.01,
+                 "initial_limit_price": 3000.0, "current_limit_price": 3000.0,
+                 "adjustments": 0, "placed_at": placed_at},
+            ],
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(body.count('class="mk-card"'), 2)
+        self.assertIn("60 000", body)  # prix de pose BTC, format_price français
+        self.assertIn("en chasse", body)
+
+    def test_no_pending_orders_shows_empty_state_without_error(self):
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [],
+        }
+        r = self._get(watchers)
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn('class="mk-card"', body)
+        self.assertIn("Aucun ordre d'achat en vol", body)
+
+    def test_order_over_80_percent_budget_shows_soon_canceled_pill(self):
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "SOL", "score": 8, "montant_ordre": 20.0, "quantity": 0.5,
+                 "initial_limit_price": 100.0, "current_limit_price": 100.28,
+                 "adjustments": 6, "placed_at": now.isoformat()},
+            ],
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("bientôt annulé", body)
+        self.assertIn('class="mk-pill mk-pill-warn"', body)
+
+
 if __name__ == "__main__":
     unittest.main()

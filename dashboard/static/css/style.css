@@ -365,6 +365,29 @@ table.sales th:last-child,table.sales td:last-child{padding-right:0}
   border:1px solid var(--wait);color:var(--wait);white-space:nowrap}
 .flag.bad{border-color:var(--loss);color:var(--loss)}
 
+/* ---------- stratégie maker, ordres en attente (#493) ---------- */
+.mk-cards{display:flex;flex-direction:column;gap:16px;margin-top:20px}
+.mk-card{border:1px solid var(--rule-2);padding:16px 18px}
+.mk-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.mk-meta{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);letter-spacing:.03em}
+.mk-pill{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;padding:2px 7px;border:1px solid var(--rule-2);white-space:nowrap}
+.mk-pill-ok{color:var(--gain);border-color:var(--gain)}
+.mk-pill-warn{color:var(--wait);border-color:var(--wait)}
+.mk-amount{font-family:"IBM Plex Mono",monospace;font-size:13px;font-variant-numeric:tabular-nums}
+.mk-scale{margin:0 0 14px}
+.mk-scale svg{display:block;width:100%;height:auto;color:var(--ink)}
+.mk-lbl{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;fill:var(--ink-3)}
+.mk-price{font-family:"IBM Plex Mono",monospace;font-size:12px;font-variant-numeric:tabular-nums;fill:var(--ink)}
+.mk-gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.mk-gauge{display:flex;flex-direction:column;gap:5px}
+.mk-glabel{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.mk-bar{height:5px;background:var(--rule)}
+.mk-bar b{display:block;height:100%;background:var(--ink);opacity:.6}
+.mk-gval{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
+.mk-empty{margin-top:14px}
+.mk-lastfill{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);letter-spacing:.02em;margin:6px 0 0}
+
 .trig{font-family:"IBM Plex Mono",monospace;font-size:9.5px;padding:1px 5px;border:1px solid var(--rule-2);white-space:nowrap}
 .trig-cycle{border-color:var(--ink-3);color:var(--ink-2)}
 .trig-watcher{border-color:var(--gain);color:var(--gain)}
