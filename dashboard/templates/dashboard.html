@@ -218,6 +218,57 @@
     {% if not m.total %}
     <p class="empty">Pas encore de données du maker watcher.</p>
     {% endif %}
+
+    {% if m.orders %}
+    <div class="mk-cards">
+      {% for o in m.orders %}
+      <div class="mk-card">
+        <div class="mk-head">
+          <span class="tick-n">{{ o.coin }}</span>
+          <span class="mk-meta">score {{ o.score }} · posé à {{ o.placed_local }}</span>
+          <span class="mk-pill mk-pill-{{ 'warn' if o.status == 'bientot_annule' else 'ok' }}">{{ o.status_label }}</span>
+          <span class="mk-amount">{{ "%.2f"|format(o.montant_ordre) }} USDC</span>
+        </div>
+        <figure class="mk-scale">
+          <svg viewBox="0 0 {{ o.scale.width }} 96" role="img"
+               aria-label="Ordre {{ o.coin }} posé à {{ o.initial_price | price }}, actuellement à {{ o.current_price | price }}, annulation à {{ o.cap_price | price }}.">
+            <line x1="{{ o.scale.x_initial }}" y1="56" x2="{{ o.scale.x_cap }}" y2="56" stroke="currentColor" stroke-width="1" opacity=".35"/>
+            <line x1="{{ o.scale.x_initial }}" y1="56" x2="{{ o.scale.x_current }}" y2="56" stroke="currentColor" stroke-width="3"/>
+            <circle cx="{{ o.scale.x_current }}" cy="56" r="5" fill="currentColor"/>
+            <line x1="{{ o.scale.x_cap }}" y1="46" x2="{{ o.scale.x_cap }}" y2="66" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity=".6"/>
+            <text x="{{ o.scale.x_initial }}" y="30" class="mk-lbl">posé à</text>
+            <text x="{{ o.scale.x_initial }}" y="80" class="mk-price">{{ o.initial_price | price }}</text>
+            <text x="{{ o.scale.x_cap }}" y="30" class="mk-lbl" text-anchor="end">annulation</text>
+            <text x="{{ o.scale.x_cap }}" y="80" class="mk-price" text-anchor="end">{{ o.cap_price | price }}</text>
+            <text x="{{ o.scale.label_x }}" y="30" class="mk-lbl" text-anchor="middle">limite actuelle</text>
+            <text x="{{ o.scale.label_x }}" y="80" class="mk-price" text-anchor="middle">{{ o.current_price | price }}</text>
+          </svg>
+        </figure>
+        <div class="mk-gauges">
+          <div class="mk-gauge">
+            <span class="mk-glabel">Concession consommée</span>
+            <div class="mk-bar"><b class="{{ o.concession_bar_tone }}" style="width:{{ o.concession_budget_pct }}%"></b></div>
+            <span class="mk-gval">{{ "%.0f"|format(o.concession_budget_pct) }} % · marge {{ "%.2f"|format(o.concession_remaining_usdc) }} USDC</span>
+          </div>
+          <div class="mk-gauge">
+            <span class="mk-glabel">Temps écoulé</span>
+            <div class="mk-bar"><b class="{{ o.time_bar_tone }}" style="width:{{ o.time_budget_pct }}%"></b></div>
+            <span class="mk-gval">{{ "%.0f"|format(o.elapsed_minutes) }} / {{ "%.0f"|format(o.timeout_minutes) }} min · {{ o.adjustments }} ajustement(s)</span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="mk-empty">
+      <p class="empty">Aucun ordre d'achat en vol.</p>
+      {% if m.last_fill.found %}
+      <p class="mk-lastfill">Dernier remplissage : {{ m.last_fill.coin }}, il y a {{ m.last_fill.elapsed_label }}.</p>
+      {% else %}
+      <p class="mk-lastfill">Aucun remplissage maker enregistré pour l'instant.</p>
+      {% endif %}
+    </div>
+    {% endif %}
   </section>
 </div>
 
