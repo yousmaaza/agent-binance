@@ -384,6 +384,8 @@ table.sales th:last-child,table.sales td:last-child{padding-right:0}
 .mk-glabel{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .mk-bar{height:5px;background:var(--rule)}
 .mk-bar b{display:block;height:100%;background:var(--ink);opacity:.6}
+.mk-bar b.mk-bar-warn{background:var(--wait);opacity:1}
+.mk-bar b.mk-bar-crit{background:var(--loss);opacity:1}
 .mk-gval{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
 .mk-empty{margin-top:14px}
 .mk-lastfill{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);letter-spacing:.02em;margin:6px 0 0}

@@ -240,17 +240,19 @@
             <text x="{{ o.scale.x_initial }}" y="80" class="mk-price">{{ o.initial_price | price }}</text>
             <text x="{{ o.scale.x_cap }}" y="30" class="mk-lbl" text-anchor="end">annulation</text>
             <text x="{{ o.scale.x_cap }}" y="80" class="mk-price" text-anchor="end">{{ o.cap_price | price }}</text>
+            <text x="{{ o.scale.label_x }}" y="30" class="mk-lbl" text-anchor="middle">limite actuelle</text>
+            <text x="{{ o.scale.label_x }}" y="80" class="mk-price" text-anchor="middle">{{ o.current_price | price }}</text>
           </svg>
         </figure>
         <div class="mk-gauges">
           <div class="mk-gauge">
             <span class="mk-glabel">Concession consommée</span>
-            <div class="mk-bar"><b style="width:{{ o.concession_budget_pct }}%"></b></div>
+            <div class="mk-bar"><b class="{{ o.concession_bar_tone }}" style="width:{{ o.concession_budget_pct }}%"></b></div>
             <span class="mk-gval">{{ "%.0f"|format(o.concession_budget_pct) }} % · marge {{ "%.2f"|format(o.concession_remaining_usdc) }} USDC</span>
           </div>
           <div class="mk-gauge">
             <span class="mk-glabel">Temps écoulé</span>
-            <div class="mk-bar"><b style="width:{{ o.time_budget_pct }}%"></b></div>
+            <div class="mk-bar"><b class="{{ o.time_bar_tone }}" style="width:{{ o.time_budget_pct }}%"></b></div>
             <span class="mk-gval">{{ "%.0f"|format(o.elapsed_minutes) }} / {{ "%.0f"|format(o.timeout_minutes) }} min · {{ o.adjustments }} ajustement(s)</span>
           </div>
         </div>

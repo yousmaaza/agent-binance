@@ -767,6 +767,34 @@ class TestBuildMakerOrders(unittest.TestCase):
         midpoint = (scale["x_initial"] + scale["x_cap"]) / 2
         self.assertAlmostEqual(scale["x_current"], midpoint, delta=1.0)
 
+    def test_label_x_stays_clear_of_edges_when_cursor_is_near_the_cap(self):
+        """Retour de review #493 : un ordre à 93 % de sa concession est le cas qui compte le
+        plus à lire, et c'est justement celui où le libellé du curseur chevaucherait
+        « annulation » sans recalage."""
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        orders = [{
+            "coin": "SOL", "score": 8, "montant_ordre": 20.0, "quantity": 0.5,
+            "initial_limit_price": 100.0, "current_limit_price": 100.291,  # 97 % du plafond
+            "adjustments": 6, "placed_at": now.isoformat(),
+        }]
+        row = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)[0]
+        scale = row["scale"]
+        self.assertGreater(scale["x_current"], scale["x_cap"] - viewdata.MAKER_LABEL_MARGIN)
+        self.assertLessEqual(scale["label_x"], scale["x_cap"] - viewdata.MAKER_LABEL_MARGIN)
+        self.assertGreaterEqual(scale["label_x"], scale["x_initial"] + viewdata.MAKER_LABEL_MARGIN)
+
+    def test_label_x_stays_clear_of_edges_when_cursor_has_not_moved(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        orders = [{
+            "coin": "SOL", "score": 8, "montant_ordre": 20.0, "quantity": 0.5,
+            "initial_limit_price": 100.0, "current_limit_price": 100.0,  # aucune concession
+            "adjustments": 0, "placed_at": now.isoformat(),
+        }]
+        row = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)[0]
+        scale = row["scale"]
+        self.assertEqual(scale["x_current"], scale["x_initial"])
+        self.assertGreaterEqual(scale["label_x"], scale["x_initial"] + viewdata.MAKER_LABEL_MARGIN)
+
     def test_missing_config_keys_fall_back_to_known_bot_defaults(self):
         now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
         orders = [{

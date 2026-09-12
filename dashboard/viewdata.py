@@ -254,18 +254,39 @@ DEFAULT_MAKER_TIMEOUT_SECONDS = 3600
 MAKER_ALERT_THRESHOLD_PCT = 80  # au-delà, la pastille bascule sur « bientôt annulé »
 MAKER_SCALE_WIDTH = 820
 MAKER_SCALE_PAD = 64
+# Marge sous laquelle le libellé du curseur chevaucherait « posé à » ou « annulation » — cas
+# précisément le plus important à lire (retour de review #493) : un ordre proche de son plafond.
+MAKER_LABEL_MARGIN = 46
+
+
+def _maker_bar_tone(pct: float) -> str:
+    """Classe CSS de la jauge selon le budget consommé, mêmes seuils que la pastille (retour de
+    review #493) : une jauge à 93 % qui reste de la couleur d'une jauge à 10 % perd son pouvoir
+    d'alerte."""
+    if pct >= 100:
+        return "mk-bar-crit"
+    if pct >= MAKER_ALERT_THRESHOLD_PCT:
+        return "mk-bar-warn"
+    return ""
 
 
 def _maker_scale_geometry(initial_price: float, current_price: float, cap_price: float) -> dict:
-    """Position du curseur sur l'échelle posé -> annulation, en x SVG (#493)."""
+    """Position du curseur sur l'échelle posé -> annulation, en x SVG (#493).
+
+    `label_x` recale le texte du prix courant à distance des deux graduations fixes : le curseur
+    lui-même (`x_current`) reste à sa position réelle, seul son libellé est décalé pour rester
+    lisible quand l'ordre est proche d'un bord — c'est justement le cas qui compte le plus."""
     span = cap_price - initial_price
     ratio = min(max((current_price - initial_price) / span, 0.0), 1.0) if span else 0.0
     x_initial, x_cap = MAKER_SCALE_PAD, MAKER_SCALE_WIDTH - MAKER_SCALE_PAD
+    x_current = round(x_initial + ratio * (x_cap - x_initial), 1)
+    label_x = min(max(x_current, x_initial + MAKER_LABEL_MARGIN), x_cap - MAKER_LABEL_MARGIN)
     return {
         "width": MAKER_SCALE_WIDTH,
         "x_initial": x_initial,
         "x_cap": x_cap,
-        "x_current": round(x_initial + ratio * (x_cap - x_initial), 1),
+        "x_current": x_current,
+        "label_x": round(label_x, 1),
     }
 
 
@@ -305,10 +326,12 @@ def build_maker_orders(pending_orders: list, config: dict, tz_name: str, now: da
             "cap_price": cap_price,
             "placed_local": to_local(placed_at, tz_name) if placed_at else "n/d",
             "concession_budget_pct": round(concession_budget_pct, 1),
+            "concession_bar_tone": _maker_bar_tone(concession_budget_pct),
             "concession_remaining_usdc": round(concession_remaining_usdc, 2),
             "elapsed_minutes": round(elapsed_seconds / 60, 1),
             "timeout_minutes": round(timeout_seconds / 60, 1),
             "time_budget_pct": round(time_budget_pct, 1),
+            "time_bar_tone": _maker_bar_tone(time_budget_pct),
             "status": "bientot_annule" if is_soon_canceled else "en_chasse",
             "status_label": "bientôt annulé" if is_soon_canceled else "en chasse",
             "scale": _maker_scale_geometry(initial_price, current_price, cap_price),
