@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#494](pr-494-vendre-signal-position-profit.md) | [M1] Ne vendre sur signal qu'une position en profit | 2026-09-12 |
 | [#489](pr-489-sortie-maker-signal.md) | [M1] Sortie maker sur la vente sur signal (score ≤ 3) | 2026-09-11 |
 | [#487](pr-487-versionner-strategie.md) | [DOC] Versionner le document de stratégie et le tenir à jour | 2026-09-11 |
 | [#485](pr-485-supprimer-boucle-rec-auto.md) | [TECH] Supprimer la boucle [REC] automatique | 2026-09-07 |
