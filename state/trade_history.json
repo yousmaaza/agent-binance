@@ -2659,5 +2659,32 @@
     "close_reason": "signal_sell_score3",
     "cycle_id": "20260912_000506",
     "exit_maker_or_taker": "maker"
+  },
+  {
+    "trade_id": "d390c587",
+    "date": "2026-09-12T08:13:35.180154+00:00",
+    "coin": "ETH",
+    "side": "BUY",
+    "signal_score": 8,
+    "entry_price": 2527.4599952412113,
+    "stop_price": 2493.84,
+    "tp_price": 2609.511366,
+    "quantity": 0.07338002,
+    "risk_usdc": 8.109,
+    "entry_order_id": "OHXB2L-ZIFWI-6QBITY",
+    "sl_order_txid": "OGIGYN-MCCSW-PJSFVJ",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.556395,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 158.393167,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
