@@ -2674,17 +2674,19 @@
     "entry_order_id": "OHXB2L-ZIFWI-6QBITY",
     "sl_order_txid": "OGIGYN-MCCSW-PJSFVJ",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
+    "status": "closed",
+    "exit_price": 2492.1100048759868,
+    "exit_date": "2026-09-13T12:05:58Z",
     "entry_fee_usdc": 0.556395,
-    "exit_fee_usdc": null,
-    "fees_usdc": null,
+    "exit_fee_usdc": 1.097226,
+    "fees_usdc": 1.653621,
     "maker_or_taker": "maker",
     "maker_fill_seconds": 158.393167,
-    "pnl_gross_usdc": null,
-    "pnl_usdc": null,
-    "pnl_gross_pct": null,
-    "pnl_pct": null
+    "pnl_gross_usdc": -2.5939829999999873,
+    "pnl_usdc": -4.2476039999999875,
+    "pnl_gross_pct": -1.3986369885886527,
+    "pnl_pct": -2.2902447962369554,
+    "close_reason": "sl_hit",
+    "cycle_id": null
   }
 ]
