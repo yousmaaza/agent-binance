@@ -49,7 +49,7 @@ _CONFIG_KEYS = [
     "min_signal_score", "min_signal_score_degraded", "rsi_zone_min", "rsi_zone_max",
     "max_open_positions", "reward_risk_ratio", "fee_round_trip_pct", "max_tp_pct",
     "max_spread_pct", "risk_per_trade_pct", "daily_loss_limit_pct", "min_profit_pct_take",
-    "display_timezone",
+    "display_timezone", "maker_max_concession_pct", "maker_timeout_seconds",
 ]
 
 

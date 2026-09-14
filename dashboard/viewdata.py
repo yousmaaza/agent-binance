@@ -247,6 +247,122 @@ def build_weekly_analysis_view(doc: dict | None, fallback_text: str, tz_name: st
     }
 
 
+# Repli si `config` ne porte pas encore les clés maker (dashboard_state publié avant #493) —
+# valeurs actuelles connues du bot (config.json), cf. ticket #493.
+DEFAULT_MAKER_MAX_CONCESSION_PCT = 0.003
+DEFAULT_MAKER_TIMEOUT_SECONDS = 3600
+MAKER_ALERT_THRESHOLD_PCT = 80  # au-delà, la pastille bascule sur « bientôt annulé »
+MAKER_SCALE_WIDTH = 820
+MAKER_SCALE_PAD = 64
+# Marge sous laquelle le libellé du curseur chevaucherait « posé à » ou « annulation » — cas
+# précisément le plus important à lire (retour de review #493) : un ordre proche de son plafond.
+MAKER_LABEL_MARGIN = 46
+
+
+def _maker_bar_tone(pct: float) -> str:
+    """Classe CSS de la jauge selon le budget consommé, mêmes seuils que la pastille (retour de
+    review #493) : une jauge à 93 % qui reste de la couleur d'une jauge à 10 % perd son pouvoir
+    d'alerte."""
+    if pct >= 100:
+        return "mk-bar-crit"
+    if pct >= MAKER_ALERT_THRESHOLD_PCT:
+        return "mk-bar-warn"
+    return ""
+
+
+def _maker_scale_geometry(initial_price: float, current_price: float, cap_price: float) -> dict:
+    """Position du curseur sur l'échelle posé -> annulation, en x SVG (#493).
+
+    `label_x` recale le texte du prix courant à distance des deux graduations fixes : le curseur
+    lui-même (`x_current`) reste à sa position réelle, seul son libellé est décalé pour rester
+    lisible quand l'ordre est proche d'un bord — c'est justement le cas qui compte le plus."""
+    span = cap_price - initial_price
+    ratio = min(max((current_price - initial_price) / span, 0.0), 1.0) if span else 0.0
+    x_initial, x_cap = MAKER_SCALE_PAD, MAKER_SCALE_WIDTH - MAKER_SCALE_PAD
+    x_current = round(x_initial + ratio * (x_cap - x_initial), 1)
+    label_x = min(max(x_current, x_initial + MAKER_LABEL_MARGIN), x_cap - MAKER_LABEL_MARGIN)
+    return {
+        "width": MAKER_SCALE_WIDTH,
+        "x_initial": x_initial,
+        "x_cap": x_cap,
+        "x_current": x_current,
+        "label_x": round(label_x, 1),
+    }
+
+
+def build_maker_orders(pending_orders: list, config: dict, tz_name: str, now: datetime | None = None) -> list:
+    """Une carte par ordre maker en attente (#493) : où sa limite est posée, de combien elle a
+    déjà chassé le marché, et ce qu'il lui reste avant annulation.
+
+    Le plafond d'annulation n'est pas stocké, il se calcule (core/maker_watcher.py:427 — la
+    concession suit le bid qui monte, jamais l'inverse, donc le plafond est toujours au-dessus
+    du prix de pose) : `initial_limit_price × (1 + maker_max_concession_pct)`."""
+    now = now or datetime.now(timezone.utc)
+    max_concession_pct = config.get("maker_max_concession_pct") or DEFAULT_MAKER_MAX_CONCESSION_PCT
+    timeout_seconds = config.get("maker_timeout_seconds") or DEFAULT_MAKER_TIMEOUT_SECONDS
+
+    orders = []
+    for order in pending_orders or []:
+        initial_price = order.get("initial_limit_price") or 0.0
+        current_price = order.get("current_limit_price") or initial_price
+        cap_price = initial_price * (1 + max_concession_pct)
+        quantity = order.get("quantity") or 0.0
+
+        concession_pct = max(0.0, (current_price - initial_price) / initial_price) if initial_price else 0.0
+        concession_budget_pct = min(concession_pct / max_concession_pct * 100, 100.0) if max_concession_pct else 0.0
+        concession_remaining_usdc = max(cap_price - current_price, 0.0) * quantity
+
+        placed_at = parse_iso(order.get("placed_at"))
+        elapsed_seconds = max((now - placed_at).total_seconds(), 0.0) if placed_at else 0.0
+        time_budget_pct = min(elapsed_seconds / timeout_seconds * 100, 100.0) if timeout_seconds else 0.0
+
+        is_soon_canceled = (concession_budget_pct >= MAKER_ALERT_THRESHOLD_PCT
+                             or time_budget_pct >= MAKER_ALERT_THRESHOLD_PCT)
+
+        orders.append({
+            **order,
+            "initial_price": initial_price,
+            "current_price": current_price,
+            "cap_price": cap_price,
+            "placed_local": to_local(placed_at, tz_name) if placed_at else "n/d",
+            "concession_budget_pct": round(concession_budget_pct, 1),
+            "concession_bar_tone": _maker_bar_tone(concession_budget_pct),
+            "concession_remaining_usdc": round(concession_remaining_usdc, 2),
+            "elapsed_minutes": round(elapsed_seconds / 60, 1),
+            "timeout_minutes": round(timeout_seconds / 60, 1),
+            "time_budget_pct": round(time_budget_pct, 1),
+            "time_bar_tone": _maker_bar_tone(time_budget_pct),
+            "status": "bientot_annule" if is_soon_canceled else "en_chasse",
+            "status_label": "bientôt annulé" if is_soon_canceled else "en chasse",
+            "scale": _maker_scale_geometry(initial_price, current_price, cap_price),
+        })
+    return orders
+
+
+def build_maker_last_fill(open_positions: list, closed_trades: list, now: datetime | None = None) -> dict:
+    """Dernier ordre effectivement rempli en maker, pour que l'état vide dise pourquoi il est
+    vide (#493) : `maker_pending_orders == []` est l'état normal la plupart du temps, pas une
+    panne — encore faut-il le rappeler avec un fait concret plutôt qu'un silence."""
+    now = now or datetime.now(timezone.utc)
+    candidates = []
+    for pos in open_positions or []:
+        if pos.get("maker_or_taker") == "maker":
+            dt = parse_iso(pos.get("opened_at"))
+            if dt:
+                candidates.append((dt, pos.get("coin")))
+    for trade in closed_trades or []:
+        if trade.get("maker_or_taker") == "maker":
+            dt = parse_iso(trade.get("entry_date"))
+            if dt:
+                candidates.append((dt, trade.get("coin")))
+
+    if not candidates:
+        return {"found": False}
+
+    last_dt, coin = max(candidates, key=lambda c: c[0])
+    return {"found": True, "coin": coin, "elapsed_label": _hold_label((now - last_dt).total_seconds() / 3600)}
+
+
 def build_maker_summary(watchers: dict) -> dict:
     mw = watchers.get("maker_watcher") or {}
     fills = mw.get("total_fills", 0) or 0

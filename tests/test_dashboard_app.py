@@ -7,6 +7,7 @@ donnée périmée, Kraken indisponible).
 (mis en cache par Python, comme tous les modules `import`és dans tests/) — d'où l'ordre des
 imports ci-dessous, contrairement aux autres fichiers de test dashboard."""
 import os
+import re
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,7 @@ settings.DASHBOARD_PASSWORD = "test-password"
 settings.DASHBOARD_SECRET_KEY = "test-secret-key"
 
 import app as dashboard_app  # noqa: E402
+import viewdata  # noqa: E402
 from cache import cache  # noqa: E402
 from kraken_client import KrakenUnavailable  # noqa: E402
 from mongo_client import DashboardStateMissing, MongoUnavailable  # noqa: E402
@@ -283,6 +285,120 @@ class TestSalesTabExitMode(DashboardAppTestBase):
         # classées, jamais la vente inconnue.
         self.assertIn("mesuré 0.30 %", body)
         self.assertIn("mesuré 0.60 %", body)
+
+
+class TestMakerOrdersCards(DashboardAppTestBase):
+    """#493 : le HTML réellement produit pour les cartes d'ordres maker, pas seulement les
+    données de la vue — c'est le gabarit qui a trompé l'utilisateur la dernière fois."""
+
+    def _get(self, watchers, config=None):
+        state = dict(
+            SAMPLE_STATE,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+            watchers=watchers,
+            config=dict(SAMPLE_STATE["config"], **(config or {})),
+        )
+        with patch("app.get_dashboard_state", return_value=state), \
+             patch("app.get_recent_cycles", return_value=SAMPLE_CYCLES), \
+             patch("app.get_prices", return_value={"BNB": 510.0}):
+            self._login()
+            return self.client.get("/")
+
+    def test_multiple_pending_orders_each_get_their_own_card(self):
+        now = datetime.now(timezone.utc)
+        placed_at = (now - timedelta(minutes=10)).isoformat()
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "BTC", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+                 "initial_limit_price": 60000.0, "current_limit_price": 60060.0,
+                 "adjustments": 2, "placed_at": placed_at},
+                {"coin": "ETH", "score": 6, "montant_ordre": 30.0, "quantity": 0.01,
+                 "initial_limit_price": 3000.0, "current_limit_price": 3000.0,
+                 "adjustments": 0, "placed_at": placed_at},
+            ],
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(body.count('class="mk-card"'), 2)
+        self.assertIn("60 000", body)  # prix de pose BTC, format_price français
+        self.assertIn("en chasse", body)
+
+    def test_no_pending_orders_shows_empty_state_without_error(self):
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [],
+        }
+        r = self._get(watchers)
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn('class="mk-card"', body)
+        self.assertIn("Aucun ordre d'achat en vol", body)
+
+    def test_order_over_80_percent_budget_shows_soon_canceled_pill(self):
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "SOL", "score": 8, "montant_ordre": 20.0, "quantity": 0.5,
+                 "initial_limit_price": 100.0, "current_limit_price": 100.28,
+                 "adjustments": 6, "placed_at": now.isoformat()},
+            ],
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("bientôt annulé", body)
+        self.assertIn('class="mk-pill mk-pill-warn"', body)
+
+    def test_current_price_is_rendered_as_readable_text(self):
+        """Retour de review #493 : la position du curseur sur l'échelle ne suffit pas à un
+        lecteur voyant — c'est précisément la question posée par le ticket (« où l'ordre est
+        posé ») qui doit avoir une réponse en chiffres, pas seulement en pixels."""
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "BTC", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+                 "initial_limit_price": 60000.0, "current_limit_price": 60060.0,
+                 "adjustments": 2, "placed_at": now.isoformat()},
+            ],
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("limite actuelle", body)
+        self.assertIn(viewdata.format_price(60000.0), body)  # posé à
+        self.assertIn(viewdata.format_price(60060.0), body)  # limite actuelle
+        self.assertIn(viewdata.format_price(60000.0 * 1.003), body)  # annulation
+
+    def test_current_price_label_stays_clear_of_edges_near_cap(self):
+        """Cas extrême de la review : un curseur à plus de 90 % de l'échelle ne doit pas
+        chevaucher le libellé « annulation » voisin dans le HTML réellement produit."""
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "SOL", "score": 8, "montant_ordre": 20.0, "quantity": 0.5,
+                 "initial_limit_price": 100.0, "current_limit_price": 100.291,  # 97 % du plafond
+                 "adjustments": 6, "placed_at": now.isoformat()},
+            ],
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+
+        current_label_x = float(re.search(
+            r'<text x="([\d.]+)" y="30" class="mk-lbl" text-anchor="middle">limite actuelle</text>', body).group(1))
+        cap_label_x = float(re.search(
+            r'<text x="([\d.]+)" y="30" class="mk-lbl" text-anchor="end">annulation</text>', body).group(1))
+        cursor_x = float(re.search(r'<circle cx="([\d.]+)"', body).group(1))
+
+        # Le curseur réel est bien proche du bord (sans quoi le test ne prouverait rien) ; seul
+        # son libellé est recalé pour rester lisible.
+        self.assertLess(cap_label_x - cursor_x, viewdata.MAKER_LABEL_MARGIN)
+        self.assertGreaterEqual(cap_label_x - current_label_x, viewdata.MAKER_LABEL_MARGIN)
 
 
 if __name__ == "__main__":
