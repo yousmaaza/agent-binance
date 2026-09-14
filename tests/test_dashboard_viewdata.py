@@ -48,6 +48,33 @@ class TestFreshness(unittest.TestCase):
         self.assertIsNone(f["age_minutes"])
 
 
+class TestMakerFreshness(unittest.TestCase):
+    """#498 : la tranche maker a sa propre cadence de publication (le watcher), distincte du
+    reste du document (Phase 7) — elle doit se dater sur `watchers.maker_pending_updated_at`,
+    pas sur `updated_at` du document entier."""
+
+    def test_uses_dedicated_timestamp_when_present(self):
+        now = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        watchers = {"maker_pending_updated_at": (now - timedelta(minutes=2)).isoformat()}
+        f = viewdata.maker_freshness(watchers, (now - timedelta(hours=3)).isoformat(),
+                                      stale_threshold_minutes=300, now=now)
+        self.assertAlmostEqual(f["age_minutes"], 2, delta=0.1)
+        self.assertFalse(f["is_stale"])
+
+    def test_falls_back_to_document_updated_at_when_watcher_never_published(self):
+        now = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        f = viewdata.maker_freshness({}, (now - timedelta(minutes=30)).isoformat(),
+                                      stale_threshold_minutes=300, now=now)
+        self.assertAlmostEqual(f["age_minutes"], 30, delta=0.1)
+        self.assertFalse(f["is_stale"])
+
+    def test_stale_beyond_threshold(self):
+        now = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        watchers = {"maker_pending_updated_at": (now - timedelta(hours=6)).isoformat()}
+        f = viewdata.maker_freshness(watchers, None, stale_threshold_minutes=300, now=now)
+        self.assertTrue(f["is_stale"])
+
+
 class TestEquityCurvePoints(unittest.TestCase):
     def test_empty_curve_yields_empty_string(self):
         self.assertEqual(viewdata.equity_curve_points([]), "")
@@ -820,6 +847,28 @@ class TestBuildMakerOrders(unittest.TestCase):
 
     def test_empty_pending_orders_yields_empty_list(self):
         self.assertEqual(viewdata.build_maker_orders([], self.CONFIG, "UTC"), [])
+
+    def test_order_older_than_timeout_is_dropped_as_a_ghost(self):
+        """#498 : un ordre plus vieux que maker_timeout_seconds ne peut plus être en attente — le
+        watcher l'aurait résolu depuis. Le voir encore dans l'instantané prouve qu'il est fantôme."""
+        now = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        placed_at = now - timedelta(seconds=self.CONFIG["maker_timeout_seconds"] + 300)  # +5 min
+        orders = [{
+            "coin": "XBT", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+            "initial_limit_price": 60000.0, "current_limit_price": 60000.0,
+            "adjustments": 0, "placed_at": placed_at.isoformat(),
+        }]
+        self.assertEqual(viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now), [])
+
+    def test_order_within_timeout_is_kept(self):
+        now = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        placed_at = now - timedelta(seconds=self.CONFIG["maker_timeout_seconds"] - 60)  # 1 min avant
+        orders = [{
+            "coin": "XBT", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+            "initial_limit_price": 60000.0, "current_limit_price": 60000.0,
+            "adjustments": 0, "placed_at": placed_at.isoformat(),
+        }]
+        self.assertEqual(len(viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)), 1)
 
 
 class TestBuildMakerLastFill(unittest.TestCase):

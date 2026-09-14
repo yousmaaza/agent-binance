@@ -1,5 +1,5 @@
 """Accès MongoDB : connexion lazy, lecture/écriture des cycles."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from loguru import logger
@@ -93,6 +93,27 @@ class MongoRepository:
             return True
         except Exception as e:
             logger.error(f"MongoDB save_weekly_analysis erreur : {e}")
+            return False
+
+    def save_maker_pending_orders(self, orders: List[Dict]) -> bool:
+        """Publication du maker watcher (#498) : `$set` ciblé sur `watchers.maker_pending_orders`
+        + `watchers.maker_pending_updated_at`, jamais une reconstruction du document — le reste
+        (`open_positions`, `financials`, ...) appartient à la Phase 7."""
+        db = self._db()
+        if db is None:
+            return False
+        try:
+            db.dashboard_state.update_one(
+                {"_id": "current"},
+                {"$set": {
+                    "watchers.maker_pending_orders": orders,
+                    "watchers.maker_pending_updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"MongoDB save_maker_pending_orders erreur : {e}")
             return False
 
     def get_api_costs(self, limit: int = 5) -> List[Dict]:
