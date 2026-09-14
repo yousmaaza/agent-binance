@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#499](pr-499-dashboard-ordres-maker-fantomes.md) | [BUG] Dashboard maker : fin des ordres fantômes | 2026-09-14 |
 | [#497](pr-497-chevauchement-echelle-maker.md) | [BUG] Dashboard — chevauchement du libellé de curseur en bord d'échelle | 2026-09-14 |
 | [#495](pr-495-dashboard-ordres-maker.md) | [M1] Dashboard — montrer où les ordres maker d'achat sont posés | 2026-09-14 |
 | [#494](pr-494-vendre-signal-position-profit.md) | [M1] Ne vendre sur signal qu'une position en profit | 2026-09-12 |
