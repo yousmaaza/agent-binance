@@ -15,7 +15,7 @@ import os
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
@@ -195,6 +195,71 @@ class TestAttemptMakerExitQuantityOverride(unittest.TestCase):
 
         self.assertIsNotNone(record)
         self.assertFalse(fake_cli.calls_with("order", "cancel"))
+
+
+class TestMakerExitWatcherPublishesTradeHistorySlices(unittest.TestCase):
+    """#500 : après une sauvegarde de trade_history (clôture en maker, repli marché), le watcher
+    republie open_positions/closed_trades/financials dans dashboard_state — sans attendre le
+    prochain passage de la Phase 7 (jusqu'à 4h)."""
+
+    def _tick(self, pending_orders, fake_cli, history, mock_publish, config=None):
+        with patch("core.maker_exit_watcher.is_locked", return_value=False), \
+             patch("core.maker_exit_watcher.acquire_lock"), \
+             patch("core.maker_exit_watcher.release_lock"), \
+             patch("core.maker_exit_watcher.send_telegram"), \
+             patch("core.maker_exit_watcher._write_watcher_state"), \
+             patch("core.maker_exit_watcher.load_trade_history", return_value=history), \
+             patch("core.maker_exit_watcher.save_trade_history"), \
+             patch("core.maker_exit_watcher.load_maker_exit_pending_orders", return_value=pending_orders), \
+             patch("core.maker_exit_watcher.save_maker_exit_pending_orders"), \
+             patch("core.maker_exit_watcher.publish_trade_history_slices", mock_publish), \
+             patch("core.maker_exit_watcher._cli", side_effect=fake_cli):
+            maker_exit_watcher._maker_exit_watcher_tick(config or BASE_CONFIG)
+
+    def test_fill_publishes_trade_history_slices(self):
+        pending = _pending()
+        pos = _position()
+        fake_cli = _FakeCli(**{
+            "query-orders_SELLTX1": {"status": "closed", "cost": "1100.0", "vol_exec": "1.0", "fee": "0.4"},
+        })
+        mock_publish = MagicMock(return_value=True)
+        history = [pos]
+
+        self._tick([pending], fake_cli, history, mock_publish)
+
+        mock_publish.assert_called_once_with(history, "Maker Exit Watcher")
+
+    def test_market_fallback_publishes_trade_history_slices(self):
+        placed_at = (datetime.now(timezone.utc) - timedelta(seconds=700)).isoformat()
+        pending = _pending(placed_at=placed_at)
+        pos = _position()
+        fake_cli = _FakeCli(**{
+            "query-orders_SELLTX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"a": ["1100.5", "0.01"], "c": ["1100.0", "0.01"]},
+            "order_sell_ETHUSDC_market": {"txid": ["MARKETTX1"]},
+            "query-orders_MARKETTX1": {"status": "closed", "cost": "1099.0", "vol_exec": "1.0", "fee": "0.4"},
+        })
+        mock_publish = MagicMock(return_value=True)
+        history = [pos]
+
+        self._tick([pending], fake_cli, history, mock_publish)
+
+        mock_publish.assert_called_once_with(history, "Maker Exit Watcher")
+
+    def test_unchanged_tick_does_not_publish(self):
+        """Ni amend ni bascule : ask inchangé, dans le budget et le délai -> trade_history
+        n'est jamais touché, rien à republier."""
+        pending = _pending()
+        pos = _position()
+        fake_cli = _FakeCli(**{
+            "query-orders_SELLTX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"a": ["1100.0", "0.01"], "c": ["1100.0", "0.01"]},
+        })
+        mock_publish = MagicMock(return_value=True)
+
+        self._tick([pending], fake_cli, [pos], mock_publish)
+
+        mock_publish.assert_not_called()
 
 
 class TestFullFillClosesPositionAsMaker(unittest.TestCase):

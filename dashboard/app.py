@@ -116,6 +116,8 @@ def _build_results_view(state, prices, cycles, tz_name):
         "equity_points": viewdata.equity_curve_points(financials.get("equity_curve") or []),
         "equity": viewdata.equity_curve_geometry(financials.get("equity_curve") or []),
         "positions": viewdata.build_positions(open_positions, prices[0]),
+        "positions_freshness": viewdata.trade_history_freshness(
+            watchers, state.get("updated_at"), settings.STALE_THRESHOLD_MINUTES),
         "maker": maker,
         "kraken_error": prices[1],
         "weekly_note": weekly_note,
@@ -170,6 +172,8 @@ def dashboard_home():
     # Le champ n'existe qu'après redéploiement de la VPS (#455) : distinguer « pas encore
     # publié » de « aucune vente », qui appellent des messages différents.
     sales_view["published"] = "closed_trades" in state
+    sales_view["freshness"] = viewdata.trade_history_freshness(
+        state.get("watchers") or {}, state.get("updated_at"), settings.STALE_THRESHOLD_MINUTES)
 
     return render_template(
         "dashboard.html",

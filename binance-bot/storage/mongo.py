@@ -123,6 +123,38 @@ class MongoRepository:
             logger.error(f"MongoDB save_maker_pending_orders erreur : {e}")
             return False
 
+    def save_trade_history_slices(self, open_positions: List[Dict], closed_trades: List[Dict],
+                                   financials: Dict) -> bool:
+        """Publication des watchers qui modifient `trade_history` entre deux cycles (#500) :
+        `core/maker_watcher.py` (remplissage, repli marché), `core/maker_exit_watcher.py`
+        (clôture par sortie maker ou son repli marché), `core/tp_watcher.py` (clôture sur cible
+        atteinte). `$set` ciblé sur ces trois clés + `watchers.trade_history_slices_updated_at`,
+        jamais une reconstruction du document — le reste (`watchers.maker_pending_orders`,
+        `config`, ...) appartient à la Phase 7 ou au maker watcher (#498).
+
+        Sans `upsert`, même raisonnement que #498 : si `dashboard_state` n'existe pas encore
+        (avant le premier passage de la Phase 7), un document créé avec pour seul contenu ces
+        clés serait amputé (`config` absent, ...) sans que `DashboardStateMissing` ne se
+        déclenche côté dashboard. La Phase 7 créera le document complet au premier cycle."""
+        db = self._db()
+        if db is None:
+            return False
+        try:
+            db.dashboard_state.update_one(
+                {"_id": "current"},
+                {"$set": {
+                    "open_positions": open_positions,
+                    "closed_trades": closed_trades,
+                    "financials": financials,
+                    "watchers.trade_history_slices_updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"MongoDB save_trade_history_slices erreur : {e}")
+            return False
+
     def get_api_costs(self, limit: int = 5) -> List[Dict]:
         db = self._db()
         if db is None:
