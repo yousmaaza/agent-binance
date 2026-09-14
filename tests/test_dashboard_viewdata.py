@@ -767,10 +767,10 @@ class TestBuildMakerOrders(unittest.TestCase):
         midpoint = (scale["x_initial"] + scale["x_cap"]) / 2
         self.assertAlmostEqual(scale["x_current"], midpoint, delta=1.0)
 
-    def test_label_x_stays_clear_of_edges_when_cursor_is_near_the_cap(self):
-        """Retour de review #493 : un ordre à 93 % de sa concession est le cas qui compte le
-        plus à lire, et c'est justement celui où le libellé du curseur chevaucherait
-        « annulation » sans recalage."""
+    def test_current_label_is_hidden_when_cursor_is_near_the_cap(self):
+        """#496 : un ordre à 97 % de sa concession est le cas le plus proche du bord — le
+        libellé mobile doit être tu plutôt que décalé, car il afficherait un prix déjà
+        quasi identique à celui de « annulation »."""
         now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
         orders = [{
             "coin": "SOL", "score": 8, "montant_ordre": 20.0, "quantity": 0.5,
@@ -779,11 +779,13 @@ class TestBuildMakerOrders(unittest.TestCase):
         }]
         row = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)[0]
         scale = row["scale"]
-        self.assertGreater(scale["x_current"], scale["x_cap"] - viewdata.MAKER_LABEL_MARGIN)
-        self.assertLessEqual(scale["label_x"], scale["x_cap"] - viewdata.MAKER_LABEL_MARGIN)
-        self.assertGreaterEqual(scale["label_x"], scale["x_initial"] + viewdata.MAKER_LABEL_MARGIN)
+        self.assertFalse(scale["show_current_label"])
+        # Le curseur réel est bien proche du bord (sans quoi le test ne prouverait rien).
+        self.assertGreater(scale["x_current"], scale["x_cap"] - 50)
 
-    def test_label_x_stays_clear_of_edges_when_cursor_has_not_moved(self):
+    def test_current_label_is_hidden_when_cursor_has_not_moved(self):
+        """#496 : cas le plus fréquent — un ordre qui vient d'être posé, bid inchangé, 0 % de
+        concession. C'est celui apparu en production dès le premier ordre affiché."""
         now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
         orders = [{
             "coin": "SOL", "score": 8, "montant_ordre": 20.0, "quantity": 0.5,
@@ -793,7 +795,18 @@ class TestBuildMakerOrders(unittest.TestCase):
         row = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)[0]
         scale = row["scale"]
         self.assertEqual(scale["x_current"], scale["x_initial"])
-        self.assertGreaterEqual(scale["label_x"], scale["x_initial"] + viewdata.MAKER_LABEL_MARGIN)
+        self.assertFalse(scale["show_current_label"])
+
+    def test_current_label_is_shown_when_cursor_is_in_the_central_zone(self):
+        now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
+        orders = [{
+            "coin": "BTC", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+            "initial_limit_price": 100.0, "current_limit_price": 100.15,  # à mi-chemin du plafond
+            "adjustments": 1, "placed_at": now.isoformat(),
+        }]
+        row = viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)[0]
+        scale = row["scale"]
+        self.assertTrue(scale["show_current_label"])
 
     def test_missing_config_keys_fall_back_to_known_bot_defaults(self):
         now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone.utc)
