@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-11 (PR #489) |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-14 (PR #495) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#495](pr-495-dashboard-ordres-maker.md) | [M1] Dashboard — montrer où les ordres maker d'achat sont posés | 2026-09-14 |
 | [#494](pr-494-vendre-signal-position-profit.md) | [M1] Ne vendre sur signal qu'une position en profit | 2026-09-12 |
 | [#489](pr-489-sortie-maker-signal.md) | [M1] Sortie maker sur la vente sur signal (score ≤ 3) | 2026-09-11 |
 | [#487](pr-487-versionner-strategie.md) | [DOC] Versionner le document de stratégie et le tenir à jour | 2026-09-11 |
