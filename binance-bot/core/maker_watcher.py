@@ -38,10 +38,44 @@ from core.trade_helpers import (
     maker_or_taker_from_ordertype,
     save_maker_pending_orders,
 )
+from storage.mongo import mongo_repo
 
 _MAKER_FILL_LABEL: str = maker_or_taker_from_ordertype("limit", post_only=True)  # "maker" (#388)
 
 _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "maker_watcher_state.json")
+
+# Signature du dernier instantané publié dans dashboard_state (#498) — module-level pour survivre
+# aux ticks : permet de ne publier qu'au changement (pose, ajustement, remplissage, repli,
+# abandon), jamais à chaque tick (20 s -> 4 320 écritures/jour pour rien).
+_last_published_pending_signature: tuple | None = None
+
+
+def _pending_signature(orders: list) -> tuple:
+    return tuple(sorted(
+        (o.get("txid"), o.get("current_limit_price"), o.get("adjustments", 0)) for o in orders
+    ))
+
+
+def _publish_pending_orders_if_changed(orders: list) -> None:
+    """Publie `watchers.maker_pending_orders` dans dashboard_state uniquement si la composition
+    ou le prix courant d'un ordre a changé depuis la dernière publication (#498). Confort
+    d'affichage seulement : un échec Mongo est journalisé, jamais remonté dans la boucle.
+
+    La signature n'est retenue que sur un succès avéré : sinon une coupure Mongo passagère ferait
+    croire au watcher qu'il a publié, et un changement réel ultérieur ne serait jamais retenté
+    tant que la composition des ordres ne rebouge pas — réintroduirait le fantôme qu'on corrige,
+    par le chemin d'erreur (retour de review #498)."""
+    global _last_published_pending_signature
+    signature = _pending_signature(orders)
+    if signature == _last_published_pending_signature:
+        return
+    try:
+        published = mongo_repo.save_maker_pending_orders(orders)
+    except Exception as e:
+        logger.warning(f"[Maker Watcher] Publication dashboard_state échouée : {e}")
+        published = False
+    if published:
+        _last_published_pending_signature = signature
 
 
 def _write_watcher_state(status: str, last_error: str | None, orders_checked: int,
@@ -355,6 +389,7 @@ def _maker_watcher_tick(cfg: dict) -> None:
     pending_orders = load_maker_pending_orders(PROJECT_DIR)
     if not pending_orders:
         _write_watcher_state("ok", None, 0)
+        _publish_pending_orders_if_changed([])
         return
 
     price_deviation_max_pct = cfg.get("price_deviation_max_pct", 0.02)
@@ -450,6 +485,7 @@ def _maker_watcher_tick(cfg: dict) -> None:
     # Toujours réécrit (peu coûteux vu le nombre d'ordres en attente, borné par
     # max_open_positions) : couvre à la fois les retraits et les amends de current_limit_price.
     save_maker_pending_orders(remaining_pending, PROJECT_DIR)
+    _publish_pending_orders_if_changed(remaining_pending)
 
     if history_changed:
         save_trade_history(history)

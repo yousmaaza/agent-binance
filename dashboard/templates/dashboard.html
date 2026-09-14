@@ -219,6 +219,13 @@
     <p class="empty">Pas encore de données du maker watcher.</p>
     {% endif %}
 
+    {% if m.orders and m.freshness.is_stale %}
+    <p class="freshness stale">
+      Donnée vieille de {{ "%.0f"|format(m.freshness.age_minutes) if m.freshness.age_minutes is not none else "?" }} min
+      — pas un suivi temps réel, le watcher ne publie plus (Mongo injoignable ou thread arrêté).
+    </p>
+    {% endif %}
+
     {% if m.orders %}
     <div class="mk-cards">
       {% for o in m.orders %}

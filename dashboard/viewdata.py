@@ -41,6 +41,22 @@ def freshness(dashboard_state: dict, stale_threshold_minutes: int, now: datetime
     }
 
 
+def maker_freshness(watchers: dict, dashboard_updated_at, stale_threshold_minutes: int,
+                     now: datetime | None = None) -> dict:
+    """Fraîcheur propre à la liste d'ordres maker (#498) : le document a deux cadences d'écriture
+    depuis que le watcher publie ses propres changements — `watchers.maker_pending_updated_at`
+    date cette tranche précise, pas tout le document. Repli sur l'horodatage global si le watcher
+    n'a encore jamais publié (avant #498, ou publication en panne)."""
+    now = now or datetime.now(timezone.utc)
+    updated_at = parse_iso(watchers.get("maker_pending_updated_at")) or parse_iso(dashboard_updated_at)
+    age_min = (now - updated_at).total_seconds() / 60 if updated_at else None
+    return {
+        "updated_at": updated_at,
+        "age_minutes": age_min,
+        "is_stale": age_min is None or age_min > stale_threshold_minutes,
+    }
+
+
 def equity_curve_points(curve: list, width: int = 300, height: int = 80, pad: int = 4) -> str:
     if not curve:
         return ""
@@ -302,13 +318,23 @@ def build_maker_orders(pending_orders: list, config: dict, tz_name: str, now: da
 
     Le plafond d'annulation n'est pas stocké, il se calcule (core/maker_watcher.py:427 — la
     concession suit le bid qui monte, jamais l'inverse, donc le plafond est toujours au-dessus
-    du prix de pose) : `initial_limit_price × (1 + maker_max_concession_pct)`."""
+    du prix de pose) : `initial_limit_price × (1 + maker_max_concession_pct)`.
+
+    Un ordre plus vieux que `maker_timeout_seconds` est écarté (#498) : le watcher l'aurait
+    forcément résolu à ce stade, donc s'il apparaît encore dans un instantané périmé c'est un
+    fantôme — le présenter comme « en vol » ferait croire à un suivi temps réel sur une donnée
+    figée depuis potentiellement plusieurs heures (cycle_id de la Phase 7 précédente)."""
     now = now or datetime.now(timezone.utc)
     max_concession_pct = config.get("maker_max_concession_pct") or DEFAULT_MAKER_MAX_CONCESSION_PCT
     timeout_seconds = config.get("maker_timeout_seconds") or DEFAULT_MAKER_TIMEOUT_SECONDS
 
     orders = []
     for order in pending_orders or []:
+        placed_at = parse_iso(order.get("placed_at"))
+        elapsed_seconds = max((now - placed_at).total_seconds(), 0.0) if placed_at else 0.0
+        if placed_at and timeout_seconds and elapsed_seconds >= timeout_seconds:
+            continue
+
         initial_price = order.get("initial_limit_price") or 0.0
         current_price = order.get("current_limit_price") or initial_price
         cap_price = initial_price * (1 + max_concession_pct)
@@ -318,8 +344,6 @@ def build_maker_orders(pending_orders: list, config: dict, tz_name: str, now: da
         concession_budget_pct = min(concession_pct / max_concession_pct * 100, 100.0) if max_concession_pct else 0.0
         concession_remaining_usdc = max(cap_price - current_price, 0.0) * quantity
 
-        placed_at = parse_iso(order.get("placed_at"))
-        elapsed_seconds = max((now - placed_at).total_seconds(), 0.0) if placed_at else 0.0
         time_budget_pct = min(elapsed_seconds / timeout_seconds * 100, 100.0) if timeout_seconds else 0.0
 
         is_soon_canceled = (concession_budget_pct >= MAKER_ALERT_THRESHOLD_PCT

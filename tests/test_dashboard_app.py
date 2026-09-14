@@ -434,5 +434,92 @@ class TestMakerOrdersCards(DashboardAppTestBase):
         self.assertEqual(current_label_x, cursor_x)  # centré sur le curseur, sans décalage
 
 
+class TestMakerOrdersGhostAndFreshness(DashboardAppTestBase):
+    """#498 : les ordres maker affichés étaient des fantômes du dernier cycle — un ordre plus
+    vieux que son propre timeout ne doit plus apparaître « en vol », et une liste publiée
+    ancienne doit se dater à l'écran plutôt que se faire passer pour du direct."""
+
+    def _get(self, watchers, config=None, updated_at=None):
+        state = dict(
+            SAMPLE_STATE,
+            updated_at=(updated_at or datetime.now(timezone.utc)).isoformat(),
+            watchers=watchers,
+            config=dict(SAMPLE_STATE["config"], **(config or {})),
+        )
+        with patch("app.get_dashboard_state", return_value=state), \
+             patch("app.get_recent_cycles", return_value=SAMPLE_CYCLES), \
+             patch("app.get_prices", return_value={"BNB": 510.0}):
+            self._login()
+            return self.client.get("/")
+
+    def test_order_older_than_maker_timeout_is_not_shown_as_in_flight(self):
+        now = datetime.now(timezone.utc)
+        ghost_placed_at = (now - timedelta(hours=3)).isoformat()  # bien au-delà de 3600 s
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "XBT", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+                 "initial_limit_price": 60000.0, "current_limit_price": 60000.0,
+                 "adjustments": 0, "placed_at": ghost_placed_at},
+            ],
+            "maker_pending_updated_at": (now - timedelta(hours=3)).isoformat(),
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn('class="mk-card"', body)
+        self.assertIn("Aucun ordre d'achat en vol", body)
+
+    def test_fresh_order_still_shows_as_in_flight(self):
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "XBT", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+                 "initial_limit_price": 60000.0, "current_limit_price": 60000.0,
+                 "adjustments": 0, "placed_at": (now - timedelta(minutes=5)).isoformat()},
+            ],
+            "maker_pending_updated_at": now.isoformat(),
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(body.count('class="mk-card"'), 1)
+
+    def test_stale_maker_publication_is_dated_not_shown_as_live(self):
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "XBT", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+                 "initial_limit_price": 60000.0, "current_limit_price": 60000.0,
+                 "adjustments": 0, "placed_at": (now - timedelta(minutes=5)).isoformat()},
+            ],
+            "maker_pending_updated_at": (now - timedelta(hours=6)).isoformat(),
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(body.count('class="mk-card"'), 1)
+        self.assertIn('class="freshness stale"', body)
+        self.assertIn("pas un suivi temps réel", body)
+
+    def test_fresh_maker_publication_does_not_show_stale_note(self):
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "XBT", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+                 "initial_limit_price": 60000.0, "current_limit_price": 60000.0,
+                 "adjustments": 0, "placed_at": (now - timedelta(minutes=5)).isoformat()},
+            ],
+            "maker_pending_updated_at": now.isoformat(),
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn('class="freshness stale"', body)
+
+
 if __name__ == "__main__":
     unittest.main()
