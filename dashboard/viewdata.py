@@ -254,9 +254,14 @@ DEFAULT_MAKER_TIMEOUT_SECONDS = 3600
 MAKER_ALERT_THRESHOLD_PCT = 80  # au-delà, la pastille bascule sur « bientôt annulé »
 MAKER_SCALE_WIDTH = 820
 MAKER_SCALE_PAD = 64
-# Marge sous laquelle le libellé du curseur chevaucherait « posé à » ou « annulation » — cas
-# précisément le plus important à lire (retour de review #493) : un ordre proche de son plafond.
-MAKER_LABEL_MARGIN = 46
+# En dessous de ce seuil de proximité avec une extrémité de l'échelle (en proportion, pas en
+# pixels — une proportion ne dépend ni de la police ni du nombre de chiffres), le libellé
+# centré du curseur chevaucherait la graduation fixe voisine (« posé à »/« annulation », ~50
+# unités de texte chacune) plus son propre débord (~45 unités de chaque côté, un texte centré
+# déborde autant à gauche qu'à droite) : ~95 unités sur les 692 utiles (#496), soit ~14 % —
+# arrondi à 15 % par marge de sécurité. Dans cette zone, le prix courant est de toute façon égal
+# ou quasi égal à celui de l'extrémité déjà affiché : rien à perdre à taire le libellé mobile.
+MAKER_LABEL_HIDE_THRESHOLD = 0.15
 
 
 def _maker_bar_tone(pct: float) -> str:
@@ -273,20 +278,21 @@ def _maker_bar_tone(pct: float) -> str:
 def _maker_scale_geometry(initial_price: float, current_price: float, cap_price: float) -> dict:
     """Position du curseur sur l'échelle posé -> annulation, en x SVG (#493).
 
-    `label_x` recale le texte du prix courant à distance des deux graduations fixes : le curseur
-    lui-même (`x_current`) reste à sa position réelle, seul son libellé est décalé pour rester
-    lisible quand l'ordre est proche d'un bord — c'est justement le cas qui compte le plus."""
+    Le curseur (`x_current`) reste toujours à sa position réelle. `show_current_label` indique
+    si le libellé mobile « limite actuelle » doit être dessiné : près d'un bord, il chevaucherait
+    la graduation fixe voisine et afficherait en plus une valeur déjà visible (#496) — dans ce
+    cas on le tait plutôt que de le décaler."""
     span = cap_price - initial_price
     ratio = min(max((current_price - initial_price) / span, 0.0), 1.0) if span else 0.0
     x_initial, x_cap = MAKER_SCALE_PAD, MAKER_SCALE_WIDTH - MAKER_SCALE_PAD
     x_current = round(x_initial + ratio * (x_cap - x_initial), 1)
-    label_x = min(max(x_current, x_initial + MAKER_LABEL_MARGIN), x_cap - MAKER_LABEL_MARGIN)
+    show_current_label = MAKER_LABEL_HIDE_THRESHOLD < ratio < 1 - MAKER_LABEL_HIDE_THRESHOLD
     return {
         "width": MAKER_SCALE_WIDTH,
         "x_initial": x_initial,
         "x_cap": x_cap,
         "x_current": x_current,
-        "label_x": round(label_x, 1),
+        "show_current_label": show_current_label,
     }
 
 

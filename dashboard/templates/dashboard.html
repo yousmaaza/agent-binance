@@ -240,8 +240,10 @@
             <text x="{{ o.scale.x_initial }}" y="80" class="mk-price">{{ o.initial_price | price }}</text>
             <text x="{{ o.scale.x_cap }}" y="30" class="mk-lbl" text-anchor="end">annulation</text>
             <text x="{{ o.scale.x_cap }}" y="80" class="mk-price" text-anchor="end">{{ o.cap_price | price }}</text>
-            <text x="{{ o.scale.label_x }}" y="30" class="mk-lbl" text-anchor="middle">limite actuelle</text>
-            <text x="{{ o.scale.label_x }}" y="80" class="mk-price" text-anchor="middle">{{ o.current_price | price }}</text>
+            {% if o.scale.show_current_label %}
+            <text x="{{ o.scale.x_current }}" y="30" class="mk-lbl" text-anchor="middle">limite actuelle</text>
+            <text x="{{ o.scale.x_current }}" y="80" class="mk-price" text-anchor="middle">{{ o.current_price | price }}</text>
+            {% endif %}
           </svg>
         </figure>
         <div class="mk-gauges">

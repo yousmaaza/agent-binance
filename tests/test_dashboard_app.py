@@ -373,9 +373,29 @@ class TestMakerOrdersCards(DashboardAppTestBase):
         self.assertIn(viewdata.format_price(60060.0), body)  # limite actuelle
         self.assertIn(viewdata.format_price(60000.0 * 1.003), body)  # annulation
 
-    def test_current_price_label_stays_clear_of_edges_near_cap(self):
-        """Cas extrême de la review : un curseur à plus de 90 % de l'échelle ne doit pas
-        chevaucher le libellé « annulation » voisin dans le HTML réellement produit."""
+    def test_current_label_is_absent_when_cursor_is_at_the_starting_point(self):
+        """#496 : cas le plus fréquent — un ordre qui vient d'être posé, 0 % de concession, le
+        bid n'a pas bougé. Le libellé mobile ne doit pas apparaître en double du prix de pose,
+        qui doit lui rester seul et lisible."""
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "SOL", "score": 8, "montant_ordre": 20.0, "quantity": 0.5,
+                 "initial_limit_price": 100.0, "current_limit_price": 100.0,  # aucune concession
+                 "adjustments": 0, "placed_at": now.isoformat()},
+            ],
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn("limite actuelle", body)
+        # Seuls « posé à » et « annulation » dessinent un prix — pas de 3e prix dupliqué.
+        self.assertEqual(body.count('class="mk-price"'), 2)
+
+    def test_current_label_is_absent_when_cursor_is_near_the_cap(self):
+        """#496 : concession quasi épuisée — le libellé mobile ne doit pas apparaître en double
+        du prix d'annulation, qui doit lui rester seul et lisible."""
         now = datetime.now(timezone.utc)
         watchers = {
             "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
@@ -388,17 +408,30 @@ class TestMakerOrdersCards(DashboardAppTestBase):
         r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
         body = r.data.decode("utf-8")
         self.assertEqual(r.status_code, 200)
+        self.assertNotIn("limite actuelle", body)
+        self.assertEqual(body.count('class="mk-price"'), 2)
+
+    def test_current_label_is_shown_when_cursor_is_in_the_central_zone(self):
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [
+                {"coin": "BTC", "score": 7, "montant_ordre": 50.0, "quantity": 0.001,
+                 "initial_limit_price": 60000.0, "current_limit_price": 60090.0,  # ~50 % du plafond
+                 "adjustments": 2, "placed_at": now.isoformat()},
+            ],
+        }
+        r = self._get(watchers, {"maker_max_concession_pct": 0.003, "maker_timeout_seconds": 3600})
+        body = r.data.decode("utf-8")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("limite actuelle", body)
+        self.assertIn(viewdata.format_price(60090.0), body)
+        self.assertEqual(body.count('class="mk-price"'), 3)
 
         current_label_x = float(re.search(
             r'<text x="([\d.]+)" y="30" class="mk-lbl" text-anchor="middle">limite actuelle</text>', body).group(1))
-        cap_label_x = float(re.search(
-            r'<text x="([\d.]+)" y="30" class="mk-lbl" text-anchor="end">annulation</text>', body).group(1))
         cursor_x = float(re.search(r'<circle cx="([\d.]+)"', body).group(1))
-
-        # Le curseur réel est bien proche du bord (sans quoi le test ne prouverait rien) ; seul
-        # son libellé est recalé pour rester lisible.
-        self.assertLess(cap_label_x - cursor_x, viewdata.MAKER_LABEL_MARGIN)
-        self.assertGreaterEqual(cap_label_x - current_label_x, viewdata.MAKER_LABEL_MARGIN)
+        self.assertEqual(current_label_x, cursor_x)  # centré sur le curseur, sans décalage
 
 
 if __name__ == "__main__":
