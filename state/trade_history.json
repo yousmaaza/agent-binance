@@ -2688,5 +2688,32 @@
     "pnl_pct": -2.2902447962369554,
     "close_reason": "sl_hit",
     "cycle_id": null
+  },
+  {
+    "trade_id": "a43ba626",
+    "date": "2026-09-14T12:14:05.928838+00:00",
+    "coin": "XBT",
+    "side": "BUY",
+    "signal_score": 6,
+    "entry_price": 77823.86833829858,
+    "stop_price": 74350.98,
+    "tp_price": 80531.4,
+    "quantity": 0.00193344,
+    "risk_usdc": 8.024,
+    "entry_order_id": "OSSAR4-C7APB-KH7XXY",
+    "sl_order_txid": "O4T4OF-TS4JU-5NBO5I",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.4514,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 196.16682,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
