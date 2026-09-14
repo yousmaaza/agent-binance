@@ -600,6 +600,24 @@ class TestMakerPendingPublishedToMongo(unittest.TestCase):
 
         mock_mongo.save_maker_pending_orders.assert_called_once_with([])
 
+    def test_failed_write_is_retried_on_next_unchanged_tick(self):
+        """Retour de review #498 : la signature ne doit être retenue que sur un succès avéré.
+        Sinon, une coupure Mongo passagère (save_maker_pending_orders renvoie False sans lever —
+        comportement réel documenté) ferait croire au watcher qu'il a publié, et un tick suivant
+        sans changement réel des ordres ne retenterait jamais l'écriture."""
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"b": ["1999.5", "0.01"], "c": ["2000.0", "0.01"]},
+        })
+        mock_mongo = MagicMock()
+        mock_mongo.save_maker_pending_orders.return_value = False  # échec signalé, jamais levé
+
+        self._tick([pending], fake_cli, mock_mongo)
+        self._tick([dict(pending)], fake_cli, mock_mongo)  # aucun changement réel des ordres
+
+        self.assertEqual(mock_mongo.save_maker_pending_orders.call_count, 2)
+
     def test_mongo_write_failure_does_not_interrupt_the_watcher(self):
         pending = _pending()
         fake_cli = _FakeCli(**{

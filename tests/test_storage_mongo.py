@@ -3,7 +3,11 @@
 `_FakeDashboardStateCollection` applique la sémantique réelle de MongoDB pour un `$set` à
 chemins pointés (`"watchers.maker_pending_orders"`) : fusion dans les sous-documents imbriqués,
 jamais un remplacement de tout le document — un `dict.update()` naïf sur les clés pointées ne
-prouverait rien face au bug précis de #498 (Phase 7 écrasée par le watcher)."""
+prouverait rien face au bug précis de #498 (Phase 7 écrasée par le watcher). Elle modélise aussi
+le cas `_id` absent sans `upsert` : `update_one` ne matche rien et ne crée rien (retour de review
+#498 — un document créé avec pour seul contenu ces deux champs serait amputé aux yeux du
+dashboard, `find_one` ne renverrait plus `None` donc `DashboardStateMissing` ne se déclencherait
+plus)."""
 import os
 import sys
 import unittest
@@ -24,12 +28,18 @@ def _set_dotted(doc: dict, dotted_key: str, value) -> None:
 
 
 class _FakeDashboardStateCollection:
-    def __init__(self, doc: dict):
+    """`doc=None` modélise un document absent (avant le premier passage de la Phase 7)."""
+
+    def __init__(self, doc: dict | None):
         self.doc = doc
         self.update_one_calls = []
 
     def update_one(self, filt, update, upsert=False):
         self.update_one_calls.append((filt, update, upsert))
+        if self.doc is None:
+            if not upsert:
+                return  # ne matche rien, ne crée rien — sémantique réelle de Mongo
+            self.doc = {"_id": filt["_id"]}
         for dotted_key, value in update.get("$set", {}).items():
             _set_dotted(self.doc, dotted_key, value)
 
@@ -56,11 +66,24 @@ class TestSaveMakerPendingOrders(unittest.TestCase):
         self.assertTrue(result)
         filt, update, upsert = collection.update_one_calls[0]
         self.assertEqual(filt, {"_id": "current"})
-        self.assertTrue(upsert)
+        self.assertFalse(upsert)
         self.assertEqual(set(update["$set"].keys()),
                           {"watchers.maker_pending_orders", "watchers.maker_pending_updated_at"})
         self.assertEqual(update["$set"]["watchers.maker_pending_orders"], orders)
         self.assertIsInstance(update["$set"]["watchers.maker_pending_updated_at"], str)
+
+    def test_no_document_yet_is_not_created_by_the_watcher(self):
+        """#498, retour de review : sans `upsert`, une publication avant le premier passage de la
+        Phase 7 ne doit créer aucun document amputé (sans open_positions/financials/config)."""
+        collection = _FakeDashboardStateCollection(None)
+        fake_db = _FakeDb(collection)
+
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            mongo_repo.save_maker_pending_orders([{"coin": "BTC"}])
+
+        self.assertIsNone(collection.doc)
+        _filt, _update, upsert = collection.update_one_calls[0]
+        self.assertFalse(upsert)
 
     def test_partial_set_preserves_the_rest_of_the_document(self):
         """#498, critère d'acceptation : le `$set` partiel ne doit écraser ni les champs de la
