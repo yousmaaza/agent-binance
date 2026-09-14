@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
+from core.dashboard_state import publish_trade_history_slices
 from core.env import PROJECT_DIR
 from core.lock import acquire_lock, is_locked, release_lock
 from core.state_manager import load_trade_history, save_trade_history
@@ -522,6 +523,7 @@ def _maker_exit_watcher_tick(cfg: dict) -> None:
 
     if history_changed:
         save_trade_history(history)
+        publish_trade_history_slices(history, "Maker Exit Watcher")  # #500 : sans attendre la Phase 7
 
     _write_watcher_state(tick_state["status"], tick_state["last_error"], orders_checked,
                           fills_delta, fallbacks_delta)

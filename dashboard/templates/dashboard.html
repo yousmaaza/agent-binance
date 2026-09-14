@@ -175,6 +175,12 @@
     {% if not results.positions %}
       <p class="empty">Aucune position ouverte.</p>
     {% endif %}
+    {% if results.positions and results.positions_freshness.is_stale %}
+    <p class="freshness stale">
+      Donnée vieille de {{ "%.0f"|format(results.positions_freshness.age_minutes) if results.positions_freshness.age_minutes is not none else "?" }} min
+      — pas un suivi temps réel, les watchers ne publient plus (Mongo injoignable ou threads arrêtés).
+    </p>
+    {% endif %}
     {% for pos in results.positions %}
       <div class="hold">
         <div class="hold-h">
@@ -448,6 +454,12 @@
   </section>
 {% else %}
   {% set t = s.totals %}
+  {% if s.freshness.is_stale %}
+  <p class="freshness stale">
+    Donnée vieille de {{ "%.0f"|format(s.freshness.age_minutes) if s.freshness.age_minutes is not none else "?" }} min
+    — pas un suivi temps réel, les watchers ne publient plus (Mongo injoignable ou threads arrêtés).
+  </p>
+  {% endif %}
   <section>
     <h2>Ce que les ventes ont donné<em>{{ t.count }} sorties</em></h2>
     <div class="wfilter">

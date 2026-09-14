@@ -125,5 +125,97 @@ class TestSaveMakerPendingOrders(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestSaveTradeHistorySlices(unittest.TestCase):
+    """#500 : mêmes garde-fous que save_maker_pending_orders (#498), pour les trois slices
+    dérivées de trade_history (open_positions, closed_trades, financials) publiées par les
+    watchers entre deux passages de la Phase 7."""
+
+    def test_no_mongo_uri_returns_false_without_attempting_write(self):
+        with patch.object(mongo_repo, "_db", return_value=None):
+            result = mongo_repo.save_trade_history_slices([{"coin": "BTC"}], [], {})
+        self.assertFalse(result)
+
+    def test_successful_write_sets_the_three_slices_and_dedicated_timestamp(self):
+        collection = _FakeDashboardStateCollection({"_id": "current"})
+        fake_db = _FakeDb(collection)
+        open_positions = [{"coin": "ETH", "entry_price": 2000.0}]
+        closed_trades = [{"coin": "XBT", "pnl_usdc": 1.43}]
+        financials = {"global": {"net_usdc": 1.43}}
+
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            result = mongo_repo.save_trade_history_slices(open_positions, closed_trades, financials)
+
+        self.assertTrue(result)
+        filt, update, upsert = collection.update_one_calls[0]
+        self.assertEqual(filt, {"_id": "current"})
+        self.assertFalse(upsert)
+        self.assertEqual(
+            set(update["$set"].keys()),
+            {"open_positions", "closed_trades", "financials", "watchers.trade_history_slices_updated_at"},
+        )
+        self.assertEqual(update["$set"]["open_positions"], open_positions)
+        self.assertEqual(update["$set"]["closed_trades"], closed_trades)
+        self.assertEqual(update["$set"]["financials"], financials)
+        self.assertIsInstance(update["$set"]["watchers.trade_history_slices_updated_at"], str)
+
+    def test_no_document_yet_is_not_created_by_the_watcher(self):
+        """Sans `upsert` : une publication avant le premier passage de la Phase 7 ne doit créer
+        aucun document amputé (sans `config`, `watchers.maker_pending_orders`, ...)."""
+        collection = _FakeDashboardStateCollection(None)
+        fake_db = _FakeDb(collection)
+
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            mongo_repo.save_trade_history_slices([{"coin": "BTC"}], [], {})
+
+        self.assertIsNone(collection.doc)
+        _filt, _update, upsert = collection.update_one_calls[0]
+        self.assertFalse(upsert)
+
+    def test_partial_set_preserves_the_rest_of_the_document(self):
+        """Critère d'acceptation #500 : le `$set` partiel ne doit écraser ni les champs propres à
+        la Phase 7 (`config`, `updated_at`) ni les autres watchers (`maker_pending_orders`)."""
+        existing_doc = {
+            "_id": "current",
+            "updated_at": "2026-09-14T08:00:00+00:00",
+            "config": {"min_signal_score": 6},
+            "open_positions": [{"coin": "XBT"}],
+            "closed_trades": [{"coin": "OLD"}],
+            "financials": {"global": {"net_usdc": 0.0}},
+            "watchers": {
+                "tp_watcher": {"status": "ok"},
+                "maker_watcher": {"total_fills": 5},
+                "maker_pending_orders": [{"coin": "SOL", "txid": "PENDINGTX"}],
+            },
+        }
+        collection = _FakeDashboardStateCollection(existing_doc)
+        fake_db = _FakeDb(collection)
+        new_positions = [{"coin": "ETH"}]
+        new_closed = [{"coin": "XBT", "pnl_usdc": 1.43}]
+        new_financials = {"global": {"net_usdc": 1.43}}
+
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            mongo_repo.save_trade_history_slices(new_positions, new_closed, new_financials)
+
+        self.assertEqual(collection.doc["updated_at"], "2026-09-14T08:00:00+00:00")
+        self.assertEqual(collection.doc["config"], {"min_signal_score": 6})
+        self.assertEqual(collection.doc["open_positions"], new_positions)
+        self.assertEqual(collection.doc["closed_trades"], new_closed)
+        self.assertEqual(collection.doc["financials"], new_financials)
+        self.assertEqual(collection.doc["watchers"]["tp_watcher"], {"status": "ok"})
+        self.assertEqual(collection.doc["watchers"]["maker_watcher"], {"total_fills": 5})
+        self.assertEqual(collection.doc["watchers"]["maker_pending_orders"], [{"coin": "SOL", "txid": "PENDINGTX"}])
+        self.assertIn("trade_history_slices_updated_at", collection.doc["watchers"])
+
+    def test_write_exception_is_caught_and_returns_false(self):
+        class _RaisingCollection:
+            def update_one(self, *a, **kw):
+                raise RuntimeError("Mongo injoignable")
+
+        fake_db = _FakeDb(_RaisingCollection())
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            result = mongo_repo.save_trade_history_slices([{"coin": "BTC"}], [], {})
+        self.assertFalse(result)
+
+
 if __name__ == "__main__":
     unittest.main()

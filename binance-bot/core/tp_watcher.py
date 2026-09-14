@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
+from core.dashboard_state import publish_trade_history_slices
 from core.env import PROJECT_DIR
 from core.lock import acquire_lock, is_locked, release_lock
 from core.maker_exit_watcher import (
@@ -177,5 +178,6 @@ def _tp_watcher_tick():
 
     if changed:
         save_trade_history(history)
+        publish_trade_history_slices(history, "TP Watcher")  # #500 : sans attendre la Phase 7
 
     _write_watcher_state(tick_status, tick_last_error, positions_checked, sales_delta)

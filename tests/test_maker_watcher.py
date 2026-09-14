@@ -517,6 +517,104 @@ class TestNullOrderStatusValueHandledWithoutRaising(unittest.TestCase):
         self.assertEqual(saved_pending[0]["txid"], "TX1")
 
 
+class TestMakerWatcherPublishesTradeHistorySlices(unittest.TestCase):
+    """#500 : après une sauvegarde de trade_history (remplissage, repli marché), le watcher
+    republie open_positions/closed_trades/financials dans dashboard_state — sans attendre le
+    prochain passage de la Phase 7 (jusqu'à 4h)."""
+
+    def _tick(self, pending_orders, fake_cli, mock_publish, config=None, history=None):
+        history = history if history is not None else []
+        with patch("core.maker_watcher.is_locked", return_value=False), \
+             patch("core.maker_watcher.acquire_lock"), \
+             patch("core.maker_watcher.release_lock"), \
+             patch("core.maker_watcher.send_telegram"), \
+             patch("core.maker_watcher._write_watcher_state"), \
+             patch("core.maker_watcher.load_trade_history", return_value=history), \
+             patch("core.maker_watcher.save_trade_history"), \
+             patch("core.maker_watcher.load_maker_pending_orders", return_value=pending_orders), \
+             patch("core.maker_watcher.save_maker_pending_orders"), \
+             patch("core.maker_watcher.mongo_repo"), \
+             patch("core.maker_watcher.publish_trade_history_slices", mock_publish), \
+             patch("core.maker_watcher._cli", side_effect=fake_cli):
+            maker_watcher._maker_watcher_tick(config or BASE_CONFIG)
+        return history
+
+    def test_full_fill_publishes_trade_history_slices(self):
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
+            "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX1"]},
+        })
+        mock_publish = MagicMock(return_value=True)
+
+        history = self._tick([pending], fake_cli, mock_publish)
+
+        mock_publish.assert_called_once_with(history, "Maker Watcher")
+
+    def test_market_fallback_publishes_trade_history_slices(self):
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"b": ["2007.0", "0.01"], "c": ["2005.0", "0.01"]},
+            "order_buy_ETHUSDC_market": {"txid": ["MARKETTX1"]},
+            "query-orders_MARKETTX1": {"status": "closed", "cost": "201.0", "vol_exec": "0.1", "fee": "0.4"},
+            "pairs_ETHUSDC": {"lot_decimals": 8},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX2"]},
+        })
+        mock_publish = MagicMock(return_value=True)
+
+        history = self._tick([pending], fake_cli, mock_publish)
+
+        mock_publish.assert_called_once_with(history, "Maker Watcher")
+
+    def test_unchanged_tick_does_not_publish(self):
+        """L'amend d'un ordre limite ne touche pas trade_history — rien à republier."""
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"b": ["1999.5", "0.01"], "c": ["2000.0", "0.01"]},
+        })
+        mock_publish = MagicMock(return_value=True)
+
+        self._tick([pending], fake_cli, mock_publish)
+
+        mock_publish.assert_not_called()
+
+    def test_mongo_failure_during_publication_does_not_interrupt_the_watcher(self):
+        """Bout en bout, sans mocker publish_trade_history_slices : une exception Mongo réelle
+        (via core.dashboard_state.mongo_repo) ne doit jamais interrompre le tick — le reste
+        (état local, ordres pending) se déroule normalement."""
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
+            "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX1"]},
+        })
+        mock_dashboard_mongo = MagicMock()
+        mock_dashboard_mongo.save_trade_history_slices.side_effect = Exception("Mongo injoignable")
+        history = []
+
+        with patch("core.maker_watcher.is_locked", return_value=False), \
+             patch("core.maker_watcher.acquire_lock"), \
+             patch("core.maker_watcher.release_lock"), \
+             patch("core.maker_watcher.send_telegram"), \
+             patch("core.maker_watcher._write_watcher_state") as mock_write_state, \
+             patch("core.maker_watcher.load_trade_history", return_value=history), \
+             patch("core.maker_watcher.save_trade_history") as mock_save_history, \
+             patch("core.maker_watcher.load_maker_pending_orders", return_value=[pending]), \
+             patch("core.maker_watcher.save_maker_pending_orders") as mock_save_pending, \
+             patch("core.maker_watcher.mongo_repo"), \
+             patch("core.dashboard_state.mongo_repo", mock_dashboard_mongo), \
+             patch("core.maker_watcher._cli", side_effect=fake_cli):
+            maker_watcher._maker_watcher_tick(BASE_CONFIG)  # ne doit pas lever
+
+        mock_dashboard_mongo.save_trade_history_slices.assert_called_once()
+        mock_save_history.assert_called_once()
+        mock_save_pending.assert_called_once()
+        mock_write_state.assert_called_once()
+
+
 class TestMakerPendingPublishedToMongo(unittest.TestCase):
     """#498 : le watcher publie `watchers.maker_pending_orders` dans dashboard_state à chaque
     changement (pose, ajustement, remplissage, repli, abandon) — jamais à chaque tick."""

@@ -75,6 +75,34 @@ class TestMakerFreshness(unittest.TestCase):
         self.assertTrue(f["is_stale"])
 
 
+class TestTradeHistoryFreshness(unittest.TestCase):
+    """#500 : les positions/ventes dérivées de trade_history ont leur propre cadence de
+    publication (les watchers), distincte du reste du document (Phase 7) — elles doivent se
+    dater sur `watchers.trade_history_slices_updated_at`, pas sur `updated_at` du document
+    entier (même patron que `maker_freshness`, #498)."""
+
+    def test_uses_dedicated_timestamp_when_present(self):
+        now = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        watchers = {"trade_history_slices_updated_at": (now - timedelta(minutes=3)).isoformat()}
+        f = viewdata.trade_history_freshness(watchers, (now - timedelta(hours=3)).isoformat(),
+                                              stale_threshold_minutes=300, now=now)
+        self.assertAlmostEqual(f["age_minutes"], 3, delta=0.1)
+        self.assertFalse(f["is_stale"])
+
+    def test_falls_back_to_document_updated_at_when_watcher_never_published(self):
+        now = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        f = viewdata.trade_history_freshness({}, (now - timedelta(minutes=30)).isoformat(),
+                                              stale_threshold_minutes=300, now=now)
+        self.assertAlmostEqual(f["age_minutes"], 30, delta=0.1)
+        self.assertFalse(f["is_stale"])
+
+    def test_stale_beyond_threshold(self):
+        now = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        watchers = {"trade_history_slices_updated_at": (now - timedelta(hours=6)).isoformat()}
+        f = viewdata.trade_history_freshness(watchers, None, stale_threshold_minutes=300, now=now)
+        self.assertTrue(f["is_stale"])
+
+
 class TestEquityCurvePoints(unittest.TestCase):
     def test_empty_curve_yields_empty_string(self):
         self.assertEqual(viewdata.equity_curve_points([]), "")

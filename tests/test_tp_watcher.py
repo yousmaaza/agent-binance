@@ -10,7 +10,7 @@ import json
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
@@ -128,6 +128,92 @@ class TestTpWatcherMakerExitHandoff(unittest.TestCase):
 
         mock_attempt.assert_not_called()
         mock_save.assert_not_called()
+
+
+class TestTpWatcherPublishesTradeHistorySlices(unittest.TestCase):
+    """#500 : après une sauvegarde de trade_history (vente au marché, ou handoff à la sortie
+    maker), le watcher republie open_positions/closed_trades/financials dans dashboard_state —
+    sans attendre le prochain passage de la Phase 7 (jusqu'à 4h)."""
+
+    def test_market_sell_close_publishes_trade_history_slices(self):
+        pos = {
+            "trade_id": "T1", "coin": "ETH", "status": "open",
+            "entry_price": 1000, "quantity": 1, "tp_price": 1100,
+            "entry_fee_usdc": 0.5, "sl_order_txid": None,
+        }
+        history = [pos]
+        mock_publish = MagicMock(return_value=True)
+
+        with patch("core.tp_watcher.is_locked", return_value=False), \
+             patch("core.tp_watcher.acquire_lock"), \
+             patch("core.tp_watcher.release_lock"), \
+             patch("core.tp_watcher.send_telegram"), \
+             patch("core.tp_watcher._write_watcher_state"), \
+             patch("core.tp_watcher._load_config", return_value={"maker_exit_enabled": False}), \
+             patch("core.tp_watcher.load_trade_history", return_value=history), \
+             patch("core.tp_watcher.save_trade_history"), \
+             patch("core.tp_watcher.publish_trade_history_slices", mock_publish), \
+             patch("core.tp_watcher._cli", side_effect=_fake_cli):
+            tp_watcher._tp_watcher_tick()
+
+        mock_publish.assert_called_once_with(history, "TP Watcher")
+
+    def test_maker_exit_handoff_publishes_trade_history_slices(self):
+        """Le hand-off à attempt_maker_exit() déclenche déjà save_trade_history() (comportement
+        existant) : la publication doit s'y greffer, alors même que la position reste "open"."""
+        pos = {
+            "trade_id": "T1", "coin": "ETH", "status": "open",
+            "entry_price": 1000, "quantity": 1, "tp_price": 1100,
+            "entry_fee_usdc": 0.5, "sl_order_txid": "SLTX0", "stop_price": 950.0,
+        }
+        history = [pos]
+        new_pending = {"trade_id": "T1", "coin": "ETH", "pair": "ETHUSDC", "txid": "SELLTX1",
+                       "quantity": 1, "stop_price": 950.0, "close_reason": "tp_watcher"}
+        mock_publish = MagicMock(return_value=True)
+
+        with patch("core.tp_watcher.is_locked", return_value=False), \
+             patch("core.tp_watcher.acquire_lock"), \
+             patch("core.tp_watcher.release_lock"), \
+             patch("core.tp_watcher.send_telegram"), \
+             patch("core.tp_watcher._write_watcher_state"), \
+             patch("core.tp_watcher._load_config", return_value={"maker_exit_enabled": True}), \
+             patch("core.tp_watcher.load_trade_history", return_value=history), \
+             patch("core.tp_watcher.save_trade_history"), \
+             patch("core.tp_watcher.load_maker_exit_pending_orders", return_value=[]), \
+             patch("core.tp_watcher.save_maker_exit_pending_orders"), \
+             patch("core.tp_watcher.attempt_maker_exit", return_value=new_pending), \
+             patch("core.tp_watcher.publish_trade_history_slices", mock_publish), \
+             patch("core.tp_watcher._cli", side_effect=_fake_cli):
+            tp_watcher._tp_watcher_tick()
+
+        mock_publish.assert_called_once_with(history, "TP Watcher")
+
+    def test_position_already_pending_does_not_publish(self):
+        pos = {
+            "trade_id": "T1", "coin": "ETH", "status": "open",
+            "entry_price": 1000, "quantity": 1, "tp_price": 1100,
+            "entry_fee_usdc": 0.5, "sl_order_txid": "SLTX0", "stop_price": 950.0,
+        }
+        history = [pos]
+        already_pending = [{"trade_id": "T1", "coin": "ETH", "pair": "ETHUSDC", "txid": "SELLTX1"}]
+        mock_publish = MagicMock(return_value=True)
+
+        with patch("core.tp_watcher.is_locked", return_value=False), \
+             patch("core.tp_watcher.acquire_lock"), \
+             patch("core.tp_watcher.release_lock"), \
+             patch("core.tp_watcher.send_telegram"), \
+             patch("core.tp_watcher._write_watcher_state"), \
+             patch("core.tp_watcher._load_config", return_value={"maker_exit_enabled": True}), \
+             patch("core.tp_watcher.load_trade_history", return_value=history), \
+             patch("core.tp_watcher.save_trade_history"), \
+             patch("core.tp_watcher.load_maker_exit_pending_orders", return_value=already_pending), \
+             patch("core.tp_watcher.save_maker_exit_pending_orders"), \
+             patch("core.tp_watcher.attempt_maker_exit"), \
+             patch("core.tp_watcher.publish_trade_history_slices", mock_publish), \
+             patch("core.tp_watcher._cli", side_effect=_fake_cli):
+            tp_watcher._tp_watcher_tick()
+
+        mock_publish.assert_not_called()
 
 
 class _StopLoop(BaseException):

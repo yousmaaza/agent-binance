@@ -57,6 +57,24 @@ def maker_freshness(watchers: dict, dashboard_updated_at, stale_threshold_minute
     }
 
 
+def trade_history_freshness(watchers: dict, dashboard_updated_at, stale_threshold_minutes: int,
+                             now: datetime | None = None) -> dict:
+    """Fraîcheur propre aux positions/ventes dérivées de trade_history (#500) : les watchers
+    (maker_watcher, maker_exit_watcher, tp_watcher) republient `open_positions`/`closed_trades`/
+    `financials` à chaque changement, sur une cadence distincte de celle de la Phase 7 —
+    `watchers.trade_history_slices_updated_at` date cette tranche précise. Repli sur
+    l'horodatage global si aucun watcher n'a encore publié (avant #500, ou publication en panne),
+    même patron que `maker_freshness` (#498)."""
+    now = now or datetime.now(timezone.utc)
+    updated_at = parse_iso(watchers.get("trade_history_slices_updated_at")) or parse_iso(dashboard_updated_at)
+    age_min = (now - updated_at).total_seconds() / 60 if updated_at else None
+    return {
+        "updated_at": updated_at,
+        "age_minutes": age_min,
+        "is_stale": age_min is None or age_min > stale_threshold_minutes,
+    }
+
+
 def equity_curve_points(curve: list, width: int = 300, height: int = 80, pad: int = 4) -> str:
     if not curve:
         return ""

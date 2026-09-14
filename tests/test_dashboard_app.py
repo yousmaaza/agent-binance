@@ -521,5 +521,76 @@ class TestMakerOrdersGhostAndFreshness(DashboardAppTestBase):
         self.assertNotIn('class="freshness stale"', body)
 
 
+class TestPositionsAndSalesFreshness(DashboardAppTestBase):
+    """#500 : open_positions/closed_trades peuvent désormais être plus fraîches que le document
+    (publiées par un watcher entre deux cycles) ou, à l'inverse, périmées si la publication est
+    en panne (Mongo injoignable, threads arrêtés) — l'un et l'autre doivent se dater à l'écran
+    plutôt que se faire passer pour du direct, même patron que la carte maker (#498)."""
+
+    def _closed_trade(self):
+        return {"coin": "SOL", "entry_date": "2026-08-25T08:00:00+00:00",
+                "exit_date": "2026-08-27T12:00:00+00:00", "hold_hours": 52.0,
+                "entry_price": 100.0, "exit_price": 104.0, "tp_price": 104.0, "quantity": 1.0,
+                "pnl_gross_usdc": 4.0, "fees_usdc": 1.0, "pnl_usdc": 3.0,
+                "close_reason": "tp_watcher", "maker_or_taker": "maker", "fees_estimated": False,
+                "cycle_id": None}
+
+    def _get(self, watchers, updated_at=None):
+        state = dict(
+            SAMPLE_STATE,
+            updated_at=(updated_at or datetime.now(timezone.utc)).isoformat(),
+            closed_trades=[self._closed_trade()],
+            watchers=watchers,
+        )
+        with patch("app.get_dashboard_state", return_value=state), \
+             patch("app.get_recent_cycles", return_value=SAMPLE_CYCLES), \
+             patch("app.get_prices", return_value={"BNB": 510.0}):
+            self._login()
+            return self.client.get("/?tab=ventes&periode=tout")
+
+    def test_stale_trade_history_slices_are_dated_on_positions_and_sales(self):
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [],
+            "trade_history_slices_updated_at": (now - timedelta(hours=6)).isoformat(),
+        }
+        r = self._get(watchers, updated_at=now)
+        body = r.data.decode("utf-8")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(body.count('class="freshness stale"'), 2)  # positions + ventes
+        self.assertIn("pas un suivi temps réel", body)
+
+    def test_fresh_trade_history_slices_do_not_show_stale_note(self):
+        now = datetime.now(timezone.utc)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [],
+            "trade_history_slices_updated_at": now.isoformat(),
+        }
+        r = self._get(watchers, updated_at=now)
+        body = r.data.decode("utf-8")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn('class="freshness stale"', body)
+
+    def test_no_dedicated_timestamp_falls_back_to_document_updated_at(self):
+        """Avant #500 (ou publication jamais déclenchée) : le document entier date de plus de
+        4h -> repli sur `updated_at`, toujours daté plutôt que présenté comme du direct."""
+        stale_now = datetime.now(timezone.utc) - timedelta(hours=6)
+        watchers = {
+            "maker_watcher": {"total_fills": 5, "total_fallbacks": 2, "total_abandoned": 1},
+            "maker_pending_orders": [],
+        }
+        r = self._get(watchers, updated_at=stale_now)
+        body = r.data.decode("utf-8")
+
+        self.assertEqual(r.status_code, 200)
+        # positions + ventes (le bandeau global porte la classe "pad freshness stale", motif distinct)
+        self.assertEqual(body.count('class="freshness stale"'), 2)
+        self.assertIn('class="pad freshness stale"', body)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -394,24 +394,179 @@ class TestDashboardStateWatchersAndConfig(unittest.TestCase):
 
 
 
+class TestDashboardStateFullDocumentUnchangedByExtraction(unittest.TestCase):
+    """#500 : `_open_positions`/`_closed_trades`/`_financials` (et leurs aides) déménagent de ce
+    script vers `core/dashboard_state.py`, un module partagé importable par les watchers — la
+    Phase 7 doit produire exactement le même document qu'avant. Un scénario riche (positions
+    ouvertes, ventes sur trois fenêtres temporelles, frais manquants, égalité de jour pour la
+    courbe d'équité) figé ici comme caractérisation, à faire passer AVANT le déplacement puis
+    revérifier APRÈS : toute divergence, même sur une seule clé, doit le faire échouer."""
+
+    def test_full_document_matches_expected_values_key_by_key(self):
+        now = datetime.now(timezone.utc)
+        t1_exit = now - timedelta(days=2)
+        t2_exit = now - timedelta(days=2)  # même horodatage que t1 -> même jour, dédup équité
+        t3_exit = now - timedelta(days=15)
+        t4_exit = now - timedelta(days=45)
+
+        history = [
+            {
+                "coin": "BTC", "status": "open", "entry_price": 60000, "stop_price": 58000,
+                "tp_price": 65000, "quantity": 0.01, "date": "2026-08-20T10:00:00+00:00",
+                "entry_fee_usdc": 0.5, "maker_or_taker": "maker",
+            },
+            {
+                "coin": "ETH", "status": "open", "entry_price": 3000, "stop_price": 2800,
+                "tp_price": 3400, "quantity": 0.1, "date": "2026-08-21T09:00:00+00:00",
+                "entry_fee_usdc": 0.3, "maker_or_taker": "taker",
+            },
+            {
+                "trade_id": "t1", "coin": "BTC", "status": "closed",
+                "date": (t1_exit - timedelta(days=1)).isoformat(), "exit_date": t1_exit.isoformat(),
+                "entry_price": 100.0, "exit_price": 110.0, "tp_price": 112.0, "stop_price": 95.0,
+                "quantity": 1.0, "pnl_gross_usdc": 11.0, "fees_usdc": 1.0, "pnl_usdc": 10.0,
+                "close_reason": "tp_watcher", "cycle_id": "C1", "maker_or_taker": "maker",
+                "exit_maker_or_taker": "maker", "exit_fee_usdc": 0.5, "fees_estimated": False,
+            },
+            {
+                "trade_id": "t2", "coin": "ETH", "status": "closed",
+                "date": (t2_exit - timedelta(days=1)).isoformat(), "exit_date": t2_exit.isoformat(),
+                "entry_price": 50.0, "exit_price": 45.0, "tp_price": 60.0, "stop_price": 40.0,
+                "quantity": 2.0, "pnl_gross_usdc": -4.5, "fees_usdc": 0.5, "pnl_usdc": -5.0,
+                "close_reason": "sl_hit", "cycle_id": None, "maker_or_taker": "taker",
+                "exit_maker_or_taker": None, "exit_fee_usdc": None, "fees_estimated": False,
+            },
+            {
+                "trade_id": "t3", "coin": "SOL", "status": "closed",
+                "date": (t3_exit - timedelta(days=1)).isoformat(), "exit_date": t3_exit.isoformat(),
+                "entry_price": 20.0, "exit_price": 24.0, "tp_price": 24.5, "stop_price": 18.0,
+                "quantity": 5.0, "pnl_gross_usdc": None, "fees_usdc": None, "pnl_usdc": 20.0,
+                "close_reason": None, "cycle_id": None, "maker_or_taker": "maker",
+                "exit_maker_or_taker": "taker", "exit_fee_usdc": None, "fees_estimated": False,
+            },
+            {
+                "trade_id": "t4", "coin": "XRP", "status": "closed",
+                "date": (t4_exit - timedelta(days=1)).isoformat(), "exit_date": t4_exit.isoformat(),
+                "entry_price": 0.5, "exit_price": 0.46, "tp_price": 0.55, "stop_price": 0.44,
+                "quantity": 1000.0, "pnl_gross_usdc": -7.0, "fees_usdc": 1.0, "pnl_usdc": -8.0,
+                "close_reason": "signal_sell_score3", "cycle_id": None, "maker_or_taker": "taker",
+                "exit_maker_or_taker": None, "exit_fee_usdc": None, "fees_estimated": True,
+            },
+            {"coin": "STX", "status": "cancelled"},
+        ]
+        maker_watcher = {"total_ticks": 5, "total_fills": 2, "total_fallbacks": 1, "total_abandoned": 0}
+        tp_watcher = {"total_ticks": 9}
+        pending = [{"coin": "XRP", "quantity": 10, "initial_limit_price": 0.5}]
+        config_data = {"min_signal_score": 6, "rsi_zone_min": 30, "display_timezone": "Europe/Paris"}
+
+        set_doc = _run_phase7_dashboard(
+            history, doc={"status": "completed"}, config_data=config_data,
+            maker_watcher_data=maker_watcher, tp_watcher_data=tp_watcher, maker_pending_data=pending,
+        )
+
+        self.assertEqual(
+            set(set_doc.keys()),
+            {"_id", "updated_at", "cycle_id", "cycle_status", "open_positions", "closed_trades",
+             "financials", "watchers", "config"},
+        )
+
+        self.assertEqual(set_doc["_id"], "current")
+        self.assertEqual(set_doc["cycle_status"], "completed")
+
+        positions = set_doc["open_positions"]
+        self.assertEqual(len(positions), 2)
+        btc_pos = next(p for p in positions if p["coin"] == "BTC")
+        eth_pos = next(p for p in positions if p["coin"] == "ETH")
+        self.assertEqual(
+            btc_pos,
+            {"coin": "BTC", "entry_price": 60000, "stop_price": 58000, "tp_price": 65000,
+             "quantity": 0.01, "opened_at": "2026-08-20T10:00:00+00:00", "entry_fee_usdc": 0.5,
+             "maker_or_taker": "maker"},
+        )
+        self.assertEqual(
+            eth_pos,
+            {"coin": "ETH", "entry_price": 3000, "stop_price": 2800, "tp_price": 3400,
+             "quantity": 0.1, "opened_at": "2026-08-21T09:00:00+00:00", "entry_fee_usdc": 0.3,
+             "maker_or_taker": "taker"},
+        )
+
+        closed_trades = set_doc["closed_trades"]
+        self.assertEqual([t["coin"] for t in closed_trades], ["BTC", "ETH", "SOL", "XRP"])
+        t1_row = closed_trades[0]
+        self.assertEqual(t1_row["entry_price"], 100.0)
+        self.assertEqual(t1_row["exit_price"], 110.0)
+        self.assertAlmostEqual(t1_row["hold_hours"], 24.0)
+        self.assertEqual(t1_row["pnl_gross_usdc"], 11.0)
+        self.assertEqual(t1_row["fees_usdc"], 1.0)
+        self.assertEqual(t1_row["pnl_usdc"], 10.0)
+        self.assertEqual(t1_row["close_reason"], "tp_watcher")
+        self.assertEqual(t1_row["cycle_id"], "C1")
+        self.assertEqual(t1_row["maker_or_taker"], "maker")
+        self.assertEqual(t1_row["exit_maker_or_taker"], "maker")
+        self.assertEqual(t1_row["exit_fee_usdc"], 0.5)
+        self.assertFalse(t1_row["fees_estimated"])
+        self.assertNotIn("entry_order_id", t1_row)
+        self.assertNotIn("sl_order_txid", t1_row)
+        t3_row = next(t for t in closed_trades if t["coin"] == "SOL")
+        self.assertEqual(t3_row["close_reason"], None)
+        self.assertIsNone(t3_row["fees_usdc"])
+        t4_row = next(t for t in closed_trades if t["coin"] == "XRP")
+        self.assertTrue(t4_row["fees_estimated"])
+
+        fin = set_doc["financials"]
+        glob = fin["global"]
+        self.assertEqual(glob["net_usdc"], 17.0)
+        self.assertEqual(glob["fees_usdc"], 2.5)
+        self.assertEqual(glob["gross_usdc"], 19.5)
+        self.assertEqual(glob["count"], 4)
+        self.assertEqual(glob["wins"], 2)
+        self.assertEqual(glob["losses"], 2)
+        self.assertEqual(glob["trades_without_fees"], 1)
+
+        by_period = fin["by_period"]
+        self.assertEqual(by_period["0_7d"]["net_usdc"], 5.0)
+        self.assertEqual(by_period["0_7d"]["count"], 2)
+        self.assertEqual(by_period["8_30d"]["net_usdc"], 20.0)
+        self.assertEqual(by_period["8_30d"]["count"], 1)
+        self.assertEqual(by_period["30d_plus"]["net_usdc"], -8.0)
+        self.assertEqual(by_period["30d_plus"]["count"], 1)
+
+        self.assertEqual(fin["pnl_by_coin"], {"BTC": 10.0, "ETH": -5.0, "SOL": 20.0, "XRP": -8.0})
+        self.assertEqual(
+            fin["close_reason_counts"],
+            {"tp_watcher": 1, "sl_hit": 1, "unknown": 1, "signal_sell_score3": 1},
+        )
+
+        curve = fin["equity_curve"]
+        self.assertEqual(len(curve), 3)
+        self.assertEqual(curve[0]["date"], t4_exit.strftime("%Y-%m-%d"))
+        self.assertEqual(curve[0]["cumulative_pnl_usdc"], -8.0)
+        self.assertEqual(curve[1]["date"], t3_exit.strftime("%Y-%m-%d"))
+        self.assertEqual(curve[1]["cumulative_pnl_usdc"], 12.0)
+        self.assertEqual(curve[2]["date"], t1_exit.strftime("%Y-%m-%d"))
+        self.assertEqual(curve[2]["cumulative_pnl_usdc"], 17.0)
+
+        self.assertEqual(set_doc["watchers"]["maker_watcher"], maker_watcher)
+        self.assertEqual(set_doc["watchers"]["tp_watcher"], tp_watcher)
+        self.assertEqual(set_doc["watchers"]["maker_pending_orders"], pending)
+        self.assertEqual(set_doc["config"]["min_signal_score"], 6)
+        self.assertEqual(set_doc["config"]["rsi_zone_min"], 30)
+        self.assertEqual(set_doc["config"]["display_timezone"], "Europe/Paris")
+
+
 class TestClosedTradesProjection(unittest.TestCase):
     """#455 — la liste des ventes publiée pour l'onglet Ventes du dashboard."""
 
     def _module(self):
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path = os.path.join(root, "binance-bot", "core", "phases", "phase7_mongo.py")
-        src_text = open(path).read()
-        start = src_text.index("CLOSED_TRADES_LIMIT")
-        end = src_text.index("def _build_dashboard_state")
-        sys.path.insert(0, os.path.join(root, "binance-bot"))
-        from core.timing import parse_dt
-        ns = {"parse_dt": parse_dt}
-        exec(compile(src_text[start:end], "p7_closed", "exec"), ns)  # noqa: S102
+        # #500 : _closed_trades a déménagé dans core/dashboard_state.py, module partagé (Phase 7 +
+        # watchers) importable normalement — plus besoin d'extraire le source de phase7_mongo.py
+        # par exec() (celui-ci s'exécute au chargement, lit sys.argv, ouvre un fichier /tmp).
+        import core.dashboard_state as ns
         return ns
 
     def test_projects_the_fields_the_dashboard_needs(self):
         ns = self._module()
-        rows = ns["_closed_trades"]([{
+        rows = ns._closed_trades([{
             "coin": "SOL", "date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00",
             "entry_price": 100.0, "exit_price": 104.0, "tp_price": 104.2, "stop_price": 99.0,
             "quantity": 1.0, "pnl_gross_usdc": 4.0, "fees_usdc": 1.0, "pnl_usdc": 3.0,
@@ -431,21 +586,21 @@ class TestClosedTradesProjection(unittest.TestCase):
     def test_cycle_id_present_is_forwarded(self):
         """#470 : une vente fermée pendant un cycle porte son cycle_id jusqu'au dashboard."""
         ns = self._module()
-        rows = ns["_closed_trades"]([{"coin": "SOL", "cycle_id": "20260828_100500"}])
+        rows = ns._closed_trades([{"coin": "SOL", "cycle_id": "20260828_100500"}])
         self.assertEqual(rows[0]["cycle_id"], "20260828_100500")
 
     def test_cycle_id_absent_becomes_explicit_none(self):
         """#470 : une vente sans champ cycle_id (hors cycle, ou antérieure à la migration) ne
         doit jamais faire planter la projection ni être confondue avec un identifiant réel."""
         ns = self._module()
-        rows = ns["_closed_trades"]([{"coin": "SOL"}])
+        rows = ns._closed_trades([{"coin": "SOL"}])
         self.assertIn("cycle_id", rows[0])
         self.assertIsNone(rows[0]["cycle_id"])
 
     def test_exit_maker_or_taker_present_is_forwarded(self):
         """#490 : le mode de sortie écrit par core/maker_exit_watcher.py doit sortir du bot."""
         ns = self._module()
-        rows = ns["_closed_trades"]([
+        rows = ns._closed_trades([
             {"coin": "SOL", "exit_maker_or_taker": "maker"},
             {"coin": "ADA", "exit_maker_or_taker": "taker"},
         ])
@@ -456,19 +611,19 @@ class TestClosedTradesProjection(unittest.TestCase):
         """#490 : une vente antérieure à #488 (ou sortie hors watcher) n'a jamais le champ —
         jamais confondue avec un mode de sortie connu."""
         ns = self._module()
-        rows = ns["_closed_trades"]([{"coin": "XRP"}])
+        rows = ns._closed_trades([{"coin": "XRP"}])
         self.assertIn("exit_maker_or_taker", rows[0])
         self.assertIsNone(rows[0]["exit_maker_or_taker"])
 
     def test_hold_hours_computed_from_the_two_dates(self):
         ns = self._module()
-        rows = ns["_closed_trades"]([{
+        rows = ns._closed_trades([{
             "date": "2026-08-25T08:00:00+00:00", "exit_date": "2026-08-27T12:00:00+00:00"}])
         self.assertAlmostEqual(rows[0]["hold_hours"], 52.0)
 
     def test_missing_date_does_not_crash(self):
         ns = self._module()
-        rows = ns["_closed_trades"]([{"coin": "X", "exit_date": None}])
+        rows = ns._closed_trades([{"coin": "X", "exit_date": None}])
         self.assertIsNone(rows[0]["hold_hours"])
 
     def test_most_recent_first_and_bounded(self):
@@ -476,7 +631,7 @@ class TestClosedTradesProjection(unittest.TestCase):
         ns = self._module()
         trades = [{"coin": f"C{i}", "exit_date": f"2026-01-{i % 28 + 1:02d}T00:00:00+00:00"}
                   for i in range(500)]
-        rows = ns["_closed_trades"](trades, limit=10)
+        rows = ns._closed_trades(trades, limit=10)
         self.assertEqual(len(rows), 10)
         dates = [r["exit_date"] for r in rows]
         self.assertEqual(dates, sorted(dates, reverse=True))
@@ -484,7 +639,7 @@ class TestClosedTradesProjection(unittest.TestCase):
     def test_fees_estimated_is_always_a_boolean(self):
         """Masquer qu'un frais est estimé donnerait au net une précision qu'il n'a pas."""
         ns = self._module()
-        rows = ns["_closed_trades"]([{"coin": "A"}, {"coin": "B", "fees_estimated": True}])
+        rows = ns._closed_trades([{"coin": "A"}, {"coin": "B", "fees_estimated": True}])
         self.assertEqual({r["fees_estimated"] for r in rows}, {False, True})
 
 
