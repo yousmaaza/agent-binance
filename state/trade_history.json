@@ -2733,17 +2733,19 @@
     "entry_order_id": "O5ODW7-FJ632-E6SU4V",
     "sl_order_txid": "OWJR4U-QSZV5-SV5JKZ",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
+    "status": "closed",
+    "exit_price": 2469.850000006909,
+    "exit_date": "2026-09-15T08:06:04Z",
     "entry_fee_usdc": 1.111465,
-    "exit_fee_usdc": null,
-    "fees_usdc": null,
+    "exit_fee_usdc": 1.072498,
+    "fees_usdc": 2.183963,
     "maker_or_taker": "taker",
     "maker_fill_seconds": null,
-    "pnl_gross_usdc": null,
-    "pnl_usdc": null,
-    "pnl_gross_pct": null,
-    "pnl_pct": null
+    "pnl_gross_usdc": -6.4944463015000125,
+    "pnl_usdc": -8.678409301500013,
+    "pnl_gross_pct": -3.5058854510947812,
+    "pnl_pct": -4.684850331543611,
+    "close_reason": "sl_hit",
+    "cycle_id": null
   }
 ]
