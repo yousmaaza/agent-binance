@@ -10,13 +10,16 @@ Arbre de décision par tick, pour chaque ordre dans state/maker_pending_orders.j
    remplissage partiel éventuel, sinon abandonne (pas de repli marché, cas trop ambigu).
 3. Sinon, prix invalidé (price_deviation_max_pct vs scan_price) -> annule ; remplissage partiel
    éventuel enregistré, sinon abandon (skip), PAS de repli marché (thèse du trade morte).
-4. Sinon, budget de concession épuisé (maker_max_concession_pct) OU timeout
-   (maker_timeout_seconds) -> annule ; remplissage partiel éventuel enregistré, sinon repli
-   BUY MARKET (comportement actuel).
-5. Sinon, le bid a bougé -> amend au nouveau bid (post-only), concession cumulée = distance au
+4. Sinon, budget de concession épuisé (maker_max_concession_pct) -> annule ; remplissage partiel
+   éventuel enregistré, sinon abandon tracé/persisté (#502), PAS de repli marché (le budget de
+   concession est un garde-fou, pas un déclencheur d'achat au marché).
+5. Sinon, timeout atteint (maker_timeout_seconds, concession alors sous le budget) -> annule ;
+   remplissage partiel éventuel enregistré, sinon repli BUY MARKET (comportement inchangé).
+6. Sinon, le bid a bougé -> amend au nouveau bid (post-only), concession cumulée = distance au
    prix de pose initial.
-6. Sinon : rien à faire jusqu'au tick suivant.
+7. Sinon : rien à faire jusqu'au tick suivant.
 """
+import functools
 import json
 import math
 import os
@@ -258,9 +261,14 @@ def _fallback_market_buy(pending: dict, history: list) -> None:
     _register_open_position(pending, entry_txid, actual_qty, actual_entry, entry_fee_usdc, "taker", history)
 
 
-def _cancel_and_resolve(pending: dict, allow_market_fallback: bool, history: list) -> str:
+def _cancel_and_resolve(pending: dict, allow_market_fallback: bool, history: list,
+                         on_abandon=None) -> str:
     """Annule l'ordre limite puis résout le remplissage partiel éventuel. Retourne l'issue :
-    "filled_partial", "market_fallback" ou "abandoned"."""
+    "filled_partial", "market_fallback" ou "abandoned".
+
+    `on_abandon` (optionnel) : callback appelé à la place du message d'abandon générique quand
+    l'issue est "abandoned" — utilisé par le repli concession (#502) pour tracer/persister
+    l'abandon avec plus de détail. None ailleurs (prix invalidé) -> message générique inchangé."""
     coin = pending["coin"]
     txid = pending["txid"]
     try:
@@ -268,10 +276,11 @@ def _cancel_and_resolve(pending: dict, allow_market_fallback: bool, history: lis
     except (subprocess.CalledProcessError, OSError) as e:
         logger.warning(f"[Maker Watcher] Cancel {txid} ({coin}) : {e}")
     time.sleep(1)
-    return _resolve_after_cancel(pending, allow_market_fallback, history)
+    return _resolve_after_cancel(pending, allow_market_fallback, history, on_abandon)
 
 
-def _resolve_after_cancel(pending: dict, allow_market_fallback: bool, history: list) -> str:
+def _resolve_after_cancel(pending: dict, allow_market_fallback: bool, history: list,
+                           on_abandon=None) -> str:
     coin = pending["coin"]
     txid = pending["txid"]
     try:
@@ -293,7 +302,10 @@ def _resolve_after_cancel(pending: dict, allow_market_fallback: bool, history: l
         _fallback_market_buy(pending, history)
         return "market_fallback"
 
-    send_telegram(f"⏭️ {coin} : signal invalidé pendant la chasse maker — ordre annulé, pas d'achat")
+    if on_abandon is not None:
+        on_abandon(pending)
+    else:
+        send_telegram(f"⏭️ {coin} : signal invalidé pendant la chasse maker — ordre annulé, pas d'achat")
     return "abandoned"
 
 
@@ -349,7 +361,63 @@ def _handle_invalidated_price(pending: dict, history: list, tick_state: dict) ->
         release_lock()
 
 
-def _handle_timeout_or_concession(pending: dict, history: list, tick_state: dict) -> tuple[bool, int, int, int]:
+def _record_concession_abandon(pending: dict, last_bid: float, concession_pct: float,
+                                max_concession_pct: float) -> None:
+    """Trace/persiste un abandon d'entrée sur dépassement du budget de concession (#502) : le
+    budget est désormais un garde-fou (abandon), plus un déclencheur d'achat au marché.
+
+    Suit le motif de `_publish_pending_orders_if_changed` : un échec Mongo est journalisé en
+    warning, jamais remonté — la traçabilité dashboard est un confort, pas une condition de
+    l'annulation déjà effectuée."""
+    coin = pending["coin"]
+    quantity = pending.get("quantity", 0.0)
+    notional_usdc = quantity * last_bid
+    send_telegram(
+        f"⏭️ {coin} : signal invalidé pendant la chasse maker — budget de concession dépassé "
+        f"({concession_pct * 100:.2f}% ≥ {max_concession_pct * 100:.2f}%), prix refusé {last_bid:.4g} USDC "
+        "— ordre annulé, pas d'achat"
+    )
+    entry = {
+        "coin": coin,
+        "pair": pending.get("pair"),
+        "abandoned_at": datetime.now(timezone.utc).isoformat(),
+        "scan_price": pending.get("scan_price"),
+        "initial_limit_price": pending.get("initial_limit_price"),
+        "last_bid": last_bid,
+        "concession_pct": concession_pct,
+        "max_concession_pct": max_concession_pct,
+        "signal_score": pending.get("score"),
+        "quantity": quantity,
+        "notional_usdc": notional_usdc,
+    }
+    try:
+        mongo_repo.save_maker_abandoned_entry(entry)
+    except Exception as e:
+        logger.warning(f"[Maker Watcher] Persistance abandon concession {coin} : {e}")
+
+
+def _handle_concession_exceeded(pending: dict, last_bid: float, concession_pct: float,
+                                 max_concession_pct: float, history: list,
+                                 tick_state: dict) -> tuple[bool, int, int, int]:
+    coin = pending["coin"]
+    acquire_lock()
+    try:
+        on_abandon = functools.partial(_record_concession_abandon, last_bid=last_bid,
+                                        concession_pct=concession_pct, max_concession_pct=max_concession_pct)
+        outcome = _cancel_and_resolve(pending, allow_market_fallback=False, history=history, on_abandon=on_abandon)
+        if outcome == "filled_partial":
+            return True, 1, 0, 0
+        return False, 0, 0, 1 if outcome == "abandoned" else 0
+    except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError, OSError) as e:
+        logger.error(f"[Maker Watcher] Abandon concession {coin} : {e}")
+        tick_state["status"] = "error"
+        tick_state["last_error"] = f"Abandon concession {coin} : {e}"
+        return False, 0, 0, 0
+    finally:
+        release_lock()
+
+
+def _handle_timeout(pending: dict, history: list, tick_state: dict) -> tuple[bool, int, int, int]:
     coin = pending["coin"]
     acquire_lock()
     try:
@@ -470,8 +538,19 @@ def _maker_watcher_tick(cfg: dict) -> None:
             abandoned_delta += abandoned
             continue
 
-        if concession_pct >= maker_max_concession_pct or elapsed_seconds >= maker_timeout_seconds:
-            changed, fills, fallbacks, abandoned = _handle_timeout_or_concession(pending, history, tick_state)
+        # Concession d'abord (#502) : si le budget est dépassé, abandon — quand bien même le
+        # timeout serait aussi atteint, la concession est le signal de fuite de prix à respecter.
+        if concession_pct >= maker_max_concession_pct:
+            changed, fills, fallbacks, abandoned = _handle_concession_exceeded(
+                pending, current_bid, concession_pct, maker_max_concession_pct, history, tick_state)
+            history_changed = history_changed or changed
+            fills_delta += fills
+            fallbacks_delta += fallbacks
+            abandoned_delta += abandoned
+            continue
+
+        if elapsed_seconds >= maker_timeout_seconds:
+            changed, fills, fallbacks, abandoned = _handle_timeout(pending, history, tick_state)
             history_changed = history_changed or changed
             fills_delta += fills
             fallbacks_delta += fallbacks

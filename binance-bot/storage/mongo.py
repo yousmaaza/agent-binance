@@ -123,6 +123,31 @@ class MongoRepository:
             logger.error(f"MongoDB save_maker_pending_orders erreur : {e}")
             return False
 
+    def save_maker_abandoned_entry(self, entry: Dict) -> bool:
+        """Trace un abandon d'entrée maker sur dépassement du budget de concession (#502), sur le
+        même modèle que `save_maker_pending_orders` : `$set` ciblé + horodatage dédié
+        (`watchers.maker_abandoned_updated_at`), sans `upsert` (même raisonnement que #498 : la
+        Phase 7 crée le document `dashboard_state` complet au premier cycle).
+
+        `$push`/`$slice` conserve les 20 derniers abandons pour l'historique dashboard (#503),
+        en un seul aller-retour atomique plutôt qu'une lecture puis réécriture de la liste."""
+        db = self._db()
+        if db is None:
+            return False
+        try:
+            db.dashboard_state.update_one(
+                {"_id": "current"},
+                {
+                    "$push": {"watchers.maker_abandoned_entries": {"$each": [entry], "$slice": -20}},
+                    "$set": {"watchers.maker_abandoned_updated_at": datetime.now(timezone.utc).isoformat()},
+                },
+                upsert=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"MongoDB save_maker_abandoned_entry erreur : {e}")
+            return False
+
     def save_trade_history_slices(self, open_positions: List[Dict], closed_trades: List[Dict],
                                    financials: Dict) -> bool:
         """Publication des watchers qui modifient `trade_history` entre deux cycles (#500) :
