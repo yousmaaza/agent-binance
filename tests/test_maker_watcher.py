@@ -225,30 +225,123 @@ class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
         self.assertAlmostEqual(history[0]["tp_price"], 2135.0, places=6)
 
 
-class TestBudgetExhaustedTriggersMarketFallback(unittest.TestCase):
-    def test_concession_budget_exceeded_cancels_and_falls_back_to_market(self):
+class TestConcessionExceededAbandonsWithoutMarketBuy(unittest.TestCase):
+    """#502 : le budget de concession est désormais un garde-fou — dépassement -> annulation et
+    abandon tracé/persisté, plus de repli BUY MARKET (réservé au timeout, cf.
+    TestTimeoutTriggersMarketFallback pour la non-régression)."""
+
+    def test_concession_budget_exceeded_with_zero_fill_cancels_and_abandons(self):
         pending = _pending()
         fake_cli = _FakeCli(**{
             "query-orders_TX1": {"status": "open", "vol_exec": "0"},
             # bid = 2007.0 -> concession = (2007-1999.5)/1999.5 = 0.375% > 0.30%
             "ticker_ETHUSDC": {"b": ["2007.0", "0.01"], "c": ["2005.0", "0.01"]},
-            "order_buy_ETHUSDC_market": {"txid": ["MARKETTX1"]},
-            "query-orders_MARKETTX1": {"status": "closed", "cost": "201.0", "vol_exec": "0.1", "fee": "0.4"},
-            "pairs_ETHUSDC": {"lot_decimals": 8},
-            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX2"]},
         })
+        mock_mongo = MagicMock()
 
-        history, saved_pending, mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
+        with patch("core.maker_watcher.is_locked", return_value=False), \
+             patch("core.maker_watcher.acquire_lock"), \
+             patch("core.maker_watcher.release_lock"), \
+             patch("core.maker_watcher.send_telegram") as mock_tg, \
+             patch("core.maker_watcher._write_watcher_state"), \
+             patch("core.maker_watcher.load_trade_history", return_value=[]), \
+             patch("core.maker_watcher.save_trade_history") as mock_save_history, \
+             patch("core.maker_watcher.load_maker_pending_orders", return_value=[pending]), \
+             patch("core.maker_watcher.save_maker_pending_orders") as mock_save_pending, \
+             patch("core.maker_watcher.mongo_repo", mock_mongo), \
+             patch("core.maker_watcher._cli", side_effect=fake_cli):
+            maker_watcher._maker_watcher_tick(BASE_CONFIG)
+
+        mock_save_history.assert_not_called()
+        self.assertEqual(mock_save_pending.call_args[0][0], [])
+        self.assertTrue(fake_cli.calls_with("order", "cancel"))
+        self.assertFalse(fake_cli.calls_with("order", "buy"))
+
+        mock_mongo.save_maker_abandoned_entry.assert_called_once()
+        entry = mock_mongo.save_maker_abandoned_entry.call_args[0][0]
+        self.assertEqual(entry["coin"], "ETH")
+        self.assertEqual(entry["pair"], "ETHUSDC")
+        self.assertAlmostEqual(entry["scan_price"], 2000.0)
+        self.assertAlmostEqual(entry["initial_limit_price"], 1999.5)
+        self.assertAlmostEqual(entry["last_bid"], 2007.0)
+        self.assertAlmostEqual(entry["concession_pct"], (2007.0 - 1999.5) / 1999.5)
+        self.assertAlmostEqual(entry["max_concession_pct"], 0.003)
+        self.assertEqual(entry["signal_score"], 8)
+        self.assertAlmostEqual(entry["quantity"], 0.1)
+        self.assertAlmostEqual(entry["notional_usdc"], 0.1 * 2007.0)
+
+        alert_calls = [c.args[0] for c in mock_tg.call_args_list if c.args]
+        self.assertTrue(any("budget de concession dépassé" in msg for msg in alert_calls))
+
+
+class TestConcessionExceededWithPartialFillRegistersPositionNotAbandon(unittest.TestCase):
+    """#502 : un remplissage partiel déjà obtenu prime sur l'abandon — même arbitrage que pour le
+    timeout (TestPartialFillOnRepliRegistersPartialPositionWithoutMarketBuy)."""
+
+    def test_partial_fill_at_concession_trigger_is_registered_without_market_buy_or_abandon(self):
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "open", "vol_exec": "0.04", "cost": "80.0", "fee": "0.12"},
+            "ticker_ETHUSDC": {"b": ["2007.0", "0.01"], "c": ["2005.0", "0.01"]},
+        })
+        mock_mongo = MagicMock()
+
+        with patch("core.maker_watcher.is_locked", return_value=False), \
+             patch("core.maker_watcher.acquire_lock"), \
+             patch("core.maker_watcher.release_lock"), \
+             patch("core.maker_watcher.send_telegram"), \
+             patch("core.maker_watcher._write_watcher_state") as mock_write_state, \
+             patch("core.maker_watcher.load_trade_history", return_value=[]), \
+             patch("core.maker_watcher.save_trade_history") as mock_save_history, \
+             patch("core.maker_watcher.load_maker_pending_orders", return_value=[pending]), \
+             patch("core.maker_watcher.save_maker_pending_orders") as mock_save_pending, \
+             patch("core.maker_watcher.mongo_repo", mock_mongo), \
+             patch("core.maker_watcher._cli", side_effect=fake_cli):
+            maker_watcher._maker_watcher_tick(BASE_CONFIG)
 
         mock_save_history.assert_called_once()
-        pos = history[0]
-        self.assertEqual(pos["entry_order_id"], "MARKETTX1")
-        self.assertEqual(pos["maker_or_taker"], "taker")
-        self.assertAlmostEqual(pos["entry_price"], 2010.0)
-        self.assertEqual(saved_pending, [])
+        pos = mock_save_history.call_args[0][0][0]
+        self.assertEqual(pos["entry_order_id"], "TX1")
+        self.assertEqual(pos["maker_or_taker"], "maker")
+        self.assertAlmostEqual(pos["quantity"], 0.04)
+        self.assertEqual(mock_save_pending.call_args[0][0], [])
+        self.assertFalse(fake_cli.calls_with("order", "buy"))
+        mock_mongo.save_maker_abandoned_entry.assert_not_called()
+        # (status, last_error, orders_checked, fills_delta, fallbacks_delta, abandoned_delta)
+        write_state_args = mock_write_state.call_args[0]
+        self.assertEqual(write_state_args[5], 0)
+
+
+class TestConcessionAbandonMongoFailureDoesNotInterruptTheWatcher(unittest.TestCase):
+    """#502 : l'échec de persistance de l'abandon ne doit jamais empêcher l'annulation de l'ordre
+    ni remonter dans la boucle — même motif que `_publish_pending_orders_if_changed` (#498)."""
+
+    def test_mongo_save_maker_abandoned_entry_raising_does_not_prevent_cancel_or_crash_tick(self):
+        pending = _pending()
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "open", "vol_exec": "0"},
+            "ticker_ETHUSDC": {"b": ["2007.0", "0.01"], "c": ["2005.0", "0.01"]},
+        })
+        mock_mongo = MagicMock()
+        mock_mongo.save_maker_abandoned_entry.side_effect = Exception("Mongo injoignable")
+
+        with patch("core.maker_watcher.is_locked", return_value=False), \
+             patch("core.maker_watcher.acquire_lock"), \
+             patch("core.maker_watcher.release_lock"), \
+             patch("core.maker_watcher.send_telegram"), \
+             patch("core.maker_watcher._write_watcher_state") as mock_write_state, \
+             patch("core.maker_watcher.load_trade_history", return_value=[]), \
+             patch("core.maker_watcher.save_trade_history"), \
+             patch("core.maker_watcher.load_maker_pending_orders", return_value=[pending]), \
+             patch("core.maker_watcher.save_maker_pending_orders") as mock_save_pending, \
+             patch("core.maker_watcher.mongo_repo", mock_mongo), \
+             patch("core.maker_watcher._cli", side_effect=fake_cli):
+            maker_watcher._maker_watcher_tick(BASE_CONFIG)  # ne doit pas lever
+
         self.assertTrue(fake_cli.calls_with("order", "cancel"))
-        # #389 : un repli marché n'est pas un "remplissage maker" -> pas de délai à mesurer.
-        self.assertIsNone(pos["maker_fill_seconds"])
+        self.assertEqual(mock_save_pending.call_args[0][0], [])
+        write_state_args = mock_write_state.call_args[0]
+        self.assertEqual(write_state_args[5], 1)  # abandoned_delta toujours compté malgré l'échec Mongo
 
 
 class TestTimeoutTriggersMarketFallback(unittest.TestCase):
@@ -553,12 +646,16 @@ class TestMakerWatcherPublishesTradeHistorySlices(unittest.TestCase):
         mock_publish.assert_called_once_with(history, "Maker Watcher")
 
     def test_market_fallback_publishes_trade_history_slices(self):
-        pending = _pending()
+        # #502 : le repli marché testé ici n'est plus atteignable via la concession (qui abandonne
+        # désormais) — placed_at ancien + bid quasi inchangé pour déclencher le timeout, seul
+        # chemin restant vers le repli BUY MARKET (comportement inchangé).
+        placed_at = (datetime.now(timezone.utc) - timedelta(seconds=4000)).isoformat()
+        pending = _pending(placed_at=placed_at)
         fake_cli = _FakeCli(**{
             "query-orders_TX1": {"status": "open", "vol_exec": "0"},
-            "ticker_ETHUSDC": {"b": ["2007.0", "0.01"], "c": ["2005.0", "0.01"]},
+            "ticker_ETHUSDC": {"b": ["1999.6", "0.01"], "c": ["1999.6", "0.01"]},
             "order_buy_ETHUSDC_market": {"txid": ["MARKETTX1"]},
-            "query-orders_MARKETTX1": {"status": "closed", "cost": "201.0", "vol_exec": "0.1", "fee": "0.4"},
+            "query-orders_MARKETTX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
             "pairs_ETHUSDC": {"lot_decimals": 8},
             "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX2"]},
         })

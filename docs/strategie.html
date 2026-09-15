@@ -553,7 +553,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 
   <h3>Le suivi de l'ordre, toutes les 20 secondes</h3>
   <figure>
-    <svg viewBox="0 0 900 250" role="img" aria-label="Arbre de décision du watcher maker, évalué à chaque tick : rempli, terminé de façon inattendue, prix invalidé, budget de concession épuisé ou délai dépassé, bid déplacé, ou rien à faire.">
+    <svg viewBox="0 0 900 280" role="img" aria-label="Arbre de décision du watcher maker, évalué à chaque tick : rempli, terminé de façon inattendue, prix invalidé, budget de concession épuisé, délai dépassé, bid déplacé, ou rien à faire.">
       <defs>
         <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
@@ -562,36 +562,40 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
       <text class="dg-t" x="8" y="18">à chaque tick, dans cet ordre :</text>
 
       <g>
-        <line x1="16" y1="30" x2="16" y2="222" stroke="currentColor" stroke-width="1" opacity=".3"/>
+        <line x1="16" y1="30" x2="16" y2="252" stroke="currentColor" stroke-width="1" opacity=".3"/>
 
         <circle cx="16" cy="46"  r="3.5" fill="var(--gain)"/>
         <text class="dg-t" x="30" y="50">rempli</text>
         <text class="dg-s" x="120" y="50">→ position enregistrée en <tspan fill="var(--gain)">maker</tspan>, stop-loss posé</text>
 
-        <circle cx="16" cy="82"  r="3.5" fill="currentColor" opacity=".5"/>
-        <text class="dg-t" x="30" y="86">terminé hors de notre fait</text>
-        <text class="dg-s" x="230" y="86">→ remplissage partiel si présent, sinon abandon</text>
+        <circle cx="16" cy="80"  r="3.5" fill="currentColor" opacity=".5"/>
+        <text class="dg-t" x="30" y="84">terminé hors de notre fait</text>
+        <text class="dg-s" x="230" y="84">→ remplissage partiel si présent, sinon abandon</text>
 
-        <circle cx="16" cy="118" r="3.5" fill="var(--loss)"/>
-        <text class="dg-t" x="30" y="122">prix invalidé</text>
-        <text class="dg-s" x="150" y="122">→ annulation, <tspan fill="var(--loss)">pas de repli marché</tspan> — la thèse du trade est morte</text>
+        <circle cx="16" cy="114" r="3.5" fill="var(--loss)"/>
+        <text class="dg-t" x="30" y="118">prix invalidé</text>
+        <text class="dg-s" x="150" y="118">→ annulation, <tspan fill="var(--loss)">pas de repli marché</tspan> — la thèse du trade est morte</text>
 
-        <circle cx="16" cy="154" r="3.5" fill="var(--wait)"/>
-        <text class="dg-t" x="30" y="158">concession épuisée ou délai dépassé</text>
-        <text class="dg-s" x="300" y="158">→ annulation puis <tspan fill="var(--wait)">achat au marché</tspan></text>
+        <circle cx="16" cy="148" r="3.5" fill="var(--loss)"/>
+        <text class="dg-t" x="30" y="152">budget de concession épuisé</text>
+        <text class="dg-s" x="270" y="152">→ annulation, <tspan fill="var(--loss)">pas de repli marché</tspan> — abandon tracé (#502)</text>
 
-        <circle cx="16" cy="190" r="3.5" fill="currentColor"/>
-        <text class="dg-t" x="30" y="194">le meilleur achat a bougé</text>
-        <text class="dg-s" x="220" y="194">→ <tspan font-weight="600">amend</tspan> au nouveau prix, la place dans le carnet est conservée</text>
+        <circle cx="16" cy="182" r="3.5" fill="var(--wait)"/>
+        <text class="dg-t" x="30" y="186">délai dépassé (concession sous le budget)</text>
+        <text class="dg-s" x="330" y="186">→ annulation puis <tspan fill="var(--wait)">achat au marché</tspan></text>
 
-        <circle cx="16" cy="218" r="3" fill="currentColor" opacity=".3"/>
-        <text class="dg-s" x="30" y="222">sinon : rien jusqu'au tick suivant</text>
+        <circle cx="16" cy="216" r="3.5" fill="currentColor"/>
+        <text class="dg-t" x="30" y="220">le meilleur achat a bougé</text>
+        <text class="dg-s" x="220" y="220">→ <tspan font-weight="600">amend</tspan> au nouveau prix, la place dans le carnet est conservée</text>
+
+        <circle cx="16" cy="248" r="3" fill="currentColor" opacity=".3"/>
+        <text class="dg-s" x="30" y="252">sinon : rien jusqu'au tick suivant</text>
       </g>
     </svg>
     <figcaption>L'ordre est <em>modifié</em>, jamais annulé puis reposé : annuler ferait perdre l'antériorité dans le carnet d'ordres, donc les chances d'être servi.</figcaption>
   </figure>
 
-  <p class="note">La distinction entre le troisième et le quatrième cas est le cœur de la stratégie. Si le <b>prix s'est invalidé</b>, la raison d'acheter a disparu : on renonce. Si seul le <b>temps</b> ou le <b>budget de concession</b> est épuisé, la raison d'acheter tient toujours : on paie le tarif preneur plutôt que de rater le trade.</p>
+  <p class="note">Le budget de concession n'est plus un déclencheur d'achat : c'est un garde-fou (#502). S'il est dépassé, le prix a fui — on renonce, comme sur un prix invalidé. Seul le <b>délai</b>, à concession encore sous le budget, tient toujours la raison d'acheter : on paie le tarif preneur plutôt que de rater le trade. La distinction entre <b>prix invalidé</b>/<b>concession épuisée</b> (on renonce) et <b>délai dépassé</b> (on paie le tarif preneur) est le cœur de la stratégie.</p>
 
   <div class="ex">
     <span class="tag">SOL · la sortie, deux jours plus tard</span>
@@ -648,7 +652,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     <tbody>
       <tr><td class="k">maker_entry_enabled</td><td class="v">true</td><td>phase 5</td><td>Active l'entrée en ordre limite. À false, retour au marché direct.</td></tr>
       <tr><td class="k">maker_tick_seconds</td><td class="v">20</td><td>watcher</td><td>Fréquence de réévaluation de l'ordre en attente.</td></tr>
-      <tr><td class="k">maker_max_concession_pct</td><td class="v">0.003</td><td>watcher</td><td>Budget de poursuite du prix. Épuisé, l'ordre bascule au marché.</td></tr>
+      <tr><td class="k">maker_max_concession_pct</td><td class="v">0.003</td><td>watcher</td><td>Budget de poursuite du prix. Épuisé, l'entrée est abandonnée — plus de bascule au marché (#502).</td></tr>
       <tr><td class="k">maker_timeout_seconds</td><td class="v">3600</td><td>watcher</td><td>Délai maximal de chasse. Un remplissage à 405 s a validé ce choix.</td></tr>
       <tr><td class="k">price_deviation_max_pct</td><td class="v">0.02</td><td>phase 5, watcher</td><td>Dérive de prix tolérée. Dépassée, la thèse du trade est considérée morte.</td></tr>
       <tr><td class="k">min_profit_pct_take</td><td class="v">5.0</td><td>phase 0</td><td>Gain net déclenchant une vente anticipée, sans attendre la cible.</td></tr>

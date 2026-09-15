@@ -27,6 +27,15 @@ def _set_dotted(doc: dict, dotted_key: str, value) -> None:
     cursor[parts[-1]] = value
 
 
+def _get_dotted(doc: dict, dotted_key: str):
+    cursor = doc
+    for part in dotted_key.split("."):
+        if not isinstance(cursor, dict) or part not in cursor:
+            return None
+        cursor = cursor[part]
+    return cursor
+
+
 class _FakeDashboardStateCollection:
     """`doc=None` modélise un document absent (avant le premier passage de la Phase 7)."""
 
@@ -42,6 +51,13 @@ class _FakeDashboardStateCollection:
             self.doc = {"_id": filt["_id"]}
         for dotted_key, value in update.get("$set", {}).items():
             _set_dotted(self.doc, dotted_key, value)
+        for dotted_key, spec in update.get("$push", {}).items():
+            existing = _get_dotted(self.doc, dotted_key) or []
+            each = spec["$each"] if isinstance(spec, dict) and "$each" in spec else [spec]
+            updated = existing + each
+            if isinstance(spec, dict) and "$slice" in spec:
+                updated = updated[spec["$slice"]:] if spec["$slice"] < 0 else updated[:spec["$slice"]]
+            _set_dotted(self.doc, dotted_key, updated)
 
 
 class _FakeDb:
@@ -122,6 +138,81 @@ class TestSaveMakerPendingOrders(unittest.TestCase):
         fake_db = _FakeDb(_RaisingCollection())
         with patch.object(mongo_repo, "_db", return_value=fake_db):
             result = mongo_repo.save_maker_pending_orders([{"coin": "BTC"}])
+        self.assertFalse(result)
+
+
+class TestSaveMakerAbandonedEntry(unittest.TestCase):
+    """#502 : trace un abandon d'entrée maker sur dépassement du budget de concession — même
+    garde-fous `$set`/sans `upsert` que save_maker_pending_orders (#498), plus un `$push`/`$slice`
+    pour borner l'historique aux 20 derniers abandons."""
+
+    def test_no_mongo_uri_returns_false_without_attempting_write(self):
+        with patch.object(mongo_repo, "_db", return_value=None):
+            result = mongo_repo.save_maker_abandoned_entry({"coin": "BTC"})
+        self.assertFalse(result)
+
+    def test_successful_write_pushes_entry_and_sets_dedicated_timestamp(self):
+        collection = _FakeDashboardStateCollection({"_id": "current"})
+        fake_db = _FakeDb(collection)
+        entry = {"coin": "ETH", "concession_pct": 0.004, "max_concession_pct": 0.003}
+
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            result = mongo_repo.save_maker_abandoned_entry(entry)
+
+        self.assertTrue(result)
+        self.assertEqual(collection.doc["watchers"]["maker_abandoned_entries"], [entry])
+        self.assertIn("maker_abandoned_updated_at", collection.doc["watchers"])
+
+    def test_no_document_yet_is_not_created_by_the_watcher(self):
+        collection = _FakeDashboardStateCollection(None)
+        fake_db = _FakeDb(collection)
+
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            mongo_repo.save_maker_abandoned_entry({"coin": "BTC"})
+
+        self.assertIsNone(collection.doc)
+        _filt, _update, upsert = collection.update_one_calls[0]
+        self.assertFalse(upsert)
+
+    def test_history_is_bounded_to_the_last_20_entries(self):
+        existing_doc = {
+            "_id": "current",
+            "watchers": {"maker_abandoned_entries": [{"coin": f"C{i}"} for i in range(20)]},
+        }
+        collection = _FakeDashboardStateCollection(existing_doc)
+        fake_db = _FakeDb(collection)
+
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            mongo_repo.save_maker_abandoned_entry({"coin": "NEW"})
+
+        entries = collection.doc["watchers"]["maker_abandoned_entries"]
+        self.assertEqual(len(entries), 20)
+        self.assertEqual(entries[-1], {"coin": "NEW"})
+        self.assertEqual(entries[0], {"coin": "C1"})  # le plus ancien (C0) est sorti
+
+    def test_partial_set_preserves_the_rest_of_the_document(self):
+        existing_doc = {
+            "_id": "current",
+            "open_positions": [{"coin": "SOL"}],
+            "watchers": {"maker_pending_orders": [{"coin": "OLD"}]},
+        }
+        collection = _FakeDashboardStateCollection(existing_doc)
+        fake_db = _FakeDb(collection)
+
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            mongo_repo.save_maker_abandoned_entry({"coin": "ETH"})
+
+        self.assertEqual(collection.doc["open_positions"], [{"coin": "SOL"}])
+        self.assertEqual(collection.doc["watchers"]["maker_pending_orders"], [{"coin": "OLD"}])
+
+    def test_write_exception_is_caught_and_returns_false(self):
+        class _RaisingCollection:
+            def update_one(self, *a, **kw):
+                raise RuntimeError("Mongo injoignable")
+
+        fake_db = _FakeDb(_RaisingCollection())
+        with patch.object(mongo_repo, "_db", return_value=fake_db):
+            result = mongo_repo.save_maker_abandoned_entry({"coin": "BTC"})
         self.assertFalse(result)
 
 

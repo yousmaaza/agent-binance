@@ -387,7 +387,7 @@ flowchart TD
 
 *L'ordre est *modifié*, jamais annulé puis reposé : annuler ferait perdre l'antériorité dans le carnet d'ordres, donc les chances d'être servi.*
 
-> La distinction entre le troisième et le quatrième cas est le cœur de la stratégie. Si le **prix s'est invalidé**, la raison d'acheter a disparu : on renonce. Si seul le **temps** ou le **budget de concession** est épuisé, la raison d'acheter tient toujours : on paie le tarif preneur plutôt que de rater le trade.
+> Le budget de concession n'est plus un déclencheur d'achat : c'est un garde-fou (#502). S'il est dépassé, le prix a fui — on renonce, comme sur un prix invalidé. Seul le **délai**, à concession encore sous le budget, tient toujours la raison d'acheter : on paie le tarif preneur plutôt que de rater le trade. La distinction entre **prix invalidé**/**concession épuisée** (on renonce) et **délai dépassé** (on paie le tarif preneur) est le cœur de la stratégie.
 
 ```text
 [SOL · la sortie, deux jours plus tard]
@@ -443,7 +443,7 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 |---|---|---|---|
 | maker_entry_enabled | true | phase 5 | Active l'entrée en ordre limite. À false, retour au marché direct. |
 | maker_tick_seconds | 20 | watcher | Fréquence de réévaluation de l'ordre en attente. |
-| maker_max_concession_pct | 0.003 | watcher | Budget de poursuite du prix. Épuisé, l'ordre bascule au marché. |
+| maker_max_concession_pct | 0.003 | watcher | Budget de poursuite du prix. Épuisé, l'entrée est abandonnée — plus de bascule au marché (#502). |
 | maker_timeout_seconds | 3600 | watcher | Délai maximal de chasse. Un remplissage à 405 s a validé ce choix. |
 | price_deviation_max_pct | 0.02 | phase 5, watcher | Dérive de prix tolérée. Dépassée, la thèse du trade est considérée morte. |
 | min_profit_pct_take | 5.0 | phase 0 | Gain net déclenchant une vente anticipée, sans attendre la cible. |
