@@ -75,6 +75,21 @@ def trade_history_freshness(watchers: dict, dashboard_updated_at, stale_threshol
     }
 
 
+def maker_abandoned_freshness(watchers: dict, dashboard_updated_at, stale_threshold_minutes: int,
+                               now: datetime | None = None) -> dict:
+    """Fraîcheur propre au flux d'abandons maker (#503), même patron que `maker_freshness`
+    (#498) : `watchers.maker_abandoned_updated_at` date la dernière publication. Repli sur
+    l'horodatage global si le watcher n'a encore jamais publié d'abandon."""
+    now = now or datetime.now(timezone.utc)
+    updated_at = parse_iso(watchers.get("maker_abandoned_updated_at")) or parse_iso(dashboard_updated_at)
+    age_min = (now - updated_at).total_seconds() / 60 if updated_at else None
+    return {
+        "updated_at": updated_at,
+        "age_minutes": age_min,
+        "is_stale": age_min is None or age_min > stale_threshold_minutes,
+    }
+
+
 def equity_curve_points(curve: list, width: int = 300, height: int = 80, pad: int = 4) -> str:
     if not curve:
         return ""
@@ -385,6 +400,36 @@ def build_maker_orders(pending_orders: list, config: dict, tz_name: str, now: da
             "scale": _maker_scale_geometry(initial_price, current_price, cap_price),
         })
     return orders
+
+
+MAKER_ABANDONED_WINDOW_DAYS = 7  # fenêtre du compteur agrégé (#503)
+
+
+def build_maker_abandoned_entries(entries: list, tz_name: str, now: datetime | None = None) -> dict:
+    """Entrées maker abandonnées sur dépassement du budget de concession (#502), affichées de
+    la plus récente à la plus ancienne — la persistance (`save_maker_abandoned_entry`) les
+    stocke en ordre chronologique croissant, donc c'est ici qu'on inverse.
+
+    `signal_score` peut être `None` (`pending.get("score")` côté watcher ne renvoie parfois
+    rien) : la ligne le passe tel quel, le gabarit sait déjà afficher un repli."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=MAKER_ABANDONED_WINDOW_DAYS)
+
+    rows, count_7d = [], 0
+    for entry in reversed(entries or []):
+        abandoned_at = parse_iso(entry.get("abandoned_at"))
+        if abandoned_at and abandoned_at >= cutoff:
+            count_7d += 1
+        concession_pct = entry.get("concession_pct") or 0.0
+        max_concession_pct = entry.get("max_concession_pct") or 0.0
+        rows.append({
+            **entry,
+            "abandoned_local": to_local(abandoned_at, tz_name) if abandoned_at else "n/d",
+            "concession_pct_display": round(concession_pct * 100, 2),
+            "max_concession_pct_display": round(max_concession_pct * 100, 2),
+        })
+
+    return {"entries": rows, "count_7d": count_7d}
 
 
 def build_maker_last_fill(open_positions: list, closed_trades: list, now: datetime | None = None) -> dict:
