@@ -388,6 +388,12 @@ table.sales th:last-child,table.sales td:last-child{padding-right:0}
 .mk-bar b.mk-bar-crit{background:var(--loss);opacity:1}
 .mk-gval{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
 .mk-empty{margin-top:14px}
+.mk-abandoned{margin-top:24px}
+.mk-abandoned h3{font-family:"Archivo Expanded","Archivo",sans-serif;font-weight:600;font-size:11px;
+letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px;display:flex;
+justify-content:space-between;align-items:baseline;gap:12px}
+.mk-abandoned h3 em{font-family:"IBM Plex Mono",monospace;font-style:normal;font-size:10px;
+letter-spacing:.04em;text-transform:none;color:var(--ink-3);font-weight:400}
 .mk-lastfill{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);letter-spacing:.02em;margin:6px 0 0}
 
 .trig{font-family:"IBM Plex Mono",monospace;font-size:9.5px;padding:1px 5px;border:1px solid var(--rule-2);white-space:nowrap}
