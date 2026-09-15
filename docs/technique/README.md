@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-14 (PR #495) |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-15 (PR #504) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#504](pr-504-abandon-maker-concession-budget.md) | [M1] Abandonner l'entrée maker sur budget de concession dépassé | 2026-09-15 |
 | [#501](pr-501-publier-slices-watchers.md) | [BUG] Publier open_positions/closed_trades/financials depuis les watchers | 2026-09-14 |
 | [#499](pr-499-dashboard-ordres-maker-fantomes.md) | [BUG] Dashboard maker : fin des ordres fantômes | 2026-09-14 |
 | [#497](pr-497-chevauchement-echelle-maker.md) | [BUG] Dashboard — chevauchement du libellé de curseur en bord d'échelle | 2026-09-14 |
