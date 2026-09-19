@@ -2807,5 +2807,32 @@
     "close_reason": "signal_sell_score2",
     "cycle_id": "20260918_160500",
     "exit_maker_or_taker": "maker"
+  },
+  {
+    "trade_id": "83c02229",
+    "date": "2026-09-18T20:10:57.693447+00:00",
+    "coin": "ADA",
+    "side": "BUY",
+    "signal_score": 6,
+    "entry_price": 0.22184399999568669,
+    "stop_price": 0.21868,
+    "tp_price": 0.23158149453978016,
+    "quantity": 826.69669445,
+    "risk_usdc": 8.0470545406,
+    "entry_order_id": "OU4XOX-DXOLL-LN5ORC",
+    "sl_order_txid": "ONBPF5-HWFXY-QKWOF4",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.5501931,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 98.384178,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
