@@ -2908,17 +2908,19 @@
     "entry_order_id": "OAV3WK-FPUVS-3FWX3X",
     "sl_order_txid": "OL5HSD-JDENH-SAY5BQ",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
+    "status": "closed",
+    "exit_price": 0.22580800000632542,
+    "exit_date": "2026-09-20T00:05:55Z",
     "entry_fee_usdc": 0.33613112,
-    "exit_fee_usdc": null,
-    "fees_usdc": null,
+    "exit_fee_usdc": 0.67992543,
+    "fees_usdc": 1.01605655,
     "maker_or_taker": "maker",
     "maker_fill_seconds": 87.30825,
-    "pnl_gross_usdc": null,
-    "pnl_usdc": null,
-    "pnl_gross_pct": null,
-    "pnl_pct": null
+    "pnl_gross_usdc": 1.2771987899999906,
+    "pnl_usdc": 0.26114223999999053,
+    "pnl_gross_pct": 1.139911225070187,
+    "pnl_pct": 0.2330717606739701,
+    "close_reason": "sl_hit",
+    "cycle_id": null
   }
 ]
