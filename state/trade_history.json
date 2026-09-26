@@ -2938,7 +2938,7 @@
     "quantity": 1.50607187,
     "risk_usdc": 8.0304,
     "entry_order_id": "O3O6Z2-PM2WF-QJHI4Q",
-    "sl_order_txid": "OJSGVM-QDUDT-MTHGNJ",
+    "sl_order_txid": null,
     "protection_failed": false,
     "status": "open",
     "exit_price": null,
