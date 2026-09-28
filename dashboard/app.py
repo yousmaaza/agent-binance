@@ -107,6 +107,10 @@ def _build_results_view(state, prices, cycles, tz_name):
     maker["last_fill"] = viewdata.build_maker_last_fill(open_positions, state.get("closed_trades") or [])
     maker["freshness"] = viewdata.maker_freshness(
         watchers, state.get("updated_at"), settings.STALE_THRESHOLD_MINUTES)
+    maker["abandoned"] = viewdata.build_maker_abandoned_entries(
+        watchers.get("maker_abandoned_entries") or [], tz_name)
+    maker["abandoned_freshness"] = viewdata.maker_abandoned_freshness(
+        watchers, state.get("updated_at"), settings.STALE_THRESHOLD_MINUTES)
     cadence = viewdata.build_cadence_band(cycles)
     weekly_note = analysis.weekly_note(by_period, cadence, maker)
 

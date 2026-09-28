@@ -103,6 +103,32 @@ class TestTradeHistoryFreshness(unittest.TestCase):
         self.assertTrue(f["is_stale"])
 
 
+class TestMakerAbandonedFreshness(unittest.TestCase):
+    """#503 : le flux d'abandons a sa propre cadence de publication (le watcher), distincte du
+    reste du document (Phase 7) — même patron que `maker_freshness` (#498)."""
+
+    def test_uses_dedicated_timestamp_when_present(self):
+        now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+        watchers = {"maker_abandoned_updated_at": (now - timedelta(minutes=5)).isoformat()}
+        f = viewdata.maker_abandoned_freshness(watchers, (now - timedelta(hours=3)).isoformat(),
+                                                stale_threshold_minutes=300, now=now)
+        self.assertAlmostEqual(f["age_minutes"], 5, delta=0.1)
+        self.assertFalse(f["is_stale"])
+
+    def test_falls_back_to_document_updated_at_when_watcher_never_published(self):
+        now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+        f = viewdata.maker_abandoned_freshness({}, (now - timedelta(minutes=30)).isoformat(),
+                                                stale_threshold_minutes=300, now=now)
+        self.assertAlmostEqual(f["age_minutes"], 30, delta=0.1)
+        self.assertFalse(f["is_stale"])
+
+    def test_stale_beyond_threshold(self):
+        now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+        watchers = {"maker_abandoned_updated_at": (now - timedelta(hours=6)).isoformat()}
+        f = viewdata.maker_abandoned_freshness(watchers, None, stale_threshold_minutes=300, now=now)
+        self.assertTrue(f["is_stale"])
+
+
 class TestEquityCurvePoints(unittest.TestCase):
     def test_empty_curve_yields_empty_string(self):
         self.assertEqual(viewdata.equity_curve_points([]), "")
@@ -897,6 +923,62 @@ class TestBuildMakerOrders(unittest.TestCase):
             "adjustments": 0, "placed_at": placed_at.isoformat(),
         }]
         self.assertEqual(len(viewdata.build_maker_orders(orders, self.CONFIG, "UTC", now=now)), 1)
+
+
+class TestBuildMakerAbandonedEntries(unittest.TestCase):
+    """#503 : abandons d'entrée maker sur dépassement du budget de concession, affichés du plus
+    récent au plus ancien — la persistance (#502) les stocke en ordre chronologique croissant."""
+
+    def test_empty_list_yields_empty_entries_and_zero_count(self):
+        result = viewdata.build_maker_abandoned_entries([], "UTC")
+        self.assertEqual(result["entries"], [])
+        self.assertEqual(result["count_7d"], 0)
+
+    def test_missing_field_yields_empty_entries_and_zero_count(self):
+        result = viewdata.build_maker_abandoned_entries(None, "UTC")
+        self.assertEqual(result["entries"], [])
+        self.assertEqual(result["count_7d"], 0)
+
+    def test_signal_score_none_is_passed_through_without_crashing(self):
+        now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+        entries = [{
+            "coin": "BTC", "pair": "BTCUSDC", "abandoned_at": now.isoformat(),
+            "scan_price": 100.0, "initial_limit_price": 99.9, "last_bid": 100.8,
+            "concession_pct": 0.009, "max_concession_pct": 0.003, "signal_score": None,
+            "quantity": 0.01, "notional_usdc": 1.008,
+        }]
+        row = viewdata.build_maker_abandoned_entries(entries, "UTC", now=now)["entries"][0]
+        self.assertIsNone(row["signal_score"])
+
+    def test_most_recent_entry_appears_first(self):
+        """La persistance ordonne chronologiquement croissant (le plus ancien en tête) —
+        l'affichage doit inverser pour montrer le plus récent en premier."""
+        now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+        entries = [
+            {"coin": "OLD", "abandoned_at": (now - timedelta(days=2)).isoformat()},
+            {"coin": "NEW", "abandoned_at": now.isoformat()},
+        ]
+        rows = viewdata.build_maker_abandoned_entries(entries, "UTC", now=now)["entries"]
+        self.assertEqual([r["coin"] for r in rows], ["NEW", "OLD"])
+
+    def test_count_7d_excludes_entries_older_than_seven_days(self):
+        now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+        entries = [
+            {"coin": "RECENT", "abandoned_at": (now - timedelta(days=3)).isoformat()},
+            {"coin": "OLD", "abandoned_at": (now - timedelta(days=10)).isoformat()},
+        ]
+        result = viewdata.build_maker_abandoned_entries(entries, "UTC", now=now)
+        self.assertEqual(result["count_7d"], 1)
+
+    def test_concession_and_budget_are_displayed_as_percentages(self):
+        now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+        entries = [{
+            "coin": "ETH", "abandoned_at": now.isoformat(),
+            "concession_pct": 0.0075, "max_concession_pct": 0.003,
+        }]
+        row = viewdata.build_maker_abandoned_entries(entries, "UTC", now=now)["entries"][0]
+        self.assertAlmostEqual(row["concession_pct_display"], 0.75)
+        self.assertAlmostEqual(row["max_concession_pct_display"], 0.30)
 
 
 class TestBuildMakerLastFill(unittest.TestCase):
