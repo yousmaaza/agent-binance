@@ -210,7 +210,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 
   <div class="skips">
     <div class="skip"><b>TYPE_D · scan</b><span>La paire n'existe pas en USDC, son volume est trop faible, son spread trop large, ou son volume n'est qu'un pic isolé.</span></div>
-    <div class="skip"><b>TYPE_A · scoring</b><span>Le signal est insuffisant, le quota de positions est atteint, ou la corrélation avec les positions existantes est excessive.</span></div>
+    <div class="skip"><b>TYPE_A · scoring</b><span>Le signal est insuffisant, le quota de positions est atteint, la corrélation avec les positions existantes est excessive, ou la hausse du prix sur 24h dépasse le seuil de poursuite.</span></div>
     <div class="skip"><b>TYPE_B · dimensionnement</b><span>L'ordre calculé est sous le minimum tradable, ou le stop tombe en territoire négatif.</span></div>
     <div class="skip"><b>TYPE_C · exécution</b><span>Le prix a trop dérivé depuis le scan, le solde ne suffit plus, ou l'ordre n'a pas été rempli.</span></div>
   </div>
@@ -349,9 +349,9 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     <span class="cm">// exactement ce qui sépare ce trade d'un signal confortable</span>
   </div>
 
-  <h3>Les quatre verrous après le score</h3>
+  <h3>Les cinq verrous après le score</h3>
   <figure>
-    <svg viewBox="0 0 900 340" role="img" aria-label="Arbre de décision du scoring : après avoir vérifié que le score atteint le seuil et que le signal 4h est haussier, quatre conditions successives peuvent transformer un achat en HOLD ou en SKIP TYPE_A — déjà en portefeuille, mode dégradé avec RSI hors zone, quota de positions atteint, corrélation excessive.">
+    <svg viewBox="0 0 900 410" role="img" aria-label="Arbre de décision du scoring : après avoir vérifié que le score atteint le seuil et que le signal 4h est haussier, cinq conditions successives peuvent transformer un achat en HOLD ou en SKIP TYPE_A — déjà en portefeuille, hausse 24h excessive (poursuite), mode dégradé avec RSI hors zone, quota de positions atteint, corrélation excessive.">
       <defs>
         <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
@@ -367,7 +367,8 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
         <line x1="450" y1="112" x2="450" y2="136"/>
         <line x1="450" y1="176" x2="450" y2="200"/>
         <line x1="450" y1="240" x2="450" y2="264"/>
-        <line x1="450" y1="304" x2="450" y2="322"/>
+        <line x1="450" y1="304" x2="450" y2="328"/>
+        <line x1="450" y1="368" x2="450" y2="392"/>
       </g>
 
       <g>
@@ -376,16 +377,20 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
         <text class="dg-s" x="450" y="104" text-anchor="middle">in_portfolio</text>
 
         <rect class="dg-box" x="300" y="136" width="300" height="40"/>
-        <text class="dg-t" x="450" y="154" text-anchor="middle">mode dégradé ET RSI hors zone ?</text>
-        <text class="dg-s" x="450" y="168" text-anchor="middle">RSI inconnu compte comme hors zone</text>
+        <text class="dg-t" x="450" y="154" text-anchor="middle">hausse 24h excessive ?</text>
+        <text class="dg-s" x="450" y="168" text-anchor="middle">change_24h_pct &gt; max_24h_runup_pct</text>
 
         <rect class="dg-box" x="300" y="200" width="300" height="40"/>
-        <text class="dg-t" x="450" y="218" text-anchor="middle">quota de positions atteint ?</text>
-        <text class="dg-s" x="450" y="232" text-anchor="middle">ouvertes + retenues ce cycle ≥ max</text>
+        <text class="dg-t" x="450" y="218" text-anchor="middle">mode dégradé ET RSI hors zone ?</text>
+        <text class="dg-s" x="450" y="232" text-anchor="middle">RSI inconnu compte comme hors zone</text>
 
         <rect class="dg-box" x="300" y="264" width="300" height="40"/>
-        <text class="dg-t" x="450" y="282" text-anchor="middle">trop de corrélées ?</text>
-        <text class="dg-s" x="450" y="296" text-anchor="middle">groupe SOL · SUI · STX · ETH</text>
+        <text class="dg-t" x="450" y="282" text-anchor="middle">quota de positions atteint ?</text>
+        <text class="dg-s" x="450" y="296" text-anchor="middle">ouvertes + retenues ce cycle ≥ max</text>
+
+        <rect class="dg-box" x="300" y="328" width="300" height="40"/>
+        <text class="dg-t" x="450" y="346" text-anchor="middle">trop de corrélées ?</text>
+        <text class="dg-s" x="450" y="360" text-anchor="middle">groupe SOL · SUI · STX · ETH</text>
       </g>
 
       <!-- branches oui -->
@@ -394,38 +399,47 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
         <line x1="600" y1="156" x2="700" y2="156"/>
         <line x1="600" y1="220" x2="700" y2="220"/>
         <line x1="600" y1="284" x2="700" y2="284"/>
+        <line x1="600" y1="348" x2="700" y2="348"/>
       </g>
       <g>
         <text class="dg-t" x="710" y="96"  fill="var(--wait)">HOLD</text>
         <text class="dg-t dg-skip" x="710" y="160">SKIP TYPE_A</text>
         <text class="dg-t dg-skip" x="710" y="224">SKIP TYPE_A</text>
         <text class="dg-t dg-skip" x="710" y="288">SKIP TYPE_A</text>
+        <text class="dg-t dg-skip" x="710" y="352">SKIP TYPE_A</text>
         <text class="dg-lab" x="620" y="84">oui</text>
         <text class="dg-lab" x="620" y="148">oui</text>
         <text class="dg-lab" x="620" y="212">oui</text>
         <text class="dg-lab" x="620" y="276">oui</text>
+        <text class="dg-lab" x="620" y="340">oui</text>
       </g>
       <g>
         <text class="dg-lab" x="458" y="66">non</text>
         <text class="dg-lab" x="458" y="130">non</text>
         <text class="dg-lab" x="458" y="194">non</text>
         <text class="dg-lab" x="458" y="258">non</text>
+        <text class="dg-lab" x="458" y="322">non</text>
       </g>
 
-      <text class="dg-t dg-ok" x="450" y="332" text-anchor="middle">BUY — candidat retenu</text>
+      <text class="dg-t dg-ok" x="450" y="402" text-anchor="middle">BUY — candidat retenu</text>
     </svg>
-    <figcaption>Les verrous sont évalués dans cet ordre exact. Le troisième compte les positions déjà retenues <em>dans le même cycle</em> : sans cela, quatre candidats à 7/10 ouvriraient quatre positions alors que le quota en autorise moins.</figcaption>
+    <figcaption>Les verrous sont évalués dans cet ordre exact. Le filtre de hausse 24h (#507) passe avant le mode dégradé — il écarte les sommets locaux quel que soit le RSI. Le quota compte les positions déjà retenues <em>dans le même cycle</em> : sans cela, quatre candidats à 7/10 ouvriraient quatre positions alors que le quota en autorise moins.</figcaption>
   </figure>
 
   <div class="ex">
     <span class="tag">SOL · les verrous, un par un</span>
     déjà en portefeuille ? <b>non</b> &nbsp;<span class="cm">// 2 positions ouvertes, mais pas SOL</span><br>
+    hausse 24h excessive ? <b>non</b> &nbsp;<span class="cm">// +1,8 % sur 24h, sous le seuil de 4 %</span><br>
     mode dégradé ? <b>non</b> &nbsp;<span class="cm">// l'analyse 1D a répondu</span><br>
     quota atteint ? <b>non</b> &nbsp;<span class="cm">// 2 ouvertes + 2 retenues = 4, pile la limite… franchi de justesse</span><br>
     trop de corrélées ? ETH et SOL sont tous deux du groupe → <b>2 sur 2 autorisées</b><br>
     → <b>BUY</b>
   </div>
   <p class="note">Ce cycle a retenu ETH puis SOL, les deux seuls membres du groupe corrélé autorisés. Un troisième — STX ou SUI — aurait été écarté en TYPE_A, quel que soit son score.</p>
+
+  <h3>Le filtre anti-poursuite</h3>
+  <p>Sur 19 trades reconstruits (bougies Kraken, 30 j), 100 % des entrées suivaient une hausse sur 24h — médiane +3,05 % — et 79 % étaient en perte 24h plus tard (médiane -1,83 %). Le bot achète systématiquement des sommets locaux : les bonus <span class="cfg-inline">top_gainers</span> et <span class="cfg-inline">breakout_symbols</span> du score récompensent explicitement ce momentum, sans protection quand il se retourne.</p>
+  <p><span class="cfg-inline">change_24h_pct</span> est calculé en phase 1 à partir des bougies déjà récupérées pour vérifier la persistance du volume (pas d'appel réseau supplémentaire) : variation entre l'ouverture de la bougie la plus ancienne et la clôture de la plus récente, sur les six bougies de 4h couvrant les dernières 24h. Au-delà de <span class="cfg-inline">max_24h_runup_pct</span> (0,04, soit 4 % — proche de la médiane mesurée de +3,05 %), l'entrée est refusée en TYPE_A. Une valeur absente ou nulle ne bloque jamais. Le filtre ne s'applique pas à un coin déjà en portefeuille : il ne remet jamais en cause un HOLD.</p>
 
   <h3>La vente</h3>
   <div class="f">
@@ -639,6 +653,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
       <tr><td class="k">rsi_zone_min / max</td><td class="v">30 / 65</td><td>phase 3</td><td>Zone RSI qui donne un point. En mode dégradé, sortir de la zone devient éliminatoire.</td></tr>
       <tr><td class="k">max_open_positions</td><td class="v">4</td><td>phase 3</td><td>Nombre de positions simultanées. Compte aussi les candidats retenus dans le cycle en cours.</td></tr>
       <tr><td class="k">max_correlated_positions</td><td class="v">2</td><td>phase 3</td><td>Plafond de positions dans le groupe SOL · SUI · STX · ETH.</td></tr>
+      <tr><td class="k">max_24h_runup_pct</td><td class="v">0.04</td><td>phase 3</td><td>Hausse de prix sur 24h au-delà de laquelle une entrée est refusée (filtre anti-poursuite). Ne s'applique jamais à un coin déjà en portefeuille.</td></tr>
       <tr><td class="k">min_volume_usdc</td><td class="v">500 000</td><td>phase 1</td><td>Volume 24h minimal pour entrer dans l'univers.</td></tr>
       <tr><td class="k">max_spread_pct</td><td class="v">0.0008</td><td>phase 1</td><td>Écart achat-vente maximal. Relevé de 0,05 % à 0,08 % : ADA était exclue pour quatre millièmes de point.</td></tr>
       <tr><td class="k">volume_persistence_periods</td><td class="v">6</td><td>phase 1</td><td>Nombre de bougies 4h sur lesquelles le volume doit tenir. Écarte les pics isolés.</td></tr>

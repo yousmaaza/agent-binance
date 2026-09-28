@@ -3,7 +3,8 @@
 Lit les données d'analyse depuis /tmp/cycle_{CYCLE_ID}_phase3_input.json :
 {
   "analysis_results": {coin: {signal_4h, signal_1d, rsi_4h, macd_bullish_4h,
-                               volume_24h, signal_1d_rate_limited, in_portfolio}},
+                               volume_24h, signal_1d_rate_limited, in_portfolio,
+                               change_24h_pct}},
   "top_gainers_symbols": [...],
   "breakout_symbols": [...],
   "sentiment": "Bullish|Neutral|Bearish",
@@ -47,6 +48,7 @@ max_open_positions = cfg.get("max_open_positions", 5)
 max_correlated_positions = cfg.get("max_correlated_positions", 2)
 rsi_zone_min = cfg.get("rsi_zone_min", 30)
 rsi_zone_max = cfg.get("rsi_zone_max", 65)
+max_24h_runup_pct = cfg.get("max_24h_runup_pct", 0.04)
 
 # Mode dégradé : rate limit TradingView 1D
 buy_4h = [c for c in analysis_results if analysis_results[c].get("signal_4h") in ("BUY", "STRONG_BUY")]
@@ -75,6 +77,7 @@ for coin, data in analysis_results.items():
     rsi_4h = data.get("rsi_4h")
     macd_bullish = data.get("macd_bullish_4h", False)
     volume_24h = data.get("volume_24h", 0)
+    change_24h_pct = data.get("change_24h_pct")
 
     score = 0
     reasons = []
@@ -112,10 +115,18 @@ for coin, data in analysis_results.items():
     # sans signal 1D, on n'achète pas un actif suracheté. RSI inconnu = inéligible aussi
     # (deux inconnues ne se compensent pas).
     degraded_rsi_block = all_rl and not rsi_in_zone
+    # Filtre anti-poursuite (#507) : une hausse 24h excessive avant l'entrée est corrélée à
+    # une perte à 24h (médiane -1.83% sur échantillon mesuré) — ne s'applique pas au HOLD.
+    runup_block = (not data.get("in_portfolio") and change_24h_pct is not None
+                   and change_24h_pct > max_24h_runup_pct)
 
     if score >= effective_min_score and signal_4h in ("BUY", "STRONG_BUY"):
         if data.get("in_portfolio"):
             scores_detail[coin] = {"score": score, "decision": "HOLD", "skip_type": None, "reasons": reasons}
+        elif runup_block:
+            skip_detail_str = f"Hausse 24h +{change_24h_pct * 100:.1f}% > seuil {max_24h_runup_pct * 100:.1f}% (poursuite)"
+            skip_coins_detail[coin] = {"skip_type": "TYPE_A", "skip_detail": skip_detail_str}
+            scores_detail[coin] = {"score": score, "decision": "SKIP", "skip_type": "TYPE_A", "reasons": reasons + [skip_detail_str]}
         elif degraded_rsi_block:
             skip_detail_str = ("RSI indisponible (mode dégradé)" if rsi_4h is None
                                 else f"RSI {rsi_4h:.0f} hors zone (mode dégradé)")
