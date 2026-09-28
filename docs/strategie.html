@@ -210,7 +210,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 
   <div class="skips">
     <div class="skip"><b>TYPE_D · scan</b><span>La paire n'existe pas en USDC, son volume est trop faible, son spread trop large, ou son volume n'est qu'un pic isolé.</span></div>
-    <div class="skip"><b>TYPE_A · scoring</b><span>Le signal est insuffisant, le quota de positions est atteint, ou la corrélation avec les positions existantes est excessive.</span></div>
+    <div class="skip"><b>TYPE_A · scoring</b><span>Le signal est insuffisant, le quota de positions est atteint, la corrélation avec les positions existantes est excessive, ou la hausse du prix sur 24h dépasse le seuil de poursuite.</span></div>
     <div class="skip"><b>TYPE_B · dimensionnement</b><span>L'ordre calculé est sous le minimum tradable, ou le stop tombe en territoire négatif.</span></div>
     <div class="skip"><b>TYPE_C · exécution</b><span>Le prix a trop dérivé depuis le scan, le solde ne suffit plus, ou l'ordre n'a pas été rempli.</span></div>
   </div>
@@ -349,9 +349,9 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     <span class="cm">// exactement ce qui sépare ce trade d'un signal confortable</span>
   </div>
 
-  <h3>Les quatre verrous après le score</h3>
+  <h3>Les cinq verrous après le score</h3>
   <figure>
-    <svg viewBox="0 0 900 340" role="img" aria-label="Arbre de décision du scoring : après avoir vérifié que le score atteint le seuil et que le signal 4h est haussier, quatre conditions successives peuvent transformer un achat en HOLD ou en SKIP TYPE_A — déjà en portefeuille, mode dégradé avec RSI hors zone, quota de positions atteint, corrélation excessive.">
+    <svg viewBox="0 0 900 410" role="img" aria-label="Arbre de décision du scoring : après avoir vérifié que le score atteint le seuil et que le signal 4h est haussier, cinq conditions successives peuvent transformer un achat en HOLD ou en SKIP TYPE_A — déjà en portefeuille, hausse 24h excessive (poursuite), mode dégradé avec RSI hors zone, quota de positions atteint, corrélation excessive.">
       <defs>
         <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
@@ -367,7 +367,8 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
         <line x1="450" y1="112" x2="450" y2="136"/>
         <line x1="450" y1="176" x2="450" y2="200"/>
         <line x1="450" y1="240" x2="450" y2="264"/>
-        <line x1="450" y1="304" x2="450" y2="322"/>
+        <line x1="450" y1="304" x2="450" y2="328"/>
+        <line x1="450" y1="368" x2="450" y2="392"/>
       </g>
 
       <g>
@@ -376,16 +377,20 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
         <text class="dg-s" x="450" y="104" text-anchor="middle">in_portfolio</text>
 
         <rect class="dg-box" x="300" y="136" width="300" height="40"/>
-        <text class="dg-t" x="450" y="154" text-anchor="middle">mode dégradé ET RSI hors zone ?</text>
-        <text class="dg-s" x="450" y="168" text-anchor="middle">RSI inconnu compte comme hors zone</text>
+        <text class="dg-t" x="450" y="154" text-anchor="middle">hausse 24h excessive ?</text>
+        <text class="dg-s" x="450" y="168" text-anchor="middle">change_24h_pct &gt; max_24h_runup_pct</text>
 
         <rect class="dg-box" x="300" y="200" width="300" height="40"/>
-        <text class="dg-t" x="450" y="218" text-anchor="middle">quota de positions atteint ?</text>
-        <text class="dg-s" x="450" y="232" text-anchor="middle">ouvertes + retenues ce cycle ≥ max</text>
+        <text class="dg-t" x="450" y="218" text-anchor="middle">mode dégradé ET RSI hors zone ?</text>
+        <text class="dg-s" x="450" y="232" text-anchor="middle">RSI inconnu compte comme hors zone</text>
 
         <rect class="dg-box" x="300" y="264" width="300" height="40"/>
-        <text class="dg-t" x="450" y="282" text-anchor="middle">trop de corrélées ?</text>
-        <text class="dg-s" x="450" y="296" text-anchor="middle">groupe SOL · SUI · STX · ETH</text>
+        <text class="dg-t" x="450" y="282" text-anchor="middle">quota de positions atteint ?</text>
+        <text class="dg-s" x="450" y="296" text-anchor="middle">ouvertes + retenues ce cycle ≥ max</text>
+
+        <rect class="dg-box" x="300" y="328" width="300" height="40"/>
+        <text class="dg-t" x="450" y="346" text-anchor="middle">trop de corrélées ?</text>
+        <text class="dg-s" x="450" y="360" text-anchor="middle">groupe SOL · SUI · STX · ETH</text>
       </g>
 
       <!-- branches oui -->
@@ -394,38 +399,47 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
         <line x1="600" y1="156" x2="700" y2="156"/>
         <line x1="600" y1="220" x2="700" y2="220"/>
         <line x1="600" y1="284" x2="700" y2="284"/>
+        <line x1="600" y1="348" x2="700" y2="348"/>
       </g>
       <g>
         <text class="dg-t" x="710" y="96"  fill="var(--wait)">HOLD</text>
         <text class="dg-t dg-skip" x="710" y="160">SKIP TYPE_A</text>
         <text class="dg-t dg-skip" x="710" y="224">SKIP TYPE_A</text>
         <text class="dg-t dg-skip" x="710" y="288">SKIP TYPE_A</text>
+        <text class="dg-t dg-skip" x="710" y="352">SKIP TYPE_A</text>
         <text class="dg-lab" x="620" y="84">oui</text>
         <text class="dg-lab" x="620" y="148">oui</text>
         <text class="dg-lab" x="620" y="212">oui</text>
         <text class="dg-lab" x="620" y="276">oui</text>
+        <text class="dg-lab" x="620" y="340">oui</text>
       </g>
       <g>
         <text class="dg-lab" x="458" y="66">non</text>
         <text class="dg-lab" x="458" y="130">non</text>
         <text class="dg-lab" x="458" y="194">non</text>
         <text class="dg-lab" x="458" y="258">non</text>
+        <text class="dg-lab" x="458" y="322">non</text>
       </g>
 
-      <text class="dg-t dg-ok" x="450" y="332" text-anchor="middle">BUY — candidat retenu</text>
+      <text class="dg-t dg-ok" x="450" y="402" text-anchor="middle">BUY — candidat retenu</text>
     </svg>
-    <figcaption>Les verrous sont évalués dans cet ordre exact. Le troisième compte les positions déjà retenues <em>dans le même cycle</em> : sans cela, quatre candidats à 7/10 ouvriraient quatre positions alors que le quota en autorise moins.</figcaption>
+    <figcaption>Les verrous sont évalués dans cet ordre exact. Le filtre de hausse 24h (#507) passe avant le mode dégradé — il écarte les sommets locaux quel que soit le RSI. Le quota compte les positions déjà retenues <em>dans le même cycle</em> : sans cela, quatre candidats à 7/10 ouvriraient quatre positions alors que le quota en autorise moins.</figcaption>
   </figure>
 
   <div class="ex">
     <span class="tag">SOL · les verrous, un par un</span>
     déjà en portefeuille ? <b>non</b> &nbsp;<span class="cm">// 2 positions ouvertes, mais pas SOL</span><br>
+    hausse 24h excessive ? <b>non</b> &nbsp;<span class="cm">// +1,8 % sur 24h, sous le seuil de 4 %</span><br>
     mode dégradé ? <b>non</b> &nbsp;<span class="cm">// l'analyse 1D a répondu</span><br>
     quota atteint ? <b>non</b> &nbsp;<span class="cm">// 2 ouvertes + 2 retenues = 4, pile la limite… franchi de justesse</span><br>
     trop de corrélées ? ETH et SOL sont tous deux du groupe → <b>2 sur 2 autorisées</b><br>
     → <b>BUY</b>
   </div>
   <p class="note">Ce cycle a retenu ETH puis SOL, les deux seuls membres du groupe corrélé autorisés. Un troisième — STX ou SUI — aurait été écarté en TYPE_A, quel que soit son score.</p>
+
+  <h3>Le filtre anti-poursuite</h3>
+  <p>Sur 19 trades reconstruits (bougies Kraken, 30 j), 100 % des entrées suivaient une hausse sur 24h — médiane +3,05 % — et 79 % étaient en perte 24h plus tard (médiane -1,83 %). Le bot achète systématiquement des sommets locaux : les bonus <span class="cfg-inline">top_gainers</span> et <span class="cfg-inline">breakout_symbols</span> du score récompensent explicitement ce momentum, sans protection quand il se retourne.</p>
+  <p><span class="cfg-inline">change_24h_pct</span> est calculé en phase 1 à partir des bougies déjà récupérées pour vérifier la persistance du volume (pas d'appel réseau supplémentaire) : variation entre l'ouverture de la bougie la plus ancienne et la clôture de la plus récente, sur les six bougies de 4h couvrant les dernières 24h. Au-delà de <span class="cfg-inline">max_24h_runup_pct</span> (0,04, soit 4 % — proche de la médiane mesurée de +3,05 %), l'entrée est refusée en TYPE_A. Une valeur absente ou nulle ne bloque jamais. Le filtre ne s'applique pas à un coin déjà en portefeuille : il ne remet jamais en cause un HOLD.</p>
 
   <h3>La vente</h3>
   <div class="f">
@@ -528,7 +542,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     quantite = 9,22 ÷ (2,496 × 0,079) = <b>46,68</b> <span class="cm">// 12 % de moins</span><br><br>
     résultat réel : stop touché, <b>−13,20 USDC</b>, la plus grosse perte de l'historique
   </div>
-  <p class="note">La cible en base pour TRUMP vaut <code>2.8454399276</code>, soit <b>exactement</b> l'entrée majorée de 14 %. Aucun frais nulle part. Le plafond ramènerait aujourd'hui cette cible à +6 %, une hauteur que le marché atteint réellement : la mesure faite sur l'historique donne une hausse médiane de 4,9 % pendant la détention, et <b>sur 43 cibles fixées au-delà de 8 %, <b>2 seulement ont été touchées</b> — la plus haute atteinte est à +11,27 %</b>. Je ne peux pas affirmer que ce trade serait devenu gagnant — il est descendu au stop en moins de quatre heures — mais sa cible aurait été atteignable au lieu d'être hors de portée par construction.</p>
+  <p class="note">La cible en base pour TRUMP vaut <code>2.8454399276</code>, soit <b>exactement</b> l'entrée majorée de 14 %. Aucun frais nulle part. Le plafond ramènerait aujourd'hui cette cible à +6 %, une hauteur au-dessus de ce que le marché délivre habituellement (MFE médiane <b>+1,52 %</b>, mesure révisée le 28/09/2026, #508) : <b>sur 43 cibles fixées au-delà de 8 %, <b>2 seulement ont été touchées</b> — la plus haute atteinte est à +11,27 %</b>. Je ne peux pas affirmer que ce trade serait devenu gagnant — il est descendu au stop en moins de quatre heures — mais sa cible aurait été atteignable au lieu d'être hors de portée par construction.</p>
 </section>
 
 <section>
@@ -621,7 +635,8 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
       <tr><td class="k">atr_stop_multiplier</td><td class="v">2.5</td><td>phase 4</td><td>Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible.</td></tr>
       <tr><td class="k">reward_risk_ratio</td><td class="v">1.5</td><td>phases 0 et 4</td><td>Gain net visé rapporté à la perte nette. Porte sur du net depuis août.</td></tr>
       <tr><td class="k">fee_round_trip_pct</td><td class="v">0.009</td><td>phases 0, 4, 5</td><td>Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit.</td></tr>
-      <tr><td class="k">max_tp_pct</td><td class="v">0.06</td><td>phases 0 et 4</td><td>Plafond absolu de la cible. Le marché a délivré 4,9 % en médiane pendant la détention ; viser plus revenait à ne jamais toucher.</td></tr>
+      <tr><td class="k">max_tp_pct</td><td class="v">0.06</td><td>phases 0 et 4</td><td>Plafond absolu de la cible. La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026).</td></tr>
+      <tr><td class="k">max_stop_distance_pct</td><td class="v">0.12</td><td>phase 4</td><td>Écarte en TYPE_B tout candidat dont <code>stop_distance_pct</code> dépasse ce seuil — protège contre la queue volatile (ATR 4h &gt; 4,8 %) sans bloquer le flux normal.</td></tr>
       <tr><td class="k">usdc_allocation_pct</td><td class="v">0.70</td><td>phase 0</td><td>Part du solde USDC mobilisable.</td></tr>
       <tr><td class="k">max_single_position_pct</td><td class="v">0.65</td><td>phase 4</td><td>Plafond d'une position seule, en part du budget disponible.</td></tr>
       <tr><td class="k">min_order_usdc</td><td class="v">9</td><td>phase 4</td><td>Montant minimal d'un ordre. En dessous, skip TYPE_B.</td></tr>
@@ -639,6 +654,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
       <tr><td class="k">rsi_zone_min / max</td><td class="v">30 / 65</td><td>phase 3</td><td>Zone RSI qui donne un point. En mode dégradé, sortir de la zone devient éliminatoire.</td></tr>
       <tr><td class="k">max_open_positions</td><td class="v">4</td><td>phase 3</td><td>Nombre de positions simultanées. Compte aussi les candidats retenus dans le cycle en cours.</td></tr>
       <tr><td class="k">max_correlated_positions</td><td class="v">2</td><td>phase 3</td><td>Plafond de positions dans le groupe SOL · SUI · STX · ETH.</td></tr>
+      <tr><td class="k">max_24h_runup_pct</td><td class="v">0.04</td><td>phase 3</td><td>Hausse de prix sur 24h au-delà de laquelle une entrée est refusée (filtre anti-poursuite). Ne s'applique jamais à un coin déjà en portefeuille.</td></tr>
       <tr><td class="k">min_volume_usdc</td><td class="v">500 000</td><td>phase 1</td><td>Volume 24h minimal pour entrer dans l'univers.</td></tr>
       <tr><td class="k">max_spread_pct</td><td class="v">0.0008</td><td>phase 1</td><td>Écart achat-vente maximal. Relevé de 0,05 % à 0,08 % : ADA était exclue pour quatre millièmes de point.</td></tr>
       <tr><td class="k">volume_persistence_periods</td><td class="v">6</td><td>phase 1</td><td>Nombre de bougies 4h sur lesquelles le volume doit tenir. Écarte les pics isolés.</td></tr>
@@ -840,6 +856,52 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
   <h3>Ce qui a été décidé le 28/09</h3>
   <p><span class="cfg-inline">atr_stop_multiplier</span> est passé de <b>1,75 à 2,5</b>. La formule de dimensionnement compense automatiquement — <span class="cfg-inline">quantite = risk_usdc ÷ (prix_entry × (stop_distance_pct + fee_round_trip_pct))</span> — un stop plus large réduit la quantité et laisse le risque en USDC inchangé, aucune autre formule n'a été touchée.</p>
   <p class="note">Cette mesure prolonge celle du 07/09, qui avait resserré le stop pour redresser le ratio gain/risque sans pouvoir vérifier si le prix respirait davantage dans la nouvelle zone. C'est désormais mesuré : il respirait trop.</p>
+  <h2><span class="ph">28 septembre</span>Plafonner le stop, pas la cible</h2>
+  <p class="lede">La section précédente n'avait que les deux extrémités de chaque trade. Reconstruire le chemin de prix entre l'entrée et la sortie — bougies Kraken sur 30 jours, 19 trades — change la lecture : la cible n'est pas seulement chère en frais, elle est rarement à la portée du marché. Le ticket #508, initialement scopé pour plafonner la cible elle-même, a été re-scopé après avoir démontré cette approche inapplicable.</p>
+
+  <h3>Ce que le marché offre réellement pendant la détention</h3>
+  <div class="ex">
+    <span class="tag">19 trades · chemin de prix reconstruit</span>
+    MFE — plus haute hausse atteinte pendant la détention : médiane <b>+1,52 %</b><br>
+    TP visé : médiane <b>+4,09 %</b><br>
+    MAE — plus grosse baisse subie pendant la détention : médiane <b>−1,84 %</b><br>
+    Stop placé à : médiane <b>−2,48 %</b><br><br>
+    cible atteinte : <b>2/19 = 11 %</b> &nbsp;·&nbsp; fraction médiane de la cible offerte : <b>26 %</b><br>
+    stop touché : <b>8/19 = 42 %</b> <span class="cm">(58 % en moins de 48 h de détention)</span>
+  </div>
+  <p class="note">La géométrie est inversée par rapport à ce que le marché délivre : une cible atteinte 11 % du temps ne peut pas financer un stop touché 42 % du temps.</p>
+
+  <h3>Pourquoi plafonner la cible est une impasse</h3>
+  <p>Le réflexe initial était d'écarter tout candidat dont la cible dépasse un plafond. Mais la cible dérive du stop :</p>
+  <div class="f">
+    cible = (<span class="cfg">stop_distance_pct</span> + <span class="cfg">fee_round_trip_pct</span>) × <span class="cfg">reward_risk_ratio</span> + <span class="cfg">fee_round_trip_pct</span>
+  </div>
+  <p>Pour qu'une cible tombe sous 3 %, il faut <span class="cfg-inline">stop_distance_pct</span> ≤ 0,5 % — un ATR 4h ≤ 0,2 % (à 2,5× ATR) ou ≤ 0,29 % (à 1,75×). Or l'ATR 4h reconstruit sur les 110 trades réels a une médiane de <b>2,858 %</b> (10<sup>e</sup> centile 0,650 %, Q1 1,149 %, Q3 4,000 %, max 17,000 %).</p>
+  <p class="note"><b>Résultat mesuré : 3 trades sur 110 (2,7 %) passeraient un plafond de cible à 3 % — le bot cesserait de trader.</b> Et l'effet n'est pas dû au stop élargi de #509 : avec le stop actuel de 1,75×, le filtre bloque encore 96,4 % des trades.</p>
+  <div class="f">
+    R/R net = (3,0 % − <span class="cfg">fee_round_trip_pct</span>) ÷ (stop_distance_pct + <span class="cfg">fee_round_trip_pct</span>) ≥ 1 ⇒ stop_distance_pct ≤ <b>1,2 %</b><br>
+    <span class="cm">// contredit le constat des stops prématurés de #509 — même impasse que la grille contrefactuelle (toutes cellules négatives)</span>
+  </div>
+  <p class="note">Avec 0,9 % de frais aller-retour et une cible plafonnée à 3 %, <b>aucune largeur de stop ne produit un R/R net ≥ 1</b>. La géométrie fixe stop/cible de la stratégie n'est pas rentabilisable par un simple réglage tant que les frais représentent 0,9 % et que le marché n'offre qu'une MFE médiane de +1,52 % — ce constat justifiera une refonte de la mécanique de sortie, hors de ce ticket.</p>
+
+  <h3>Le garde-fou retenu : plafonner la distance de stop</h3>
+  <p>Remplacer le garde-fou sur la cible par un plafond sur <span class="cfg-inline">max_stop_distance_pct</span> (0,12) protège contre les coins ultra-volatils sans bloquer le flux normal : si <code>stop_distance_pct</code> dépasse le plafond, le candidat est skippé en TYPE_B avec un skip_detail chiffré (stop calculé, plafond, ATR), avant même de calculer <code>prix_stop</code>/<code>prix_tp</code>.</p>
+
+  <h4>Effet du seuil (stop = 2,5× ATR, n=110 trades réels)</h4>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>seuil</th><th>ATR 4h max</th><th>trades bloqués</th></tr></thead>
+      <tbody>
+        <tr><td>8 %</td><td class="v">3,20 %</td><td class="v">40,9 %</td></tr>
+        <tr><td>10 %</td><td class="v">4,00 %</td><td class="v">30,9 %</td></tr>
+        <tr><td><b>12 %</b></td><td class="v"><b>4,80 %</b></td><td class="v"><b>10,9 %</b></td></tr>
+        <tr><td>15 %</td><td class="v">6,00 %</td><td class="v">8,2 %</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">12 % est le coude de la courbe : le blocage chute de 30,9 % à 10,9 % entre 10 % et 12 %, puis ne gagne plus grand-chose. Le filtre cible donc la vraie queue volatile (ATR 4h &gt; 4,8 %) — le profil du type d'incident déjà documenté en phase 1 (TRUMP, 22-23/08/2026 : volume ×27 en une nuit, stop glissé de 2,3 % à l'exécution).</p>
+  <p class="note"><b>Réserve de méthode</b> : cet ATR est reconstruit depuis <code>stop_price / entry_price ÷ 1,75</code>. Les trades antérieurs au passage à 1,75 (07/09) ont pu utiliser un autre multiplicateur, ce qui gonfle leur ATR reconstruit. Le seuil de 12 % est donc un ordre de grandeur à revoir après 30+ trades sous le nouveau réglage.</p>
+  <p class="note">Articulation avec le garde-fou existant : <span class="cfg-inline">min_order_usdc</span> skippait déjà certains cas extrêmes tardivement, un stop très large produisant mécaniquement une position minuscule (le risque USDC étant constant) — mais avec un motif trompeur (« montant trop petit » au lieu de « volatilité extrême »). Le nouveau plafond rend la cause explicite et intercepte le cas plus tôt.</p>
 </section>
 
 

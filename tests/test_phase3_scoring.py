@@ -275,6 +275,67 @@ class TestMaxCorrelatedPositions(unittest.TestCase):
         self.assertIn("Corrélation", out["skip_coins_detail"]["SUI"]["skip_detail"])
 
 
+class TestRunupFilter(unittest.TestCase):
+    """Filtre anti-poursuite (#507) : hausse 24h excessive avant l'entrée refusée en TYPE_A,
+    sauf pour un coin déjà en portefeuille (HOLD préservé)."""
+
+    def test_runup_above_threshold_is_skipped(self):
+        analysis_results = {
+            "PUMPCOIN": {
+                "signal_4h": "STRONG_BUY", "signal_1d": "BUY", "rsi_4h": 45,
+                "macd_bullish_4h": True, "change_24h_pct": 0.052,
+            },
+        }
+        cfg = {**DEFAULT_CONFIG, "max_24h_runup_pct": 0.04}
+        out = _run_phase3(analysis_results, config=cfg)
+        detail = out["scores_detail"]["PUMPCOIN"]
+        self.assertEqual(detail["decision"], "SKIP")
+        self.assertEqual(detail["skip_type"], "TYPE_A")
+        self.assertNotIn("PUMPCOIN", [c["coin"] for c in out["buy_candidates"]])
+        skip_detail = out["skip_coins_detail"]["PUMPCOIN"]["skip_detail"]
+        self.assertTrue(skip_detail)
+        self.assertIn("Hausse 24h", skip_detail)
+
+    def test_runup_above_threshold_but_in_portfolio_stays_hold(self):
+        analysis_results = {
+            "HOLDCOIN": {
+                "signal_4h": "STRONG_BUY", "signal_1d": "BUY", "rsi_4h": 45,
+                "macd_bullish_4h": True, "change_24h_pct": 0.10, "in_portfolio": True,
+            },
+        }
+        cfg = {**DEFAULT_CONFIG, "max_24h_runup_pct": 0.04}
+        out = _run_phase3(analysis_results, config=cfg)
+        detail = out["scores_detail"]["HOLDCOIN"]
+        self.assertEqual(detail["decision"], "HOLD")
+        self.assertNotIn("HOLDCOIN", out["skip_coins_detail"])
+
+    def test_change_24h_pct_missing_is_not_blocking(self):
+        analysis_results = {
+            "NODATACOIN": {
+                "signal_4h": "STRONG_BUY", "signal_1d": "BUY", "rsi_4h": 45,
+                "macd_bullish_4h": True,
+            },
+        }
+        cfg = {**DEFAULT_CONFIG, "max_24h_runup_pct": 0.04}
+        out = _run_phase3(analysis_results, config=cfg)
+        detail = out["scores_detail"]["NODATACOIN"]
+        self.assertEqual(detail["decision"], "BUY")
+        self.assertIn("NODATACOIN", [c["coin"] for c in out["buy_candidates"]])
+
+    def test_change_24h_pct_below_threshold_is_unaffected(self):
+        analysis_results = {
+            "CALMCOIN": {
+                "signal_4h": "STRONG_BUY", "signal_1d": "BUY", "rsi_4h": 45,
+                "macd_bullish_4h": True, "change_24h_pct": 0.01,
+            },
+        }
+        cfg = {**DEFAULT_CONFIG, "max_24h_runup_pct": 0.04}
+        out = _run_phase3(analysis_results, config=cfg)
+        detail = out["scores_detail"]["CALMCOIN"]
+        self.assertEqual(detail["decision"], "BUY")
+        self.assertIn("CALMCOIN", [c["coin"] for c in out["buy_candidates"]])
+
+
 class TestSellDecision(unittest.TestCase):
     def test_low_score_in_portfolio_gives_sell(self):
         analysis_results = {

@@ -284,6 +284,46 @@
       {% endif %}
     </div>
     {% endif %}
+
+    <div class="mk-abandoned">
+      <h3>Entrées abandonnées<em>budget de concession dépassé</em></h3>
+      {% if m.abandoned.entries and m.abandoned_freshness.is_stale %}
+      <p class="freshness stale">
+        Donnée vieille de {{ "%.0f"|format(m.abandoned_freshness.age_minutes) if m.abandoned_freshness.age_minutes is not none else "?" }} min
+        — pas un suivi temps réel, le watcher ne publie plus (Mongo injoignable ou thread arrêté).
+      </p>
+      {% endif %}
+      <div class="lines">
+        <div class="line"><span>Abandons (7 derniers jours)</span><b>{{ m.abandoned.count_7d }}</b></div>
+      </div>
+      {% if m.abandoned.entries %}
+      <div class="scroll">
+        <table class="sales">
+          <thead>
+            <tr>
+              <th>Coin</th><th>Horodatage</th><th>Signal</th><th>Refusé</th>
+              <th>Concession / budget</th><th>Score</th><th class="num">Notionnel</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in m.abandoned.entries %}
+            <tr>
+              <td class="cn">{{ a.coin }}</td>
+              <td>{{ a.abandoned_local }}</td>
+              <td>{{ a.scan_price | price }}</td>
+              <td>{{ a.last_bid | price }}</td>
+              <td>{{ "%.2f"|format(a.concession_pct_display) }} % / {{ "%.2f"|format(a.max_concession_pct_display) }} %</td>
+              <td>{{ a.signal_score if a.signal_score is not none else "n/d" }}</td>
+              <td class="num">{{ "%.2f"|format(a.notional_usdc or 0) }} USDC</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty">Aucune entrée abandonnée.</p>
+      {% endif %}
+    </div>
   </section>
 </div>
 

@@ -7,7 +7,9 @@ passent ces deux filtres doivent en plus tenir le volume sur plusieurs périodes
 consécutives (`kraken ohlc`, appelé uniquement sur les candidats déjà retenus, pas sur
 les 46 paires) pour écarter un pic isolé (cf. incident TRUMP du 22-23/08/2026 : volume
 x27 en une nuit, spread douze fois plus large que XBT/SOL, stop-loss glissé de 2,3 %
-à l'exécution). Les coins de portfolio_coins sont toujours inclus même si sous le seuil.
+à l'exécution). Les mêmes bougies servent aussi à calculer `change_24h_pct` (issue #507,
+filtre anti-poursuite en phase 3) — pas d'appel réseau supplémentaire. Les coins de
+portfolio_coins sont toujours inclus même si sous le seuil.
 
 Exécuté par Claude en Phase 1 :
     python3 __PROJECT_DIR__/binance-bot/core/phases/phase1_scan.py __CYCLE_ID__
@@ -75,18 +77,25 @@ for i in range(0, len(pairs_list), batch_size):
         print(f"batch ticker error (batch {i // batch_size + 1}): {e}", file=sys.stderr)
 
 
-def _volume_is_persistent(pair):
-    """Vérifie que le volume tient sur plusieurs périodes consécutives (kraken ohlc), pas
-    seulement sur un pic isolé — appelé uniquement sur les candidats déjà filtrés volume+spread."""
+def _volume_persistence_and_change(pair):
+    """Vérifie que le volume tient sur plusieurs périodes consécutives (kraken ohlc) et calcule
+    la variation de prix sur 24h à partir des mêmes bougies — appelé uniquement sur les
+    candidats déjà filtrés volume+spread. Retourne (is_persistent, change_24h_pct|None)."""
     try:
         ohlc_raw = binance("ohlc", pair, "--interval", str(PERSISTENCE_INTERVAL_MIN), "-o", "json")
         candles = json.loads(ohlc_raw).get(pair, [])[-VOLUME_PERSISTENCE_PERIODS:]
         threshold = MIN_VOLUME_USDC / VOLUME_PERSISTENCE_PERIODS
         ok_periods = sum(1 for c in candles if float(c[6]) * float(c[5]) >= threshold)
-        return ok_periods >= PERSISTENCE_REQUIRED
+        change_24h_pct = None
+        if len(candles) == VOLUME_PERSISTENCE_PERIODS:
+            open_24h_ago = float(candles[0][1])
+            close_now = float(candles[-1][4])
+            if open_24h_ago:
+                change_24h_pct = (close_now - open_24h_ago) / open_24h_ago
+        return ok_periods >= PERSISTENCE_REQUIRED, change_24h_pct
     except (json.JSONDecodeError, subprocess.CalledProcessError, ValueError) as e:
         print(f"ohlc error {pair}: {e}", file=sys.stderr)
-        return False
+        return False, None
 
 
 # Étape 3 : filtrer par volume, spread, puis persistance du volume — toujours inclure portfolio_coins
@@ -104,15 +113,17 @@ for pair, coin in usdc_coins.items():
     spread_pct = info["spread_pct"]
 
     if coin in portfolio_coins:
-        tradable.append({"coin": coin, "price": price, "volume_24h": vol, "tv_symbol": TV_MAP.get(coin, coin)})
+        tradable.append({"coin": coin, "price": price, "volume_24h": vol, "tv_symbol": TV_MAP.get(coin, coin), "change_24h_pct": None})
     elif vol < MIN_VOLUME_USDC:
         non_tradable.append({"coin": coin, "reason": f"volume {vol / 1e6:.1f}M USDC < {MIN_VOLUME_USDC / 1e6:.0f}M"})
     elif spread_pct > MAX_SPREAD_PCT:
         non_tradable.append({"coin": coin, "reason": f"spread {spread_pct * 100:.3f}% > {MAX_SPREAD_PCT * 100:.3f}%"})
-    elif not _volume_is_persistent(pair):
-        non_tradable.append({"coin": coin, "reason": "volume non soutenu (pic isolé)"})
     else:
-        tradable.append({"coin": coin, "price": price, "volume_24h": vol, "tv_symbol": TV_MAP.get(coin, coin)})
+        persistent, change_24h_pct = _volume_persistence_and_change(pair)
+        if not persistent:
+            non_tradable.append({"coin": coin, "reason": "volume non soutenu (pic isolé)"})
+        else:
+            tradable.append({"coin": coin, "price": price, "volume_24h": vol, "tv_symbol": TV_MAP.get(coin, coin), "change_24h_pct": change_24h_pct})
 
 coins_str = ",".join(c["coin"] for c in tradable)
 print(f"PHASE1_SCAN_DONE|tradable={len(tradable)}|coins={coins_str}")
