@@ -413,7 +413,7 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | Réglage | Valeur | Où | Ce qu'il fait |
 |---|---|---|---|
 | risk_per_trade_pct | 0.02 | phase 4 | Part du portefeuille risquée par trade. Fixe `risk_usdc`, donc la quantité. |
-| atr_stop_multiplier | 1.75 | phase 4 | Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible. |
+| atr_stop_multiplier | 2.5 | phase 4 | Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible. |
 | reward_risk_ratio | 1.5 | phases 0 et 4 | Gain net visé rapporté à la perte nette. Porte sur du net depuis août. |
 | fee_round_trip_pct | 0.009 | phases 0, 4, 5 | Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit. |
 | max_tp_pct | 0.06 | phases 0 et 4 | Plafond absolu de la cible. Le marché a délivré 4,9 % en médiane pendant la détention ; viser plus revenait à ne jamais toucher. |
@@ -592,6 +592,60 @@ trades défavorables 39/43 → 5/43
 ### Ce que cette mesure ne dit pas
 
 > Tout ce qui précède est de l'arithmétique sur des réglages, pas une simulation de résultat. **Je n'ai pas le chemin des prix** entre l'entrée et la sortie de chaque trade — seulement les deux extrémités. Impossible, donc, de dire si un stop plus serré aurait été touché avant que le trade ne parte dans le bon sens : resserrer le stop améliore le ratio par construction, mais augmente la probabilité d'être sorti par du bruit, et cette probabilité-là n'est pas mesurable ici. Répondre demanderait de rejouer les bougies 4h de chaque détention. Les chiffres ci-dessus disent **ce que la configuration promet**, pas ce qu'elle aurait rapporté.
+
+## 28/09 — Le stop élargi à 2,5×
+
+La section précédente prévenait qu'un stop resserré augmente la probabilité d'être sorti par du bruit, sans pouvoir le mesurer faute du chemin des prix. C'est ce chemin qui a été reconstruit ici, à partir des bougies Kraken 15 min — et il tranche : **le stop à 1,75× ATR coupait trop court.**
+
+### Les stops sont coupés de justesse
+
+Semaine du 21 au 28/09, chemin de prix reconstruit pour chaque position stoppée cette semaine-là :
+
+| coin | stop % | MAE % | marge | MFE % | sortie |
+|---|---|---|---|---|---|
+| ADA | −2,44 | −3,54 | **−1,11** | +1,52 | sl_hit |
+| XBT | −1,32 | −1,91 | **−0,59** | +0,36 | sl_hit |
+| ETH | −1,40 | −1,84 | **−0,44** | +0,08 | sl_hit |
+
+> Les trois stops ont été franchis de **0,44 à 1,11 point seulement**. Sur l'ensemble des trades, la MAE médiane (−1,84 %) n'est qu'à **0,64 point** du stop médian (−2,48 %) : le stop suit le pire creux de si près qu'un simple bruit de marché suffit à le déclencher.
+
+### Le prix revient après le stop
+
+Stops couverts par les données OHLC, hors ceux trop récents pour être jugés :
+
+| coin | stoppé le | +4h | +12h | +24h | +48h | verdict |
+|---|---|---|---|---|---|---|
+| ETH | 13/09 | −0,93 % | −0,47 % | +0,24 % | **+3,41 %** | prématuré |
+| ETH | 15/09 | −2,83 % | −2,83 % | −2,83 % | −2,83 % | justifié |
+| ADA | 19/09 | −1,88 % | −0,07 % | −0,07 % | **+1,37 %** | prématuré |
+| ADA | 20/09 | **+3,00 %** | +3,00 % | +4,28 % | **+11,35 %** | prématuré |
+| ADA | 27/09 | −1,46 % | **+0,49 %** | +0,94 % | — | prématuré |
+
+> **4 stops sur 5 étaient prématurés** (le prix repasse au-dessus du prix d'entrée dans les 48 h). C'est exactement le scénario que la section précédente ne pouvait pas mesurer.
+
+### La contrefactuelle
+
+19 trades rejoués avec la vraie formule de dimensionnement (risque constant à 8 USDC ⇒ un stop plus large réduit la quantité, comme démontré en phase 4) et les vrais frais (0,30 % entrée maker, 0,59 % sortie taker sur stop) :
+
+| mult ATR | TP 2 % | TP 3 % | TP 6 % |
+|---|---|---|---|
+| 1,75 — retenu le 07/09 | −61,3 | −59,2 | **−70,8** |
+| 2,0 | −57,4 | −56,1 | −66,5 |
+| **2,5 — retenu le 28/09** | −46,5 | −43,5 | **−52,1** |
+| 3,0 | −46,3 | −43,5 | −50,7 |
+| 3,5 | −36,3 | −33,7 | −30,1 |
+
+> Passer de 1,75 à 2,5 fait tomber les stops touchés de **11 à 7** sur l'échantillon et récupère **~19 USDC**.
+
+### Pourquoi 2,5 et pas 3,5
+
+3,5 donne le meilleur résultat brut de la grille (−30,1), mais il ne laisse que **3 stops sur 19** : le réglage est optimisé *sur* l'échantillon et la mesure devient un artefact de surajustement plutôt qu'un signal robuste. **2,5** capture l'essentiel du gain (−52,1 contre −70,8) tout en gardant un stop qui joue réellement son rôle — assez de trades stoppés pour rester mesurable. À revoir quand 30+ trades auront été exécutés sous ce nouveau réglage.
+
+### Ce qui a été décidé le 28/09
+
+`atr_stop_multiplier` est passé de **1,75 à 2,5**. La formule de dimensionnement compense automatiquement — `quantite = risk_usdc ÷ (prix_entry × (stop_distance_pct + fee_round_trip_pct))` — un stop plus large réduit la quantité et laisse le risque en USDC inchangé, aucune autre formule n'a été touchée.
+
+> Cette mesure prolonge celle du 07/09, qui avait resserré le stop pour redresser le ratio gain/risque sans pouvoir vérifier si le prix respirait davantage dans la nouvelle zone. C'est désormais mesuré : il respirait trop.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*

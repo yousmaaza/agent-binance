@@ -618,7 +618,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     <thead><tr><th>Réglage</th><th>Valeur</th><th>Où</th><th>Ce qu'il fait</th></tr></thead>
     <tbody>
       <tr><td class="k">risk_per_trade_pct</td><td class="v">0.02</td><td>phase 4</td><td>Part du portefeuille risquée par trade. Fixe <code>risk_usdc</code>, donc la quantité.</td></tr>
-      <tr><td class="k">atr_stop_multiplier</td><td class="v">1.75</td><td>phase 4</td><td>Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible.</td></tr>
+      <tr><td class="k">atr_stop_multiplier</td><td class="v">2.5</td><td>phase 4</td><td>Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible.</td></tr>
       <tr><td class="k">reward_risk_ratio</td><td class="v">1.5</td><td>phases 0 et 4</td><td>Gain net visé rapporté à la perte nette. Porte sur du net depuis août.</td></tr>
       <tr><td class="k">fee_round_trip_pct</td><td class="v">0.009</td><td>phases 0, 4, 5</td><td>Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit.</td></tr>
       <tr><td class="k">max_tp_pct</td><td class="v">0.06</td><td>phases 0 et 4</td><td>Plafond absolu de la cible. Le marché a délivré 4,9 % en médiane pendant la détention ; viser plus revenait à ne jamais toucher.</td></tr>
@@ -782,6 +782,64 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 
   <h3>Ce que cette mesure ne dit pas</h3>
   <p class="note">Tout ce qui précède est de l'arithmétique sur des réglages, pas une simulation de résultat. <b>Je n'ai pas le chemin des prix</b> entre l'entrée et la sortie de chaque trade — seulement les deux extrémités. Impossible, donc, de dire si un stop plus serré aurait été touché avant que le trade ne parte dans le bon sens : resserrer le stop améliore le ratio par construction, mais augmente la probabilité d'être sorti par du bruit, et cette probabilité-là n'est pas mesurable ici. Répondre demanderait de rejouer les bougies 4h de chaque détention. Les chiffres ci-dessus disent <b>ce que la configuration promet</b>, pas ce qu'elle aurait rapporté.</p>
+</section>
+
+<section>
+  <h2><span class="ph">28/09</span>Le stop élargi à 2,5×</h2>
+  <p class="lede">La section précédente prévenait qu'un stop resserré augmente la probabilité d'être sorti par du bruit, sans pouvoir le mesurer faute du chemin des prix. C'est ce chemin qui a été reconstruit ici, à partir des bougies Kraken 15 min — et il tranche : <b>le stop à 1,75× ATR coupait trop court.</b></p>
+
+  <h3>Les stops sont coupés de justesse</h3>
+  <p>Semaine du 21 au 28/09, chemin de prix reconstruit pour chaque position stoppée cette semaine-là :</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>coin</th><th>stop %</th><th>MAE %</th><th>marge</th><th>MFE %</th><th>sortie</th></tr></thead>
+      <tbody>
+        <tr><td class="k">ADA</td><td class="v">−2,44</td><td class="v">−3,54</td><td class="v"><b>−1,11</b></td><td class="v">+1,52</td><td class="v">sl_hit</td></tr>
+        <tr><td class="k">XBT</td><td class="v">−1,32</td><td class="v">−1,91</td><td class="v"><b>−0,59</b></td><td class="v">+0,36</td><td class="v">sl_hit</td></tr>
+        <tr><td class="k">ETH</td><td class="v">−1,40</td><td class="v">−1,84</td><td class="v"><b>−0,44</b></td><td class="v">+0,08</td><td class="v">sl_hit</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Les trois stops ont été franchis de <b>0,44 à 1,11 point seulement</b>. Sur l'ensemble des trades, la MAE médiane (−1,84 %) n'est qu'à <b>0,64 point</b> du stop médian (−2,48 %) : le stop suit le pire creux de si près qu'un simple bruit de marché suffit à le déclencher.</p>
+
+  <h3>Le prix revient après le stop</h3>
+  <p>Stops couverts par les données OHLC, hors ceux trop récents pour être jugés :</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>coin</th><th>stoppé le</th><th>+4h</th><th>+12h</th><th>+24h</th><th>+48h</th><th>verdict</th></tr></thead>
+      <tbody>
+        <tr><td class="k">ETH</td><td>13/09</td><td class="v">−0,93 %</td><td class="v">−0,47 %</td><td class="v">+0,24 %</td><td class="v"><b>+3,41 %</b></td><td class="v">prématuré</td></tr>
+        <tr><td class="k">ETH</td><td>15/09</td><td class="v">−2,83 %</td><td class="v">−2,83 %</td><td class="v">−2,83 %</td><td class="v">−2,83 %</td><td class="v">justifié</td></tr>
+        <tr><td class="k">ADA</td><td>19/09</td><td class="v">−1,88 %</td><td class="v">−0,07 %</td><td class="v">−0,07 %</td><td class="v"><b>+1,37 %</b></td><td class="v">prématuré</td></tr>
+        <tr><td class="k">ADA</td><td>20/09</td><td class="v"><b>+3,00 %</b></td><td class="v">+3,00 %</td><td class="v">+4,28 %</td><td class="v"><b>+11,35 %</b></td><td class="v">prématuré</td></tr>
+        <tr><td class="k">ADA</td><td>27/09</td><td class="v">−1,46 %</td><td class="v"><b>+0,49 %</b></td><td class="v">+0,94 %</td><td class="v">—</td><td class="v">prématuré</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note"><b>4 stops sur 5 étaient prématurés</b> (le prix repasse au-dessus du prix d'entrée dans les 48 h). C'est exactement le scénario que la section précédente ne pouvait pas mesurer.</p>
+
+  <h3>La contrefactuelle</h3>
+  <p>19 trades rejoués avec la vraie formule de dimensionnement (risque constant à 8 USDC ⇒ un stop plus large réduit la quantité, comme démontré en phase 4) et les vrais frais (0,30 % entrée maker, 0,59 % sortie taker sur stop) :</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>mult ATR</th><th>TP 2 %</th><th>TP 3 %</th><th>TP 6 %</th></tr></thead>
+      <tbody>
+        <tr><td class="k">1,75 — retenu le 07/09</td><td class="v">−61,3</td><td class="v">−59,2</td><td class="v"><b>−70,8</b></td></tr>
+        <tr><td class="k">2,0</td><td class="v">−57,4</td><td class="v">−56,1</td><td class="v">−66,5</td></tr>
+        <tr><td class="k"><b>2,5 — retenu le 28/09</b></td><td class="v">−46,5</td><td class="v">−43,5</td><td class="v"><b>−52,1</b></td></tr>
+        <tr><td class="k">3,0</td><td class="v">−46,3</td><td class="v">−43,5</td><td class="v">−50,7</td></tr>
+        <tr><td class="k">3,5</td><td class="v">−36,3</td><td class="v">−33,7</td><td class="v">−30,1</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Passer de 1,75 à 2,5 fait tomber les stops touchés de <b>11 à 7</b> sur l'échantillon et récupère <b>~19 USDC</b>.</p>
+
+  <h3>Pourquoi 2,5 et pas 3,5</h3>
+  <p>3,5 donne le meilleur résultat brut de la grille (−30,1), mais il ne laisse que <b>3 stops sur 19</b> : le réglage est optimisé <em>sur</em> l'échantillon et la mesure devient un artefact de surajustement plutôt qu'un signal robuste. <b>2,5</b> capture l'essentiel du gain (−52,1 contre −70,8) tout en gardant un stop qui joue réellement son rôle — assez de trades stoppés pour rester mesurable. À revoir quand 30+ trades auront été exécutés sous ce nouveau réglage.</p>
+
+  <h3>Ce qui a été décidé le 28/09</h3>
+  <p><span class="cfg-inline">atr_stop_multiplier</span> est passé de <b>1,75 à 2,5</b>. La formule de dimensionnement compense automatiquement — <span class="cfg-inline">quantite = risk_usdc ÷ (prix_entry × (stop_distance_pct + fee_round_trip_pct))</span> — un stop plus large réduit la quantité et laisse le risque en USDC inchangé, aucune autre formule n'a été touchée.</p>
+  <p class="note">Cette mesure prolonge celle du 07/09, qui avait resserré le stop pour redresser le ratio gain/risque sans pouvoir vérifier si le prix respirait davantage dans la nouvelle zone. C'est désormais mesuré : il respirait trop.</p>
 </section>
 
 

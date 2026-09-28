@@ -240,5 +240,29 @@ class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
         self.assertAlmostEqual(order["prix_tp"], 1067.5, places=6)
 
 
+class TestWiderAtrStopMultiplierReducesQuantityAtConstantRisk(unittest.TestCase):
+    """Un atr_stop_multiplier plus large (#509) élargit stop_distance_pct -> la quantité diminue
+    pour tenir dans le même risk_usdc, qui lui reste inchangé (compensation automatique par la
+    formule de dimensionnement, indépendante de la valeur du multiplicateur)."""
+
+    def test_wider_multiplier_yields_smaller_quantity_same_risk_usdc(self):
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.02, "score": 8}]
+
+        config_narrow = dict(DEFAULT_CONFIG, atr_stop_multiplier=1.75)
+        output_narrow, _ = _run_phase4_sizing(
+            candidates, portfolio_total=10000, budget_disponible=100000, config=config_narrow,
+        )
+        config_wide = dict(DEFAULT_CONFIG, atr_stop_multiplier=2.5)
+        output_wide, _ = _run_phase4_sizing(
+            candidates, portfolio_total=10000, budget_disponible=100000, config=config_wide,
+        )
+
+        order_narrow = output_narrow["ordres_prepares"][0]
+        order_wide = output_wide["ordres_prepares"][0]
+
+        self.assertLess(order_wide["quantite"], order_narrow["quantite"])
+        self.assertAlmostEqual(order_wide["risk_usdc"], order_narrow["risk_usdc"], places=6)
+
+
 if __name__ == "__main__":
     unittest.main()
