@@ -6,7 +6,11 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
+<<<<<<< HEAD
 | [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-28 (PR #511) |
+=======
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-28 (PR #510) |
+>>>>>>> origin/main
 
 ## Diagrammes
 
@@ -26,6 +30,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 | PR | Titre | Date |
 |---|---|---|
 | [#511](pr-511-plafonner-distance-stop.md) | [STRAT] Plafonner la distance de stop pour écarter les coins ultra-volatils | 2026-09-28 |
+| [#510](pr-510-filtre-anti-poursuite.md) | [STRAT] Filtre anti-poursuite : refuser une entrée après une hausse 24h excessive | 2026-09-28 |
 | [#505](pr-505-afficher-entrees-maker-abandonnees.md) | [DASH] Afficher les entrées maker abandonnées pour dépassement du budget de concession | 2026-09-28 |
 | [#504](pr-504-abandon-maker-concession-budget.md) | [M1] Abandonner l'entrée maker sur budget de concession dépassé | 2026-09-15 |
 | [#501](pr-501-publier-slices-watchers.md) | [BUG] Publier open_positions/closed_trades/financials depuis les watchers | 2026-09-14 |
