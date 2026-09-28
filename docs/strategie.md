@@ -350,7 +350,7 @@ quantite = 9,22 ÷ (2,496 × 0,079) = 46,68 // 12 % de moins
 résultat réel : stop touché, −13,20 USDC, la plus grosse perte de l'historique
 ```
 
-> La cible en base pour TRUMP vaut `2.8454399276`, soit **exactement** l'entrée majorée de 14 %. Aucun frais nulle part. Le plafond ramènerait aujourd'hui cette cible à +6 %, une hauteur que le marché atteint réellement : la mesure faite sur l'historique donne une hausse médiane de 4,9 % pendant la détention, et **sur 43 cibles fixées au-delà de 8 %, 2 seulement ont été touchées** — la plus haute atteinte est à +11,27 %. Je ne peux pas affirmer que ce trade serait devenu gagnant — il est descendu au stop en moins de quatre heures — mais sa cible aurait été atteignable au lieu d'être hors de portée par construction.
+> La cible en base pour TRUMP vaut `2.8454399276`, soit **exactement** l'entrée majorée de 14 %. Aucun frais nulle part. Le plafond ramènerait aujourd'hui cette cible à +6 %, une hauteur au-dessus de ce que le marché délivre habituellement (MFE médiane **+1,52 %**, mesure révisée le 28/09/2026, #508) : **sur 43 cibles fixées au-delà de 8 %, 2 seulement ont été touchées** — la plus haute atteinte est à +11,27 %. Je ne peux pas affirmer que ce trade serait devenu gagnant — il est descendu au stop en moins de quatre heures — mais sa cible aurait été atteignable au lieu d'être hors de portée par construction.
 
 ## Phase 5 — Passer l'ordre sans payer le prix fort
 
@@ -423,7 +423,8 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | atr_stop_multiplier | 1.75 | phase 4 | Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible. |
 | reward_risk_ratio | 1.5 | phases 0 et 4 | Gain net visé rapporté à la perte nette. Porte sur du net depuis août. |
 | fee_round_trip_pct | 0.009 | phases 0, 4, 5 | Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit. |
-| max_tp_pct | 0.06 | phases 0 et 4 | Plafond absolu de la cible. Le marché a délivré 4,9 % en médiane pendant la détention ; viser plus revenait à ne jamais toucher. |
+| max_tp_pct | 0.06 | phases 0 et 4 | Plafond absolu de la cible. La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026). |
+| max_stop_distance_pct | 0.12 | phase 4 | Écarte en TYPE_B tout candidat dont `stop_distance_pct` dépasse ce seuil — protège contre la queue volatile (ATR 4h > 4,8 %) sans bloquer le flux normal. |
 | usdc_allocation_pct | 0.70 | phase 0 | Part du solde USDC mobilisable. |
 | max_single_position_pct | 0.65 | phase 4 | Plafond d'une position seule, en part du budget disponible. |
 | min_order_usdc | 9 | phase 4 | Montant minimal d'un ordre. En dessous, skip TYPE_B. |
@@ -600,6 +601,62 @@ trades défavorables 39/43 → 5/43
 ### Ce que cette mesure ne dit pas
 
 > Tout ce qui précède est de l'arithmétique sur des réglages, pas une simulation de résultat. **Je n'ai pas le chemin des prix** entre l'entrée et la sortie de chaque trade — seulement les deux extrémités. Impossible, donc, de dire si un stop plus serré aurait été touché avant que le trade ne parte dans le bon sens : resserrer le stop améliore le ratio par construction, mais augmente la probabilité d'être sorti par du bruit, et cette probabilité-là n'est pas mesurable ici. Répondre demanderait de rejouer les bougies 4h de chaque détention. Les chiffres ci-dessus disent **ce que la configuration promet**, pas ce qu'elle aurait rapporté.
+
+## 28 septembre — Plafonner le stop, pas la cible
+
+La section précédente n'avait que les deux extrémités de chaque trade. Reconstruire le chemin de prix entre l'entrée et la sortie — bougies Kraken sur 30 jours, 19 trades — change la lecture : la cible n'est pas seulement chère en frais, elle est rarement à la portée du marché. Le ticket #508, initialement scopé pour plafonner la cible elle-même, a été re-scopé après avoir démontré cette approche inapplicable.
+
+### Ce que le marché offre réellement pendant la détention
+
+```text
+[19 trades · chemin de prix reconstruit]
+
+MFE — plus haute hausse atteinte pendant la détention : médiane +1,52 %
+TP visé : médiane +4,09 %
+MAE — plus grosse baisse subie pendant la détention : médiane −1,84 %
+Stop placé à : médiane −2,48 %
+
+cible atteinte : 2/19 = 11 % · fraction médiane de la cible offerte : 26 %
+stop touché : 8/19 = 42 % (58 % en moins de 48 h de détention)
+```
+
+> La géométrie est inversée par rapport à ce que le marché délivre : une cible atteinte 11 % du temps ne peut pas financer un stop touché 42 % du temps.
+
+### Pourquoi plafonner la cible est une impasse
+
+Le réflexe initial était d'écarter tout candidat dont la cible dépasse un plafond. Mais la cible dérive du stop :
+
+```text
+cible = (stop_distance_pct + fee_round_trip_pct) × reward_risk_ratio + fee_round_trip_pct
+```
+
+Pour qu'une cible tombe sous 3 %, il faut `stop_distance_pct` ≤ 0,5 % — un ATR 4h ≤ 0,2 % (à 2,5× ATR) ou ≤ 0,29 % (à 1,75×). Or l'ATR 4h reconstruit sur les 110 trades réels a une médiane de **2,858 %** (10e centile 0,650 %, Q1 1,149 %, Q3 4,000 %, max 17,000 %).
+
+> **Résultat mesuré : 3 trades sur 110 (2,7 %) passeraient un plafond de cible à 3 % — le bot cesserait de trader.** Et l'effet n'est pas dû au stop élargi de #509 : avec le stop actuel de 1,75×, le filtre bloque encore 96,4 % des trades.
+
+```text
+R/R net = (3,0 % − fee_round_trip_pct) ÷ (stop_distance_pct + fee_round_trip_pct) ≥ 1 ⇒ stop_distance_pct ≤ 1,2 %
+// contredit le constat des stops prématurés de #509 — même impasse que la grille contrefactuelle (toutes cellules négatives)
+```
+
+> Avec 0,9 % de frais aller-retour et une cible plafonnée à 3 %, **aucune largeur de stop ne produit un R/R net ≥ 1**. La géométrie fixe stop/cible de la stratégie n'est pas rentabilisable par un simple réglage tant que les frais représentent 0,9 % et que le marché n'offre qu'une MFE médiane de +1,52 % — ce constat justifiera une refonte de la mécanique de sortie, hors de ce ticket.
+
+### Le garde-fou retenu : plafonner la distance de stop
+
+Remplacer le garde-fou sur la cible par un plafond sur `max_stop_distance_pct` (0,12) protège contre les coins ultra-volatils sans bloquer le flux normal : si `stop_distance_pct` dépasse le plafond, le candidat est skippé en TYPE_B avec un skip_detail chiffré (stop calculé, plafond, ATR), avant même de calculer `prix_stop`/`prix_tp`.
+
+| seuil | ATR 4h max | trades bloqués |
+|---|---|---|
+| 8 % | 3,20 % | 40,9 % |
+| 10 % | 4,00 % | 30,9 % |
+| **12 %** | **4,80 %** | **10,9 %** |
+| 15 % | 6,00 % | 8,2 % |
+
+> 12 % est le coude de la courbe : le blocage chute de 30,9 % à 10,9 % entre 10 % et 12 %, puis ne gagne plus grand-chose. Le filtre cible donc la vraie queue volatile (ATR 4h > 4,8 %) — le profil du type d'incident déjà documenté en phase 1 (TRUMP, 22-23/08/2026 : volume ×27 en une nuit, stop glissé de 2,3 % à l'exécution).
+
+> **Réserve de méthode** : cet ATR est reconstruit depuis `stop_price / entry_price ÷ 1,75`. Les trades antérieurs au passage à 1,75 (07/09) ont pu utiliser un autre multiplicateur, ce qui gonfle leur ATR reconstruit. Le seuil de 12 % est donc un ordre de grandeur à revoir après 30+ trades sous le nouveau réglage.
+
+> Articulation avec le garde-fou existant : `min_order_usdc` skippait déjà certains cas extrêmes tardivement, un stop très large produisant mécaniquement une position minuscule (le risque USDC étant constant) — mais avec un motif trompeur (« montant trop petit » au lieu de « volatilité extrême »). Le nouveau plafond rend la cause explicite et intercepte le cas plus tôt.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*
