@@ -3026,17 +3026,19 @@
     "entry_order_id": "OOOW7C-MK7TU-UFBMWG",
     "sl_order_txid": "OMEN6X-X4PRY-RF42RB",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
+    "status": "closed",
+    "exit_price": 2680.6799996325594,
+    "exit_date": "2026-09-28T00:06:16Z",
     "entry_fee_usdc": 0.541864,
-    "exit_fee_usdc": null,
-    "fees_usdc": null,
+    "exit_fee_usdc": 1.068069,
+    "fees_usdc": 1.6099329999999998,
     "maker_or_taker": "maker",
     "maker_fill_seconds": 151.267741,
-    "pnl_gross_usdc": null,
-    "pnl_usdc": null,
-    "pnl_gross_pct": null,
-    "pnl_pct": null
+    "pnl_gross_usdc": -2.6097,
+    "pnl_usdc": -4.2197,
+    "pnl_gross_pct": -1.4449,
+    "pnl_pct": -2.3362,
+    "close_reason": "sl_hit",
+    "cycle_id": null
   }
 ]
