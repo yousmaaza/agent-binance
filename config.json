@@ -30,7 +30,7 @@
   "rsi_zone_max": 65,
   "max_24h_runup_pct": 0.04,
   "daily_loss_limit_pct": 0.05,
-  "atr_stop_multiplier": 1.75,
+  "atr_stop_multiplier": 2.5,
   "timeframes_required": ["4h"],
   "min_adx": 20,
   "max_open_positions": 4,
