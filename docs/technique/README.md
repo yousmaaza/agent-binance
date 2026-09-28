@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#505](pr-505-afficher-entrees-maker-abandonnees.md) | [DASH] Afficher les entrées maker abandonnées pour dépassement du budget de concession | 2026-09-28 |
 | [#504](pr-504-abandon-maker-concession-budget.md) | [M1] Abandonner l'entrée maker sur budget de concession dépassé | 2026-09-15 |
 | [#501](pr-501-publier-slices-watchers.md) | [BUG] Publier open_positions/closed_trades/financials depuis les watchers | 2026-09-14 |
 | [#499](pr-499-dashboard-ordres-maker-fantomes.md) | [BUG] Dashboard maker : fin des ordres fantômes | 2026-09-14 |
