@@ -39,6 +39,10 @@ cfg = inp.get("config") or _load_config()
 
 risk_per_trade_pct = cfg.get("risk_per_trade_pct", 0.01)
 atr_stop_multiplier = cfg.get("atr_stop_multiplier", 2)
+# max_stop_distance_pct : plafond sur la distance de stop, au-delà écarte le coin en TYPE_B (#508)
+# — protège contre la queue volatile (ATR 4h > 4.8%, cf. TRUMP 22-23/08/2026, volume x27) sans
+# bloquer le flux normal (10.9% de trades bloqués mesurés à ce seuil, n=110 trades réels).
+max_stop_distance_pct = cfg.get("max_stop_distance_pct", 0.12)
 # reward_risk_ratio : chargé depuis config.json, détermine le rapport TP/SL, net de frais (#411)
 # Si absent : défaut 1.5. Affecte le calcul du prix_tp en phase 4 (ligne ~62)
 reward_risk_ratio = cfg.get("reward_risk_ratio", 1.5)
@@ -50,11 +54,6 @@ fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
 # 28/09/2026) : médiane +1.52%, très en-dessous des cibles mécaniques que produit un stop large
 # (atr_stop_multiplier élevé).
 max_tp_pct = cfg.get("max_tp_pct", 0.06)
-# max_realistic_move_pct : au-delà de ce seuil, la cible mécanique dépasse ce que le marché offre
-# réellement (#508) — MFE médiane mesurée +1.52% (n=19, bougies Kraken 30j, 28/09/2026), cible
-# atteinte dans 11% des cas seulement. Le candidat est skippé en TYPE_B plutôt que d'ouvrir une
-# position dont la cible est statistiquement hors de portée. N'abaisse pas max_tp_pct (#508).
-max_realistic_move_pct = cfg.get("max_realistic_move_pct", 0.03)
 limit_offset_pct = cfg.get("limit_offset_pct", 0.001)
 min_order_usdc = cfg.get("min_order_usdc", 9)
 max_single_position_pct = cfg.get("max_single_position_pct", 0.3)
@@ -69,6 +68,18 @@ for candidate in buy_candidates:
     atr_pct = candidate.get("atr_pct", 0.02)
 
     stop_distance_pct = atr_pct * atr_stop_multiplier
+
+    # Plafond distance de stop (#508) : un stop au-delà de max_stop_distance_pct signale une
+    # volatilité extrême — skip avant de calculer prix_stop/prix_tp plutôt que de dimensionner
+    # une position sur un ATR aberrant.
+    if stop_distance_pct > max_stop_distance_pct:
+        skipped.append({
+            "coin": coin,
+            "reason": f"Stop {stop_distance_pct * 100:.1f}% > plafond {max_stop_distance_pct * 100:.1f}% "
+                      f"(volatilité extrême, ATR 4h {atr_pct * 100:.1f}%)",
+        })
+        continue
+
     prix_entry = prix_actuel * (1 - limit_offset_pct)
     prix_stop = prix_entry * (1 - stop_distance_pct)
     # TP net de frais (#411) : le gain net vise reward_risk_ratio × la perte nette (stop + frais)
@@ -81,18 +92,6 @@ for candidate in buy_candidates:
     prix_tp = min(prix_tp, tp_plafond)
     if prix_tp < tp_plancher:
         prix_tp = prix_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
-
-    # Garde-fou géométrie réaliste (#508) : une cible au-delà de max_realistic_move_pct est
-    # statistiquement hors de portée (MFE médiane mesurée +1.52%, n=19) — skip TYPE_B plutôt que
-    # d'ouvrir une position dont la cible ne sera atteinte que dans une minorité de cas.
-    cible_pct = prix_tp / prix_entry - 1
-    if cible_pct > max_realistic_move_pct:
-        skipped.append({
-            "coin": coin,
-            "reason": f"Cible +{cible_pct * 100:.1f}% > mouvement réaliste {max_realistic_move_pct * 100:.1f}% "
-                      "(MFE médiane mesurée 1.5%)",
-        })
-        continue
 
     if prix_stop <= 0:
         skipped.append({"coin": coin, "reason": "prix_stop négatif (volatilité extrême)"})

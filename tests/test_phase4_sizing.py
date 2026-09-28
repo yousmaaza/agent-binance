@@ -29,7 +29,7 @@ DEFAULT_CONFIG = {
     "reward_risk_ratio": 2,
     "fee_round_trip_pct": 0,  # frais neutralisés par défaut : isole les tests des formules pré-#411
     "max_tp_pct": 1.0,  # plafond absolu neutralisé par défaut : isole les tests du plafond (#428)
-    "max_realistic_move_pct": 1.0,  # garde-fou neutralisé par défaut : isole les tests (#508)
+    "max_stop_distance_pct": 1.0,  # plafond neutralisé par défaut : isole les tests (#508)
     "limit_offset_pct": 0,
     "min_order_usdc": 9,
     "max_single_position_pct": 0.3,
@@ -241,72 +241,54 @@ class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
         self.assertAlmostEqual(order["prix_tp"], 1067.5, places=6)
 
 
-class TestMaxRealisticMovePctSkipsUnreachableTarget(unittest.TestCase):
-    """Garde-fou géométrie réaliste (#508) : une cible dont la hausse dépasse
-    max_realistic_move_pct est skippée en TYPE_B, aucun ordre n'est préparé."""
+class TestMaxStopDistancePctSkipsWideStop(unittest.TestCase):
+    """Plafond distance de stop (#508) : stop_distance_pct au-delà de max_stop_distance_pct
+    est skippé en TYPE_B, reason chiffrée, aucun ordre préparé."""
 
-    def test_target_above_threshold_is_skipped(self):
-        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.02, "score": 8}]
-        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5,
-                      fee_round_trip_pct=0.009, max_tp_pct=1.0, max_realistic_move_pct=0.03)
+    def test_stop_above_threshold_is_skipped(self):
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.05, "score": 8}]
+        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=3, max_stop_distance_pct=0.12)
         output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
 
-        # stop_distance_pct = 0.04 -> tp_mécanique = 1000*(1+0.049*1.5+0.009) = 1082.5 (+8.25%) > 3%
+        # stop_distance_pct = 0.05 * 3 = 0.15 > plafond 0.12
         self.assertEqual(output["ordres_prepares"], [])
         self.assertEqual(len(output["skipped"]), 1)
         self.assertEqual(output["skipped"][0]["coin"], "ETH")
-        self.assertTrue(output["skipped"][0]["reason"])
-        self.assertIn("mouvement réaliste 3.0%", output["skipped"][0]["reason"])
+        reason = output["skipped"][0]["reason"]
+        self.assertTrue(reason)
+        self.assertIn("15.0%", reason)
+        self.assertIn("plafond 12.0%", reason)
 
 
-class TestMaxRealisticMovePctDoesNotAffectReachableTarget(unittest.TestCase):
-    """Garde-fou géométrie réaliste (#508) : une cible sous max_realistic_move_pct
-    garde le comportement actuel — l'ordre est préparé normalement."""
+class TestMaxStopDistancePctDoesNotAffectNarrowStop(unittest.TestCase):
+    """Plafond distance de stop (#508) : un stop sous le plafond garde le comportement
+    actuel — l'ordre est préparé normalement."""
 
-    def test_target_below_threshold_is_unaffected(self):
-        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.002, "score": 8}]
-        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5,
-                      fee_round_trip_pct=0.009, max_tp_pct=1.0, max_realistic_move_pct=0.03)
+    def test_stop_below_threshold_is_unaffected(self):
+        candidates = [{"coin": "ETH", "prix_actuel": 2000, "atr_pct": 0.02, "score": 8}]
+        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, max_stop_distance_pct=0.12)
         output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
 
-        # stop_distance_pct = 0.004 -> tp_mécanique = 1000*(1+0.0195*1.5+0.009) = 1028.5 (+2.85%) < 3%
+        # stop_distance_pct = 0.04 < plafond 0.12 -> ordre préparé
         self.assertEqual(output["skipped"], [])
         order = output["ordres_prepares"][0]
-        self.assertAlmostEqual(order["prix_tp"], 1028.5, places=6)
+        self.assertAlmostEqual(order["stop_distance_pct"], 0.04, places=6)
+        self.assertAlmostEqual(order["prix_stop"], 1920.0, places=6)
 
 
-class TestMaxRealisticMovePctDefaultsWhenAbsentFromConfig(unittest.TestCase):
-    """Garde-fou géométrie réaliste (#508) : clé absente de la config -> défaut 0.03, pas d'exception."""
+class TestMaxStopDistancePctDefaultsWhenAbsentFromConfig(unittest.TestCase):
+    """Plafond distance de stop (#508) : clé absente de la config -> défaut 0.12, pas d'exception."""
 
     def test_missing_key_falls_back_to_default_without_exception(self):
-        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.02, "score": 8}]
-        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5,
-                      fee_round_trip_pct=0.009, max_tp_pct=1.0)
-        del config["max_realistic_move_pct"]
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.05, "score": 8}]
+        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=3)
+        del config["max_stop_distance_pct"]
         output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
 
-        # même géométrie que TestMaxRealisticMovePctSkipsUnreachableTarget : +8.25% > défaut 3%
+        # même géométrie que TestMaxStopDistancePctSkipsWideStop : stop 15% > défaut 12%
         self.assertEqual(output["ordres_prepares"], [])
         self.assertEqual(len(output["skipped"]), 1)
         self.assertTrue(output["skipped"][0]["reason"])
-
-
-class TestMaxRealisticMovePctInteractionWithTpPlancher(unittest.TestCase):
-    """Garde-fou géométrie réaliste (#508) vs plancher de viabilité (#411) : un candidat dont
-    la cible mécanique passe sous le plancher garde le comportement actuel — le plancher prime
-    sur max_tp_pct comme avant, et le résultat est ensuite évalué par le nouveau garde-fou."""
-
-    def test_floor_fallback_still_applies_before_realistic_check(self):
-        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.004, "score": 8}]
-        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=1, reward_risk_ratio=1.5,
-                      fee_round_trip_pct=0.009, max_tp_pct=0.01, max_realistic_move_pct=0.03)
-        output, _ = _run_phase4_sizing(candidates, portfolio_total=10000, budget_disponible=100000, config=config)
-
-        # tp_plafond (1010, +1%) < tp_plancher (1018, +1.8%) -> conflit, le plancher prime,
-        # cible mécanique conservée = 1028.5 (+2.85%), sous le seuil réaliste -> ordre préparé
-        self.assertEqual(output["skipped"], [])
-        order = output["ordres_prepares"][0]
-        self.assertAlmostEqual(order["prix_tp"], 1028.5, places=6)
 
 
 if __name__ == "__main__":
