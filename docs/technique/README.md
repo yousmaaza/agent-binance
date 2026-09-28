@@ -6,11 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-<<<<<<< HEAD
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-28 (PR #511) |
-=======
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-28 (PR #510) |
->>>>>>> origin/main
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-09-28 (PR #512) |
 
 ## Diagrammes
 
@@ -29,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#512](pr-512-stop-elargi.md) | [STRAT] Élargir le stop à 2.5x ATR | 2026-09-28 |
 | [#511](pr-511-plafonner-distance-stop.md) | [STRAT] Plafonner la distance de stop pour écarter les coins ultra-volatils | 2026-09-28 |
 | [#510](pr-510-filtre-anti-poursuite.md) | [STRAT] Filtre anti-poursuite : refuser une entrée après une hausse 24h excessive | 2026-09-28 |
 | [#505](pr-505-afficher-entrees-maker-abandonnees.md) | [DASH] Afficher les entrées maker abandonnées pour dépassement du budget de concession | 2026-09-28 |
