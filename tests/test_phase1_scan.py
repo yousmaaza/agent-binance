@@ -40,6 +40,14 @@ def _persistent_candles(price, periods=6, per_period_usdc=200_000):
             for i in range(periods)]
 
 
+def _runup_candles(price_open_24h_ago, price_now, periods=6, per_period_usdc=200_000):
+    """6 bougies persistantes au prix `price_now`, sauf l'open de la plus ancienne — pour
+    contrôler la variation 24h calculée par _volume_persistence_and_change (#507)."""
+    candles = _persistent_candles(price_now, periods=periods, per_period_usdc=per_period_usdc)
+    candles[0][1] = str(price_open_24h_ago)
+    return candles
+
+
 def _spiky_candles(price, periods=6, spike_period_usdc=600_000, base_period_usdc=20_000):
     """5 périodes sous le seuil + 1 pic — reproduit le pattern TRUMP (x27 en une nuit)."""
     candles = []
@@ -154,6 +162,30 @@ class TestPortfolioCoinsAlwaysIncluded(unittest.TestCase):
         tradable_coins = [c["coin"] for c in output["tradable"]]
         self.assertIn("SUI", tradable_coins)
         self.assertEqual(output["non_tradable"], [])
+
+
+class TestChange24hPct(unittest.TestCase):
+    """change_24h_pct (#507) calculé depuis les mêmes bougies que la persistance de volume,
+    sans appel kraken ohlc supplémentaire."""
+
+    def test_change_24h_pct_computed_from_ohlc_open_and_close(self):
+        pairs_data = {"RUNUPUSDC": {}}
+        ticker_data = {"RUNUPUSDC": _ticker(105.0, 20000)}  # 20000*105 = 2.1M >= seuil
+        ohlc_data = {"RUNUPUSDC": _runup_candles(100.0, 105.0)}
+        output, _ = _run_phase1_scan(pairs_data, ticker_data, DEFAULT_CONFIG, ohlc_data)
+
+        tradable = {c["coin"]: c for c in output["tradable"]}
+        self.assertIn("RUNUP", tradable)
+        self.assertAlmostEqual(tradable["RUNUP"]["change_24h_pct"], 0.05, places=4)
+
+    def test_change_24h_pct_none_for_portfolio_coin(self):
+        pairs_data = {"SUIUSDC": {}}
+        ticker_data = {"SUIUSDC": _ticker(1.0, 50, ask=1.2, bid=1.0)}
+        config = {"min_volume_usdc": 1_000_000, "portfolio_coins": ["SUI"]}
+        output, _ = _run_phase1_scan(pairs_data, ticker_data, config)
+
+        tradable = {c["coin"]: c for c in output["tradable"]}
+        self.assertIsNone(tradable["SUI"]["change_24h_pct"])
 
 
 class TestKrakenToTradingViewMapping(unittest.TestCase):

@@ -14,7 +14,8 @@ Construis /tmp/cycle___CYCLE_ID___phase3_input.json avec les données de Phase 2
       "macd_bullish_4h": <bool>,
       "volume_24h": <float USDC>,
       "signal_1d_rate_limited": <bool — True si l'analyse 1D a échoué par rate limit>,
-      "in_portfolio": <bool — True si le coin a une position open dans trade_history>
+      "in_portfolio": <bool — True si le coin a une position open dans trade_history>,
+      "change_24h_pct": <float|null — variation de prix sur 24h calculée en Phase 1>
     },
     ...
   },
@@ -31,6 +32,8 @@ RÈGLES pour construire analysis_results :
 - signal_1d_rate_limited = True si et seulement si l'appel coin_analysis 1D a retourné une erreur de rate limit ou a échoué
 - signal_1d = null si l'analyse 1D n'a pas été tentée ou a échoué
 - in_portfolio = True si le coin apparaît dans trade_history avec status="open"
+- change_24h_pct = copier tel quel le champ change_24h_pct de l'entrée tradable du coin dans la
+  sortie de Phase 1 (peut être null — ne jamais inventer une valeur si absent)
 - NE PAS inventer, extrapoler ou hardcoder des valeurs — copier les données exactes de Phase 2
 
 Puis exécute le script de scoring :
