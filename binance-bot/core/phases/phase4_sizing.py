@@ -45,10 +45,16 @@ reward_risk_ratio = cfg.get("reward_risk_ratio", 1.5)
 # fee_round_trip_pct : estimation du coût aller-retour (entrée+sortie), utilisée pour que le TP
 # et le dimensionnement reflètent le gain/perte réel net plutôt que brut (#411)
 fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
-# max_tp_pct : plafond absolu sur la cible, indépendant de la résistance 4h (#428) — le marché ne
-# délivre en pratique qu'une hausse médiane de 4.9% pendant la détention (90e centile 9.3%), très
-# en-dessous des cibles mécaniques que produit un stop large (atr_stop_multiplier élevé).
+# max_tp_pct : plafond absolu sur la cible, indépendant de la résistance 4h (#428) — mesure MFE
+# (mouvement réellement offert pendant la détention) sur 19 trades (bougies Kraken 30j, #508,
+# 28/09/2026) : médiane +1.52%, très en-dessous des cibles mécaniques que produit un stop large
+# (atr_stop_multiplier élevé).
 max_tp_pct = cfg.get("max_tp_pct", 0.06)
+# max_realistic_move_pct : au-delà de ce seuil, la cible mécanique dépasse ce que le marché offre
+# réellement (#508) — MFE médiane mesurée +1.52% (n=19, bougies Kraken 30j, 28/09/2026), cible
+# atteinte dans 11% des cas seulement. Le candidat est skippé en TYPE_B plutôt que d'ouvrir une
+# position dont la cible est statistiquement hors de portée. N'abaisse pas max_tp_pct (#508).
+max_realistic_move_pct = cfg.get("max_realistic_move_pct", 0.03)
 limit_offset_pct = cfg.get("limit_offset_pct", 0.001)
 min_order_usdc = cfg.get("min_order_usdc", 9)
 max_single_position_pct = cfg.get("max_single_position_pct", 0.3)
@@ -75,6 +81,18 @@ for candidate in buy_candidates:
     prix_tp = min(prix_tp, tp_plafond)
     if prix_tp < tp_plancher:
         prix_tp = prix_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
+
+    # Garde-fou géométrie réaliste (#508) : une cible au-delà de max_realistic_move_pct est
+    # statistiquement hors de portée (MFE médiane mesurée +1.52%, n=19) — skip TYPE_B plutôt que
+    # d'ouvrir une position dont la cible ne sera atteinte que dans une minorité de cas.
+    cible_pct = prix_tp / prix_entry - 1
+    if cible_pct > max_realistic_move_pct:
+        skipped.append({
+            "coin": coin,
+            "reason": f"Cible +{cible_pct * 100:.1f}% > mouvement réaliste {max_realistic_move_pct * 100:.1f}% "
+                      "(MFE médiane mesurée 1.5%)",
+        })
+        continue
 
     if prix_stop <= 0:
         skipped.append({"coin": coin, "reason": "prix_stop négatif (volatilité extrême)"})
