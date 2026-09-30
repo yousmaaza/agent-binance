@@ -3069,5 +3069,32 @@
     "pnl_usdc": null,
     "pnl_gross_pct": null,
     "pnl_pct": null
+  },
+  {
+    "trade_id": "7b653dab",
+    "date": "2026-09-30T00:12:01.043945+00:00",
+    "coin": "AVAX",
+    "side": "BUY",
+    "signal_score": 7,
+    "entry_price": 11.37799993145042,
+    "stop_price": 10.382,
+    "tp_price": 12.060679927337446,
+    "quantity": 6.97684817,
+    "risk_usdc": 7.667000000000001,
+    "entry_order_id": "OGDAV7-ZCJF5-XULJAN",
+    "sl_order_txid": "OKGHNJ-JNA4R-6BL53N",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.238148,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 88.747924,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
