@@ -3096,5 +3096,32 @@
     "pnl_usdc": null,
     "pnl_gross_pct": null,
     "pnl_pct": null
+  },
+  {
+    "trade_id": "5a3a772b",
+    "date": "2026-10-02T12:12:26.534946+00:00",
+    "coin": "SOL",
+    "side": "BUY",
+    "signal_score": 7,
+    "entry_price": 121.86000038782088,
+    "stop_price": 114.55,
+    "tp_price": 129.17160041109014,
+    "quantity": 0.91949669,
+    "risk_usdc": 7.695940000000001,
+    "entry_order_id": "OYVPPZ-NBGS3-MYOEKZ",
+    "sl_order_txid": "OAUC7M-BEDCP-IKNR7Q",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.33615,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 92.681375,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
