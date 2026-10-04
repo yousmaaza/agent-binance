@@ -64,7 +64,7 @@ seuil d'arrêt = −(437,59 × 0,05) = −21,88 USDC // perte du jour : 0,00 →
 À chaque cycle, la cible de chaque position ouverte est recalculée — le marché a bougé depuis l'achat, la résistance aussi.
 
 ```text
-stop_distance_pct = (entry_price − stop_price) / entry_price
+stop_distance_pct = (entry_price − stop_origine) / entry_price // stop d'origine, jamais le stop courant (#513)
 tp_mecanique = entry_price × (1 + (stop_distance_pct + fee_round_trip_pct) × reward_risk_ratio + fee_round_trip_pct)
 tp_plancher = entry_price × (1 + 2 × fee_round_trip_pct)
 tp_plafond = entry_price × (1 + max_tp_pct)
@@ -80,14 +80,17 @@ Mise à jour si |tp_smart − tp_actuel| / tp_actuel > 0.005
 ```text
 [SOL · deux jours après l'achat]
 
-Le stop suiveur a remonté le stop de 93,23 à 99,11. La distance n'est plus 7 % mais 1,137 %,
-donc la cible se resserre à son tour :
+Le stop suiveur a remonté le stop de 93,23 à 99,11. Avec la distance du stop courant (1,137 %),
+la cible se resserrait mécaniquement — comportement antérieur au ticket #513 :
 
-tp = 100,25 × (1 + (0,01137 + 0,009) × 1,5 + 0,009) = 104,2156
-plancher 102,05 < 104,22 < plafond 106,27 → conservée telle quelle
+tp = 100,25 × (1 + (0,01137 + 0,009) × 1,5 + 0,009) = 104,2156 // valeur en base : 104.21562511
 
-// valeur en base : 104.21562511 — la formule redonne 104,215625, zéro écart
+Avec la distance du stop d'origine (93,23 → 7,002 %), la cible reste celle de l'achat :
+tp_mecanique = 100,25 × (1 + (0,07002 + 0,009) × 1,5 + 0,009) = 113,04 → plafonné à 106,27 (max_tp_pct)
+plancher 102,05 < 106,27 → cible 106,27
 ```
+
+Le stop d'origine est le champ `initial_stop_price`, posé à l'entrée. Pour les trades antérieurs il est reconstruit : `stop_origine = entry × (1 − (risk_usdc / (entry × quantité) − fee_round_trip_pct))`, la formule inverse du dimensionnement (cf. section Septembre).
 
 > Trois plafonds se disputent la cible : le **ratio mécanique**, la **résistance 4h** et le **plafond absolu**. Le plancher les arbitre : une cible qui ne couvrirait même pas deux fois les frais n'est pas une cible, c'est une perte programmée — dans ce cas tous les plafonds sont ignorés.
 
@@ -112,7 +115,7 @@ Une position qui dépasse 5 % de gain *net estimé* est fermée sans attendre sa
 ### Le stop suiveur
 
 ```text
-trail_dist = entry_price − stop_actuel // la distance d'origine est conservée
+trail_dist = entry_price − stop_origine // la distance d'origine est conservée (#513 : plus stop_actuel)
 new_stop = prix_courant − trail_dist
 
 Refusé si new_stop ≤ stop_actuel + trail_dist × 0.20 // progrès trop faible
@@ -122,7 +125,7 @@ Refusé si new_stop ≥ prix_courant × 0.98 // trop collé au marché
 ```text
 [SOL · le déplacement qui a eu lieu]
 
-trail_dist = 100,25 − 93,23 = 7,02 // distance figée à l'achat
+trail_dist = 100,25 − 93,23 = 7,02 // distance figée à l'achat (stop d'origine)
 prix courant ≈ 106,13 → new_stop = 106,13 − 7,02 = 99,11
 
 contrôle 1 : 99,11 > 93,23 + 7,02 × 0,20 = 94,63 ✓
@@ -130,6 +133,20 @@ contrôle 2 : 99,11 < 106,13 × 0,98 = 104,01 ✓ → stop déplacé
 ```
 
 Le stop ne descend jamais. Il ne remonte que si le gain justifie le déplacement — au moins 20 % de la distance initiale — et jamais à moins de 2 % sous le prix courant, pour ne pas se faire sortir par une mèche.
+
+> Depuis le ticket #513 la distance est mesurée sur le stop *d'origine*. Avec l'ancienne formule (`entry − stop_actuel`), un stop remonté au-dessus du prix d'entrée donnait `trail_dist ≤ 0` et le stop suiveur ne bougeait plus jamais.
+
+### Le break-even
+
+```text
+déclencheur = entry_price × (1 + breakeven_trigger_pct)
+niveau = entry_price × (1 + fee_round_trip_pct) // si breakeven_include_fees, sinon entry_price
+
+Si prix ≥ déclencheur et stop_actuel < niveau et niveau < prix et pas déjà appliqué
+→ annuler le stop, poser un stop-loss au niveau, breakeven_applied = true
+```
+
+Contrôle toutes les 2 minutes par le tp_watcher (pas seulement au cycle 4h), hors cycle en cours et hors sortie maker en cours. Si le nouveau stop échoue, l'ancien est reposé ; si les deux échouent, la position est marquée `protection_failed` et le rattrapage de la Phase 0 reprend la main — une position n'est jamais laissée sans stop. Interrupteur : `breakeven_enabled`. Mesures du rejeu qui fixent les valeurs : section 04/10 plus bas.
 
 ## Phases 1-2 — Qui a le droit d'être regardé
 
@@ -455,6 +472,9 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | maker_max_concession_pct | 0.003 | watcher | Budget de poursuite du prix. Épuisé, l'entrée est abandonnée — plus de bascule au marché (#502). |
 | maker_timeout_seconds | 3600 | watcher | Délai maximal de chasse. Un remplissage à 405 s a validé ce choix. |
 | price_deviation_max_pct | 0.02 | phase 5, watcher | Dérive de prix tolérée. Dépassée, la thèse du trade est considérée morte. |
+| breakeven_enabled | true | tp_watcher | Active la remontée du stop au break-even (#513). |
+| breakeven_trigger_pct | 0.015 | tp_watcher | Gain depuis l'entrée à partir duquel le stop est remonté. Valeur choisie par rejeu (section 04/10). |
+| breakeven_include_fees | true | tp_watcher | Niveau du stop : entrée + frais aller-retour (vrai break-even net) plutôt que l'entrée seule. |
 | min_profit_pct_take | 5.0 | phase 0 | Gain net déclenchant une vente anticipée, sans attendre la cible. |
 | max_oco_retry | 3 | phase 0 | Tentatives de repose d'une protection OCO manquante. |
 | max_hold_days | 14 | hors cycle | Durée de détention maximale — n'agit que dans le flux de gestion de position, pas dans le cycle de trading. |
@@ -711,6 +731,68 @@ Remplacer le garde-fou sur la cible par un plafond sur `max_stop_distance_pct` (
 > **Réserve de méthode** : cet ATR est reconstruit depuis `stop_price / entry_price ÷ 1,75`. Les trades antérieurs au passage à 1,75 (07/09) ont pu utiliser un autre multiplicateur, ce qui gonfle leur ATR reconstruit. Le seuil de 12 % est donc un ordre de grandeur à revoir après 30+ trades sous le nouveau réglage.
 
 > Articulation avec le garde-fou existant : `min_order_usdc` skippait déjà certains cas extrêmes tardivement, un stop très large produisant mécaniquement une position minuscule (le risque USDC étant constant) — mais avec un motif trompeur (« montant trop petit » au lieu de « volatilité extrême »). Le nouveau plafond rend la cause explicite et intercepte le cas plus tôt.
+
+## 04/10 — Remonter le stop au prix d'entrée
+
+Depuis le 22/08, 28 trades : 25 % gagnants, −77,2 USDC net. Les 10 sorties sur stop pèsent −68,5 USDC, soit environ 90 % des pertes. Or la hausse maximale médiane pendant la détention (+1,52 %, section 28/09) est atteinte bien avant la sortie : beaucoup de trades passent en gain puis finissent au stop. Le ticket #513 remonte le stop au prix d'entrée dès que le trade est en gain.
+
+### La méthode du rejeu
+
+Script `scripts/breakeven_replay.py` (à relancer pour remesurer). Chaque trade clôturé est rejoué sur les bougies publiques Kraken (`kraken ohlc`) avec les frais réels : **0,30 % maker** à l'entrée, **0,60 % taker** à la sortie sur stop (un stop-loss est un ordre au marché une fois déclenché). Conventions volontairement défavorables au break-even : on ne retient que les bougies entièrement comprises entre l'entrée et la sortie réelle ; le déclencheur est détecté sur le plus haut d'une bougie mais le stop break-even n'est actif qu'à la bougie suivante ; une ouverture sous le niveau sort à l'ouverture (gap). Si le break-even n'intervient pas avant la sortie réelle, le PnL réel est conservé.
+
+> **Limite des données** : Kraken ne renvoie que 720 bougies par résolution — les 15 min ne remontent qu'au 26/09 (7,5 jours), les 1 h qu'au 04/09, les 4 h qu'au 06/06. Le rejeu complet depuis le 03/07 (77 trades) est donc fait en **4 h** ; le rejeu depuis le 22/08 (28 trades) en résolution **mixte** (15 min jusqu'à 7 jours, 1 h jusqu'à 30 jours, 4 h au-delà). « Sauvés » : trades sortis au break-even dont le PnL est meilleur que le réel ; « coupés » : trades sortis au break-even alors que la sortie réelle valait mieux.
+
+### Depuis le 03/07 — bougies 4 h, 77 trades
+
+```text
+[réel]
+
+PnL net −74,73 USDC · 14 stops · 49 trades perdants · hausse max médiane (bougies fermées) +0,84 %
+```
+
+| déclencheur | niveau du stop | PnL net (USDC) | écart vs réel | déclenchés | sortis au break-even | sauvés | coupés |
+|---|---|---|---|---|---|---|---|
+| 1,0 % | entry | −61,07 | +13,66 | 37 | 20 | 11 | 9 |
+| 1,5 % | entry | −68,73 | +6,00 | 33 | 15 | 8 | 7 |
+| 2,0 % | entry | −74,28 | +0,46 | 27 | 10 | 4 | 6 |
+| 2,5 % | entry | −71,85 | +2,88 | 21 | 7 | 3 | 4 |
+| 1,0 % | entry + frais | −59,56 | +15,18 | 37 | 28 | 15 | 13 |
+| **1,5 %** | **entry + frais** | **−68,65** | **+6,08** | **33** | **22** | **11** | **11** |
+| 2,0 % | entry + frais | −78,47 | −3,73 | 27 | 15 | 6 | 9 |
+| 2,5 % | entry + frais | −72,38 | +2,36 | 21 | 10 | 4 | 6 |
+
+### Depuis le 22/08 — résolution mixte 15 min / 1 h / 4 h, 28 trades
+
+```text
+[réel]
+
+PnL net −77,15 USDC · 10 stops · 21 trades perdants · hausse max médiane +1,39 %
+```
+
+| déclencheur | niveau du stop | PnL net (USDC) | écart vs réel | déclenchés | sortis au break-even | sauvés | coupés |
+|---|---|---|---|---|---|---|---|
+| 1,0 % | entry | −62,83 | +14,32 | 15 | 9 | 6 | 3 |
+| 1,5 % | entry | −69,59 | +7,56 | 14 | 8 | 5 | 3 |
+| 2,0 % | entry | −75,14 | +2,01 | 8 | 3 | 1 | 2 |
+| 2,5 % | entry | −72,67 | +4,48 | 7 | 2 | 1 | 1 |
+| 1,0 % | entry + frais | −62,20 | +14,95 | 15 | 12 | 8 | 4 |
+| **1,5 %** | **entry + frais** | **−66,46** | **+10,69** | **14** | **10** | **7** | **3** |
+| 2,0 % | entry + frais | −78,05 | −0,90 | 8 | 5 | 2 | 3 |
+| 2,5 % | entry + frais | −72,10 | +5,05 | 7 | 3 | 2 | 1 |
+
+Le même rejeu en 4 h sur les 28 trades depuis le 22/08 donne les mêmes signes : +14,32 / +7,56 / +2,01 / +4,48 USDC au niveau « entry », +16,46 / +10,69 / −0,90 / +5,05 au niveau « entry + frais ». Le break-even **améliore le résultat net** pour presque toute la grille — sur les quatre séries, les seules cellules négatives sont 2,0 % + frais (−3,73 sur 77 trades, −0,90 sur 28).
+
+### Pourquoi 1,5 % et « entry + frais »
+
+L'écart au réel diminue quand le déclencheur monte : 1,0 % fait le mieux de la grille (+13 à +16 USDC) mais c'est le bord de la grille et le niveau « entry + frais » (0,9 %) n'y laisse que 0,1 % entre le prix et le stop — une mèche suffit à sortir, et l'ordre risque d'être refusé s'il est au-dessus du marché. Prendre la meilleure cellule serait du surajustement sur 28 à 77 trades. **1,5 %** est une valeur intérieure à la grille : gain positif dans les huit cellules 1,5 % (+6,0 à +10,7 USDC), 0,6 % de marge entre le prix et le stop, et moins de trades « coupés » que 1,0 %.
+
+Le niveau **entry + frais** est le seul qui soit un vrai break-even net : avec une entrée maker à 0,30 % et une sortie stop à 0,60 %, un stop posé à l'entrée exacte coûte encore 0,9 % du notionnel. À 1,5 % le résultat est équivalent ou meilleur dans les quatre séries (+6,08 contre +6,00 depuis le 03/07, +10,69 contre +7,56 depuis le 22/08).
+
+> **Ce que le rejeu ne dit pas** : il ignore le stop suiveur (un trade déjà suivi aurait sa propre sortie), les ventes sur signal (score ≤ 3) qui peuvent précéder le break-even, et suppose une exécution du stop au niveau exact. Les trades « coupés » sont la contrepartie réelle : un gagnant ramené au break-even avant de repartir. Les valeurs sont à remesurer après 30+ trades sous ce réglage.
+
+### Ce qui a été décidé le 04/10
+
+`breakeven_enabled` = true, `breakeven_trigger_pct` = 0,015, `breakeven_include_fees` = true. Deux pièges corrigés dans le même ticket : le stop suiveur et le recalibrage de la cible utilisent désormais la distance du stop d'origine (`initial_stop_price`), faute de quoi un stop au-dessus du prix d'entrée figeait le suiveur et ramenait la cible à environ +0,9 %.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*

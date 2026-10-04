@@ -10,13 +10,14 @@ from core.dashboard_state import publish_trade_history_slices
 from core.env import PROJECT_DIR
 from core.lock import acquire_lock, is_locked, release_lock
 from core.maker_exit_watcher import (
+    _place_stop_loss,
     attempt_maker_exit,
     load_maker_exit_pending_orders,
     save_maker_exit_pending_orders,
 )
 from core.state_manager import load_trade_history, save_trade_history
 from core.telegram import send_telegram
-from core.trade_helpers import binance as _cli, _load_config, compute_net_pnl
+from core.trade_helpers import binance as _cli, _load_config, compute_net_pnl, initial_stop_price
 
 _WATCHER_STATE_PATH = os.path.join(PROJECT_DIR, "state", "tp_watcher_state.json")
 
@@ -42,6 +43,72 @@ def _write_watcher_state(status: str, last_error: str | None, positions_checked:
     with open(tmp, "w") as f:
         json.dump(state, f)
     os.replace(tmp, _WATCHER_STATE_PATH)
+
+
+def _place_sl_safe(pair: str, qty: float, price: float):
+    """_place_stop_loss() ne capte pas le RuntimeError de binance() : ici toute erreur = échec de pose."""
+    try:
+        return _place_stop_loss(pair, qty, price)
+    except Exception as e:
+        return None, True, f" {e}", price
+
+
+def _apply_breakeven(pos: dict, current_price: float, cfg: dict) -> bool:
+    """Remonte le stop au break-even dès que le trade est en gain (#513). Retourne True si
+    trade_history doit être sauvegardé. À appeler hors lock : prend le lock le temps de
+    l'annulation/replacement. Jamais de position laissée sans stop : si le nouveau stop échoue,
+    on repose l'ancien, et à défaut protection_failed=True laisse le rattrapage Phase 0 agir."""
+    if not cfg.get("breakeven_enabled", True) or pos.get("breakeven_applied"):
+        return False
+    old_txid = pos.get("sl_order_txid")
+    entry = float(pos.get("entry_price", 0) or 0)
+    if not old_txid or pos.get("protection_failed") or entry <= 0:
+        return False
+    include_fees = cfg.get("breakeven_include_fees", True)
+    level = entry * (1 + (cfg.get("fee_round_trip_pct", 0.009) if include_fees else 0.0))
+    trigger = entry * (1 + cfg.get("breakeven_trigger_pct", 0.015))
+    old_stop = float(pos.get("stop_price") or 0)
+    if current_price < trigger or old_stop >= level or level >= current_price:
+        return False
+    # Un cycle 4h peut démarrer entre deux positions
+    if is_locked():
+        return False
+
+    coin = pos["coin"]
+    pair = f"{coin}USDC"
+    qty = float(pos["quantity"])
+    acquire_lock()
+    try:
+        try:
+            _cli("order", "cancel", old_txid, "-o", "json", "--yes")
+        except Exception as e:
+            logger.warning(f"[TP Watcher] Break-even {coin} : annulation SL {old_txid} impossible, abandon : {e}")
+            return False
+
+        pos.setdefault("initial_stop_price", initial_stop_price(pos, cfg.get("fee_round_trip_pct", 0.009)))
+        new_txid, failed, err_msg, level_rounded = _place_sl_safe(pair, qty, level)
+        if not failed:
+            pos.update({"stop_price": level_rounded, "sl_order_txid": new_txid, "breakeven_applied": True})
+            send_telegram(
+                f"🔒 {coin} : le stop est remonté au prix d'achat"
+                f"{' (frais compris)' if include_fees else ''}, "
+                f"ce trade ne peut plus perdre{'' if include_fees else ' (hors frais)'}"
+            )
+            logger.info(f"[TP Watcher] {coin} break-even : stop {old_stop:.4f} -> {level_rounded:.4f}")
+            return True
+
+        logger.error(f"[TP Watcher] Break-even {coin} : nouveau stop échoué{err_msg}, repose de l'ancien")
+        restored_txid, restore_failed, _, _ = _place_sl_safe(pair, qty, old_stop)
+        if not restore_failed:
+            pos["sl_order_txid"] = restored_txid
+            send_telegram(f"⚠️ {coin} : remontée du stop au prix d'achat échouée, ancien stop reposé")
+        else:
+            pos["sl_order_txid"] = None
+            pos["protection_failed"] = True
+            send_telegram(f"🚨 {coin} : position NON protégée — remontée du stop échouée et ancien stop non reposé !{err_msg}")
+        return True
+    finally:
+        release_lock()
 
 
 def tp_watcher_loop():
@@ -96,6 +163,14 @@ def _tp_watcher_tick():
             continue
 
         if current_price < float(tp_price):
+            try:
+                if _apply_breakeven(pos, current_price, cfg):
+                    changed = True
+                    save_trade_history(history)  # l'ancien txid est annulé : ne pas attendre la fin du tick
+            except Exception as e:
+                logger.error(f"[TP Watcher] Erreur break-even {coin} : {e}")
+                tick_status = "error"
+                tick_last_error = f"Erreur break-even {coin} : {e}"
             continue
 
         # Re-vérifier le lock avant d'acquérir — un cycle 4h peut démarrer entre deux positions

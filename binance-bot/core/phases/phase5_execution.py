@@ -285,6 +285,7 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
             "signal_score": score,
             "entry_price": actual_entry,
             "stop_price": actual_stop,
+            "initial_stop_price": actual_stop,
             "tp_price": actual_tp,
             "quantity": actual_qty,
             "risk_usdc": risk_usdc,

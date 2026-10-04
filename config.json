@@ -39,6 +39,10 @@
   "max_spread_pct": 0.0008,
   "volume_persistence_periods": 6,
 
+  "breakeven_enabled": true,
+  "breakeven_trigger_pct": 0.015,
+  "breakeven_include_fees": true,
+
   "min_profit_pct_take": 5.0,
   "max_hold_days": 14,
   "max_oco_retry": 3,

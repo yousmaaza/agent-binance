@@ -13,7 +13,7 @@ import math
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _save_trade_history_atomic, log_phase0_event  # noqa: E402
+from core.trade_helpers import tg, binance, _load_config, _save_trade_history_atomic, log_phase0_event, initial_stop_price  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -29,6 +29,8 @@ def _round_qty(q, step):
 with open(os.path.join(PROJECT_DIR, "state", "trade_history.json")) as f:
     history = json.load(f)
 
+fee_round_trip_pct = _load_config().get("fee_round_trip_pct", 0.009)
+
 ts_updates = []
 for t in history:
     if t.get("status") != "open" or not t.get("sl_order_txid"):
@@ -36,7 +38,9 @@ for t in history:
     coin = t["coin"]
     entry = float(t["entry_price"])
     cur_stop = float(t["stop_price"])
-    trail_dist = entry - cur_stop
+    # Distance du stop d'ORIGINE (#513) : après un break-even, entry - cur_stop <= 0 figerait le trailing
+    init_stop = initial_stop_price(t, fee_round_trip_pct)
+    trail_dist = entry - init_stop
 
     try:
         ticker_raw = binance("ticker", f"{coin}USDC", "-o", "json")
@@ -107,6 +111,7 @@ for t in history:
         tg(f"⚠️ Trailing stop {coin} : échec placement nouvel SL ({e})")
         continue
 
+    t["initial_stop_price"] = init_stop
     t["stop_price"] = new_stop_r
     t["sl_order_txid"] = new_sl_txid
     _save_trade_history_atomic(history)
