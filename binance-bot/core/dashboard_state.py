@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from loguru import logger
 
+from core.position_helpers import fold_partial_trades
 from core.timing import parse_dt
 from storage.mongo import mongo_repo
 
@@ -94,8 +95,9 @@ def _financials(closed: list) -> dict:
         close_reason_counts[reason] = close_reason_counts.get(reason, 0) + 1
 
     global_stats = _brut_frais_net(closed)
-    global_stats["wins"] = sum(1 for t in closed if _pnl(t) > 0)
-    global_stats["losses"] = sum(1 for t in closed if _pnl(t) < 0)
+    positions = fold_partial_trades(closed)  # une position = un gagnant/perdant (#514)
+    global_stats["wins"] = sum(1 for t in positions if _pnl(t) > 0)
+    global_stats["losses"] = sum(1 for t in positions if _pnl(t) < 0)
     global_stats["trades_without_fees"] = sum(1 for t in closed if t.get("fees_usdc") is None)
 
     return {
@@ -138,6 +140,7 @@ def _closed_trades(closed: list, limit: int = CLOSED_TRADES_LIMIT) -> list:
             "pnl_usdc": trade.get("pnl_usdc"),
             "close_reason": trade.get("close_reason"),
             "cycle_id": trade.get("cycle_id"),
+            "parent_trade_id": trade.get("parent_trade_id"),
             "maker_or_taker": trade.get("maker_or_taker"),
             "exit_maker_or_taker": trade.get("exit_maker_or_taker"),
             "exit_fee_usdc": trade.get("exit_fee_usdc"),

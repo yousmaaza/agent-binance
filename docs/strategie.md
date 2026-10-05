@@ -148,6 +148,20 @@ Si prix ≥ déclencheur et stop_actuel < niveau et niveau < prix et pas déjà 
 
 Contrôle toutes les 2 minutes par le tp_watcher (pas seulement au cycle 4h), hors cycle en cours et hors sortie maker en cours. Si le nouveau stop échoue, l'ancien est reposé ; si les deux échouent, la position est marquée `protection_failed` et le rattrapage de la Phase 0 reprend la main — une position n'est jamais laissée sans stop. Interrupteur : `breakeven_enabled`. Mesures du rejeu qui fixent les valeurs : section 04/10 plus bas.
 
+### Le profit partiel
+
+```text
+déclencheur = entry_price × (1 + partial_tp_trigger_pct)
+fraction vendue = quantité × partial_tp_fraction // arrondie au pas de la paire
+
+Si prix ≥ déclencheur et pas déjà fait et fraction et reliquat ≥ min_order_usdc (et ≥ minimum Kraken)
+→ 1. annuler le stop · 2. reposer un stop sur le reliquat (niveau break-even, ou stop courant si breakeven_enabled est faux) · 3. vente limite post-only de la fraction
+```
+
+Kraken immobilise le solde sous un stop : on ne peut pas vendre la fraction tant que le stop couvre toute la position, d'où l'ordre ci-dessus. La seule fenêtre sans stop est entre l'annulation et la pose du stop du reliquat (deux appels, quelques secondes). La vente passe par la chasse maker de sortie (frais 0,30 %). **Si la chasse échoue (délai, concession épuisée, prix revenu au stop), la fraction est abandonnée — jamais vendue au marché** : le stop est alors reposé sur la quantité totale. Si une repose échoue, on retombe sur le schéma du break-even (ancien stop, sinon `protection_failed`). Un seul essai par position (`partial_tp_done`).
+
+Comptabilité : la part vendue devient un enregistrement clôturé séparé (`close_reason = "partial_tp"`, `parent_trade_id`, frais d'entrée au prorata, frais de sortie et PnL propres). L'enregistrement d'origine reste ouvert avec `quantity`, `risk_usdc` et `entry_fee_usdc` réduits dans la même proportion — la distance du stop d'origine, reconstruite depuis `risk_usdc / (entry × quantity)`, reste exacte. `/perf` et le dashboard comptent une position comme un seul trade (gagnant ou perdant), les sommes restent exactes. Interrupteur : `partial_tp_enabled`. Valeurs et réserve de méthode : section 05/10 plus bas.
+
 ## Phases 1-2 — Qui a le droit d'être regardé
 
 Le scan interroge toutes les paires USDC de Kraken puis applique trois filtres successifs. Les cryptos de `portfolio_coins` franchissent tout : on veut pouvoir gérer une position même si sa liquidité s'est dégradée.
@@ -475,6 +489,9 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | breakeven_enabled | true | tp_watcher | Active la remontée du stop au break-even (#513). |
 | breakeven_trigger_pct | 0.015 | tp_watcher | Gain depuis l'entrée à partir duquel le stop est remonté. Valeur choisie par rejeu (section 04/10). |
 | breakeven_include_fees | true | tp_watcher | Niveau du stop : entrée + frais aller-retour (vrai break-even net) plutôt que l'entrée seule. |
+| partial_tp_enabled | true | tp_watcher | Active la vente d'une fraction de la position à +3 % (#514). Choix assumé malgré un rejeu non concluant (section 05/10). |
+| partial_tp_trigger_pct | 0.03 | tp_watcher | Gain depuis l'entrée à partir duquel la fraction est vendue. |
+| partial_tp_fraction | 0.33 | tp_watcher | Part de la quantité vendue ; le reste continue avec un stop au break-even. |
 | min_profit_pct_take | 5.0 | phase 0 | Gain net déclenchant une vente anticipée, sans attendre la cible. |
 | max_oco_retry | 3 | phase 0 | Tentatives de repose d'une protection OCO manquante. |
 | max_hold_days | 14 | hors cycle | Durée de détention maximale — n'agit que dans le flux de gestion de position, pas dans le cycle de trading. |
@@ -793,6 +810,62 @@ Le niveau **entry + frais** est le seul qui soit un vrai break-even net : avec u
 ### Ce qui a été décidé le 04/10
 
 `breakeven_enabled` = true, `breakeven_trigger_pct` = 0,015, `breakeven_include_fees` = true. Deux pièges corrigés dans le même ticket : le stop suiveur et le recalibrage de la cible utilisent désormais la distance du stop d'origine (`initial_stop_price`), faute de quoi un stop au-dessus du prix d'entrée figeait le suiveur et ramenait la cible à environ +0,9 %.
+
+## 05/10 — Prendre un profit partiel vers +3 %
+
+Le ticket #514 vend un tiers de la position dès +3 % et laisse courir le reste, protégé par le stop au break-even (#513). **Le rejeu n'a montré aucune amélioration robuste par rapport au break-even seul. L'implémentation est un choix de l'utilisateur, pris en connaissance de ces chiffres — pas une conclusion des mesures.**
+
+### La méthode du rejeu
+
+Script `scripts/partial_tp_replay.py` (à relancer pour remesurer), mêmes bougies et mêmes conventions défavorables que `scripts/breakeven_replay.py`. Le break-even (1,5 %, entry + frais) est toujours appliqué ; la référence est « break-even seul ». Le déclencheur du partiel est détecté sur le plus haut d'une bougie, la vente maker est supposée remplie au prix du déclencheur (0,30 %), le reliquat suit le scénario « break-even seul », et si la bougie de sortie du break-even contient aussi le déclencheur on suppose que le stop est touché d'abord (pas de partiel).
+
+### Depuis le 03/07 — bougies 4 h, 77 trades
+
+```text
+[référence]
+
+réel −74,73 USDC · break-even seul −68,65 USDC
+```
+
+| déclencheur | fraction | PnL net (USDC) | écart vs break-even seul | partiels | trades + | trades − |
+|---|---|---|---|---|---|---|
+| 1,5 % | 33 % | −68,91 | −0,26 | 29 | 19 | 10 |
+| 1,5 % | 50 % | −68,95 | −0,30 | 30 | 20 | 10 |
+| 2,0 % | 33 % | −70,56 | −1,90 | 19 | 10 | 9 |
+| 2,0 % | 50 % | −71,40 | −2,74 | 20 | 11 | 9 |
+| 2,5 % | 33 % | −69,45 | −0,80 | 17 | 8 | 9 |
+| 2,5 % | 50 % | −69,86 | −1,21 | 17 | 8 | 9 |
+| **3,0 %** | **33 %** | **−68,92** | **−0,27** | **13** | **6** | **7** |
+| 3,0 % | 50 % | −69,06 | −0,41 | 13 | 6 | 7 |
+
+### Depuis le 22/08 — résolution mixte 15 min / 1 h / 4 h, 28 trades
+
+```text
+[référence]
+
+réel −77,15 USDC · break-even seul −66,46 USDC
+```
+
+| déclencheur | fraction | PnL net (USDC) | écart vs break-even seul | partiels | trades + | trades − |
+|---|---|---|---|---|---|---|
+| 1,5 % | 33 % | −65,65 | +0,81 | 14 | 10 | 4 |
+| 1,5 % | 50 % | −65,23 | +1,23 | 14 | 10 | 4 |
+| 2,0 % | 33 % | −67,56 | −1,10 | 7 | 4 | 3 |
+| 2,0 % | 50 % | −68,13 | −1,67 | 7 | 4 | 3 |
+| 2,5 % | 33 % | −66,84 | −0,38 | 6 | 3 | 3 |
+| 2,5 % | 50 % | −67,03 | −0,57 | 6 | 3 | 3 |
+| **3,0 %** | **33 %** | **−66,10** | **+0,36** | **5** | **2** | **3** |
+| 3,0 % | 50 % | −65,91 | +0,55 | 5 | 2 | 3 |
+
+### Ce que ces chiffres disent — et ne disent pas
+
+Sur les 77 trades en 4 h, **aucune des huit cellules ne bat le break-even seul** (−0,26 à −2,74 USDC, médiane −0,60). En résolution mixte sur 28 trades, quatre cellules sur huit sont positives (−1,67 à +1,23, médiane −0,01) ; les 49 trades plus anciens sont négatifs dans les huit cellules (−2,2 à −7,4). Les seules cellules positives sont les bords de la grille (1,5 % et 3,0 %), jamais une valeur intérieure : c'est la signature du bruit, pas d'un effet. Le mécanisme est lisible : le partiel renonce à une part de la queue haute des gagnants sans protéger davantage, puisque le break-even protège déjà le reliquat — et il ajoute 0,30 % de frais maker par partiel.
+
+> Le même rejeu en 4 h sur les 28 trades depuis le 22/08 donne +1,9 à +7,1 USDC dans les huit cellules : l'écart avec la résolution mixte vient de la finesse des bougies, un rappel que ces écarts sont de l'ordre de la résolution des données et non d'un effet stable.
+
+### Ce qui a été décidé le 05/10
+
+**Choix utilisateur malgré un rejeu non concluant.** `partial_tp_enabled` = true, `partial_tp_trigger_pct` = 0,03, `partial_tp_fraction` = 0,33 — la combinaison la moins mauvaise en moyenne sur les trois séries (−0,27 sur 77 trades en 4 h, +0,36 sur 28 trades en résolution mixte). Elle réduit le nombre de partiels (13 et 5) donc les frais ajoutés. **À remesurer après 30 trades ou plus sous ce réglage** (relancer `scripts/partial_tp_replay.py` et comparer le PnL réel des enregistrements `partial_tp`) ; l'interrupteur `partial_tp_enabled` permet de revenir au break-even seul sans toucher au code.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*

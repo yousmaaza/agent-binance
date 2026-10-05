@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from core.env import PROJECT_DIR
+from core.position_helpers import fold_partial_trades
 from core.timing import fmt_local, parse_dt
 
 _HISTORY_PATH = f"{PROJECT_DIR}/state/trade_history.json"
@@ -446,18 +447,21 @@ def run_perf() -> str:
         return "❌ Pas encore de données de trading."
 
     closed = [t for t in history if t.get("status") == "closed"]
+    # Compteurs par position (#514) ; les sommes (périodes, frais) restent sur les lignes brutes
+    positions = fold_partial_trades(closed)
+    history_by_position = [t for t in history if t.get("status") != "closed"] + positions
 
     lines = ["📈 <b>Performance du bot</b>\n"]
 
     if closed:
-        lines.extend(_bloc_resultat(closed))
+        lines.extend(_bloc_resultat(positions))
         lines.extend(_bloc_periodes(closed))
         lines.extend(_bloc_frais(closed))
     else:
         lines.append("\n📈 <b>Résultat net</b> : aucun trade fermé")
 
     lines.extend(_bloc_cycles())
-    lines.extend(_bloc_positions(history))
+    lines.extend(_bloc_positions(history_by_position))
     lines.extend(_bloc_watcher(closed))
     lines.extend(_bloc_maker(history))
 

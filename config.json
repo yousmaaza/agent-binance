@@ -43,6 +43,10 @@
   "breakeven_trigger_pct": 0.015,
   "breakeven_include_fees": true,
 
+  "partial_tp_enabled": true,
+  "partial_tp_trigger_pct": 0.03,
+  "partial_tp_fraction": 0.33,
+
   "min_profit_pct_take": 5.0,
   "max_hold_days": 14,
   "max_oco_retry": 3,
