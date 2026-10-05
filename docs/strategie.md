@@ -71,8 +71,9 @@ tp_plafond = entry_price × (1 + max_tp_pct)
 
 tp_candidat = min(tp_mecanique, tp_plafond)
 resistance = max(high des resistance_lookback_4h dernières bougies 4h clôturées)
+Si resistance > entry_price et resistance × 0.98 < tp_plancher → tp_smart = tp_plancher // résistance trop proche : la cible est le plancher (#519)
 Si resistance > entry_price et resistance × 0.98 ≥ tp_plancher → tp_smart = min(tp_candidat, resistance × 0.98)
-Sinon → tp_smart = tp_candidat // résistance ignorée, plafond max_tp_pct conservé : jamais de cible non plafonnée (#516)
+Sinon (résistance absente ou ≤ entry_price) → tp_smart = tp_candidat // plafond max_tp_pct conservé : jamais de cible non plafonnée (#516)
 
 Mise à jour si |tp_smart − tp_actuel| / tp_actuel > 0.005
 ```
@@ -92,7 +93,7 @@ plancher 102,05 < 106,27 → cible 106,27
 
 Le stop d'origine est le champ `initial_stop_price`, posé à l'entrée. Pour les trades antérieurs il est reconstruit : `stop_origine = entry × (1 − (risk_usdc / (entry × quantité) − fee_round_trip_pct))`, la formule inverse du dimensionnement (cf. section Septembre).
 
-> Trois plafonds se disputent la cible : le **ratio mécanique**, la **résistance 4h** et le **plafond absolu**. Le plancher arbitre la résistance : une résistance qui ne laisserait même pas deux fois les frais n'est pas une cible, c'est une perte programmée — elle est ignorée, mais le plafond absolu reste appliqué. La même règle (`compute_tp_target`) sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage.
+> Trois plafonds se disputent la cible : le **ratio mécanique**, la **résistance 4h** et le **plafond absolu**. Le plancher arbitre la résistance : une résistance qui ne laisserait même pas deux fois les frais n'est pas une cible de plus haut : la cible devient le plancher lui-même (#519), sans repartir vers le plafond absolu. La même règle (`compute_tp_target`) sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage.
 
 ### La prise de profit
 
@@ -321,7 +322,8 @@ prix_tp = prix_entry × (1 + (stop_distance_pct + fee_round_trip_pct) × reward_
 // plafond absolu et résistance 4h Kraken, même règle qu'en phase 0 (#516)
 prix_tp = min(prix_tp, prix_entry × (1 + max_tp_pct))
 si resistance > prix_entry et resistance × 0.98 ≥ prix_entry × (1 + 2 × fee_round_trip_pct) → prix_tp = min(prix_tp, resistance × 0.98)
-sinon la résistance est ignorée, le plafond absolu reste
+si resistance > prix_entry et resistance × 0.98 < prix_entry × (1 + 2 × fee_round_trip_pct) → prix_tp = prix_entry × (1 + 2 × fee_round_trip_pct) // plancher (#519)
+sinon (résistance absente ou ≤ prix_entry) le plafond absolu reste
 
 quantite = risk_usdc ÷ (prix_entry × (stop_distance_pct + fee_round_trip_pct))
 montant = quantite × prix_entry
@@ -455,7 +457,7 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | atr_stop_multiplier | 2.5 | phase 4 | Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible. |
 | reward_risk_ratio | 1.5 | phases 0 et 4 | Gain net visé rapporté à la perte nette. Porte sur du net depuis août. |
 | fee_round_trip_pct | 0.009 | phases 0, 4, 5 | Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit. |
-| max_tp_pct | 0.06 | phases 0, 4, 5 | Plafond absolu de la cible, toujours appliqué (même quand la résistance est ignorée). La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026). |
+| max_tp_pct | 0.06 | phases 0, 4, 5 | Plafond absolu de la cible, appliqué sauf quand une résistance 4h trop proche ramène la cible au plancher (#519). La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026). |
 | resistance_lookback_4h | 30 | phases 0, 4, 5 | Nombre de bougies 4h Kraken clôturées dont le plus haut sert de résistance de plafonnement de la cible (section 05/10). |
 | max_stop_distance_pct | 0.12 | phase 4 | Écarte en TYPE_B tout candidat dont `stop_distance_pct` dépasse ce seuil — protège contre la queue volatile (ATR 4h > 4,8 %) sans bloquer le flux normal. |
 | usdc_allocation_pct | 0.70 | phase 0 | Part du solde USDC mobilisable. |
@@ -909,6 +911,35 @@ Sur les 77 trades en 4 h, **aucune des huit cellules ne bat le break-even seul**
 ### Ce qui a été décidé le 05/10
 
 **Choix utilisateur malgré un rejeu non concluant.** `partial_tp_enabled` = true, `partial_tp_trigger_pct` = 0,03, `partial_tp_fraction` = 0,33 — la combinaison la moins mauvaise en moyenne sur les trois séries (−0,27 sur 77 trades en 4 h, +0,36 sur 28 trades en résolution mixte). Elle réduit le nombre de partiels (13 et 5) donc les frais ajoutés. **À remesurer après 30 trades ou plus sous ce réglage** (relancer `scripts/partial_tp_replay.py` et comparer le PnL réel des enregistrements `partial_tp`) ; l'interrupteur `partial_tp_enabled` permet de revenir au break-even seul sans toucher au code.
+
+## 05/10 — Cible au plancher quand la résistance est trop proche
+
+Depuis #516, la résistance 4h était ignorée quand `résistance × 0.98` tombait sous le plancher (+1,8 %) : c'était le cas pour 86 % des achats, et la cible retombait alors sur le plafond +6 %. Décision de l'utilisateur (#519) : dans ce cas la cible = le plancher `entry × (1 + 2 × fee_round_trip_pct)`. Une résistance qui mord entre le plancher et le plafond (× 0,98), ou une résistance absente ou sous l'entrée, ne changent pas.
+
+### La méthode du rejeu
+
+Script `scripts/target_floor_replay.py` (à relancer pour remesurer). Mêmes données et conventions que `scripts/breakeven_replay.py` et `scripts/partial_tp_replay.py` : bougies 4h Kraken publiques entre l'entrée et la sortie réelle, stop initial prioritaire dans une même bougie, entrée maker 0,30 %, sortie sur cible maker 0,30 % (maker exit), sortie sur stop ou break-even taker 0,60 %. Le break-even (1,5 %, entry + frais) et le partiel (33 % à +3 %) sont actifs. Ce qui ne se déclenche pas avant la sortie réelle garde le PnL réel (colonne « reste »). Les deux règles sont rejouées sur les mêmes trades.
+
+> **Limite** : la résolution est de 4h partout, y compris depuis le 22/08 (les rejeux précédents utilisaient la résolution mixte sur cette série). À cette résolution, une bougie qui touche à la fois le stop et la cible compte comme un stop.
+
+| série | règle | PnL net (USDC) | cibles atteintes | stops | break-even | partiels | trades gagnants |
+|---|---|---|---|---|---|---|---|
+| depuis le 03/07 · 77 trades · cible modifiée sur 64 | actuelle (#516) | −67,75 | 6 | 5 | 20 | 12 | 21 |
+| **plancher (#519)** | **−70,98** | **22** | **5** | **10** | **2** | **28** |  |
+| depuis le 22/08 · 28 trades · cible modifiée sur 19 | actuelle (#516) | −61,73 | 1 | 2 | 9 | 2 | 6 |
+| **plancher (#519)** | **−57,09** | **5** | **2** | **6** | **1** | **8** |  |
+
+Écart plancher − actuelle : **−3,22 USDC** depuis le 03/07 (11 trades meilleurs, 9 pires) et **+4,64 USDC** depuis le 22/08 (4 meilleurs, 0 pire). Le signe change selon la série et les deux écarts sont faibles devant le PnL (environ −70 USDC) : **pas de dégradation nette ni cohérente, pas d'amélioration robuste non plus.** L'implémentation est donc un choix de l'utilisateur, pas une conclusion des mesures.
+
+Ce qui change nettement : les cibles atteintes passent de 6 à 22 (77 trades) et de 1 à 5 (28 trades), les sorties au break-even de 20 à 10, les stops restent identiques (5 et 2). Le gain en nombre de cibles atteintes est payé en hauteur : +1,8 % au lieu de +6 %.
+
+### L'interaction avec le partiel et le break-even
+
+Avec une cible à +1,8 %, le **partiel** (#514, `partial_tp_trigger_pct` = 0,03) ne se déclenche plus pour ces trades : la cible est atteinte avant. Le rejeu le montre : 12 partiels deviennent 2 depuis le 03/07, 2 deviennent 1 depuis le 22/08. Le **break-even** (#513, 1,5 %) reste actif, mais seulement dans la fenêtre de 0,3 point entre +1,5 % et +1,8 % : il passe de 20 à 10 sorties.
+
+### Ce qui a été décidé le 05/10
+
+`compute_tp_target` renvoie le plancher quand la résistance (> entry) × 0,98 est sous le plancher. Aucune clé de configuration ajoutée. La même fonction sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage de la phase 0 : les trois consommateurs sont cohérents.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*

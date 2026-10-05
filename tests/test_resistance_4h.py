@@ -83,10 +83,10 @@ class TestRecalibrateTps(unittest.TestCase):
         recalibrate_tps(history, CFG, lambda coin, n: 200.0)
         self.assertAlmostEqual(history[0]["tp_price"], 106.0)  # plafond max_tp_pct, mécanique = +11.3 %
 
-    def test_resistance_under_floor_keeps_cap(self):
+    def test_resistance_under_floor_gives_floor(self):
         history = [_trade()]
         recalibrate_tps(history, CFG, lambda coin, n: 100.5)
-        self.assertAlmostEqual(history[0]["tp_price"], 106.0)
+        self.assertAlmostEqual(history[0]["tp_price"], 101.8)
 
     def test_kraken_unavailable_keeps_existing_tp(self):
         history = [_trade()]

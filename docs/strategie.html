@@ -240,8 +240,9 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     tp_plafond   = entry_price × (1 + <span class="cfg">max_tp_pct</span>)<br><br>
     tp_candidat = min(tp_mecanique, tp_plafond)<br>
     resistance = max(high des <span class="cfg">resistance_lookback_4h</span> dernières bougies 4h clôturées)<br>
+    <b>Si</b> resistance &gt; entry_price et resistance × 0.98 &lt; tp_plancher → tp_smart = tp_plancher <span class="cm">// résistance trop proche : la cible est le plancher (#519)</span><br>
     <b>Si</b> resistance &gt; entry_price et resistance × 0.98 ≥ tp_plancher → tp_smart = min(tp_candidat, resistance × 0.98)<br>
-    <b>Sinon</b> → tp_smart = tp_candidat <span class="cm">// résistance ignorée, plafond max_tp_pct conservé : jamais de cible non plafonnée (#516)</span><br><br>
+    <b>Sinon</b> (résistance absente ou ≤ entry_price) → tp_smart = tp_candidat <span class="cm">// plafond max_tp_pct conservé : jamais de cible non plafonnée (#516)</span><br><br>
     Mise à jour si |tp_smart − tp_actuel| / tp_actuel &gt; 0.005
   </div>
   <div class="ex">
@@ -254,7 +255,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     plancher 102,05 &lt; 106,27 → <b>cible 106,27</b>
   </div>
   <p>Le stop d'origine est le champ <code>initial_stop_price</code>, posé à l'entrée. Pour les trades antérieurs il est reconstruit : <code>stop_origine = entry × (1 − (risk_usdc / (entry × quantité) − fee_round_trip_pct))</code>, la formule inverse du dimensionnement (cf. section Septembre).</p>
-  <p class="note">Trois plafonds se disputent la cible : le <b>ratio mécanique</b>, la <b>résistance 4h</b> et le <b>plafond absolu</b>. Le plancher arbitre la résistance : une résistance qui ne laisserait même pas deux fois les frais n'est pas une cible, c'est une perte programmée — elle est ignorée, mais le plafond absolu reste appliqué. La même règle (<code>compute_tp_target</code>) sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage.</p>
+  <p class="note">Trois plafonds se disputent la cible : le <b>ratio mécanique</b>, la <b>résistance 4h</b> et le <b>plafond absolu</b>. Le plancher arbitre la résistance : une résistance qui ne laisserait même pas deux fois les frais n'est pas une cible de plus haut : la cible devient le plancher lui-même (#519), sans repartir vers le plafond absolu. La même règle (<code>compute_tp_target</code>) sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage.</p>
 
   <h3>La prise de profit</h3>
   <div class="f">
@@ -518,7 +519,8 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     <span class="cm">// plafond absolu et résistance 4h Kraken, même règle qu'en phase 0 (#516)</span><br>
     prix_tp = min(prix_tp, prix_entry × (1 + <span class="cfg">max_tp_pct</span>))<br>
     <b>si</b> resistance &gt; prix_entry et resistance × 0.98 ≥ prix_entry × (1 + 2 × <span class="cfg">fee_round_trip_pct</span>) → prix_tp = min(prix_tp, resistance × 0.98)<br>
-    <b>sinon</b> la résistance est ignorée, le plafond absolu reste<br><br>
+    <b>si</b> resistance &gt; prix_entry et resistance × 0.98 &lt; prix_entry × (1 + 2 × <span class="cfg">fee_round_trip_pct</span>) → prix_tp = prix_entry × (1 + 2 × <span class="cfg">fee_round_trip_pct</span>) <span class="cm">// plancher (#519)</span><br>
+    <b>sinon</b> (résistance absente ou ≤ prix_entry) le plafond absolu reste<br><br>
     <b>quantite = risk_usdc ÷ (prix_entry × (stop_distance_pct + <span class="cfg">fee_round_trip_pct</span>))</b><br>
     montant = quantite × prix_entry
   </div>
@@ -658,7 +660,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
       <tr><td class="k">atr_stop_multiplier</td><td class="v">2.5</td><td>phase 4</td><td>Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible.</td></tr>
       <tr><td class="k">reward_risk_ratio</td><td class="v">1.5</td><td>phases 0 et 4</td><td>Gain net visé rapporté à la perte nette. Porte sur du net depuis août.</td></tr>
       <tr><td class="k">fee_round_trip_pct</td><td class="v">0.009</td><td>phases 0, 4, 5</td><td>Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit.</td></tr>
-      <tr><td class="k">max_tp_pct</td><td class="v">0.06</td><td>phases 0, 4, 5</td><td>Plafond absolu de la cible, toujours appliqué (même quand la résistance est ignorée). La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026).</td></tr>
+      <tr><td class="k">max_tp_pct</td><td class="v">0.06</td><td>phases 0, 4, 5</td><td>Plafond absolu de la cible, appliqué sauf quand une résistance 4h trop proche ramène la cible au plancher (#519). La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026).</td></tr>
       <tr><td class="k">resistance_lookback_4h</td><td class="v">30</td><td>phases 0, 4, 5</td><td>Nombre de bougies 4h Kraken clôturées dont le plus haut sert de résistance de plafonnement de la cible (section 05/10).</td></tr>
       <tr><td class="k">max_stop_distance_pct</td><td class="v">0.12</td><td>phase 4</td><td>Écarte en TYPE_B tout candidat dont <code>stop_distance_pct</code> dépasse ce seuil — protège contre la queue volatile (ATR 4h &gt; 4,8 %) sans bloquer le flux normal.</td></tr>
       <tr><td class="k">usdc_allocation_pct</td><td class="v">0.70</td><td>phase 0</td><td>Part du solde USDC mobilisable.</td></tr>
@@ -1082,6 +1084,34 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 
   <h3>Ce qui a été décidé le 05/10</h3>
   <p><b>Choix utilisateur malgré un rejeu non concluant.</b> <span class="cfg-inline">partial_tp_enabled</span> = true, <span class="cfg-inline">partial_tp_trigger_pct</span> = 0,03, <span class="cfg-inline">partial_tp_fraction</span> = 0,33 — la combinaison la moins mauvaise en moyenne sur les trois séries (−0,27 sur 77 trades en 4 h, +0,36 sur 28 trades en résolution mixte). Elle réduit le nombre de partiels (13 et 5) donc les frais ajoutés. <b>À remesurer après 30 trades ou plus sous ce réglage</b> (relancer <code>scripts/partial_tp_replay.py</code> et comparer le PnL réel des enregistrements <code>partial_tp</code>) ; l'interrupteur <span class="cfg-inline">partial_tp_enabled</span> permet de revenir au break-even seul sans toucher au code.</p>
+</section>
+
+<section>
+  <h2><span class="ph">05/10</span>Cible au plancher quand la résistance est trop proche</h2>
+  <p class="lede">Depuis #516, la résistance 4h était ignorée quand <code>résistance × 0.98</code> tombait sous le plancher (+1,8 %) : c'était le cas pour 86 % des achats, et la cible retombait alors sur le plafond +6 %. Décision de l'utilisateur (#519) : dans ce cas la cible = le plancher <code>entry × (1 + 2 × fee_round_trip_pct)</code>. Une résistance qui mord entre le plancher et le plafond (× 0,98), ou une résistance absente ou sous l'entrée, ne changent pas.</p>
+
+  <h3>La méthode du rejeu</h3>
+  <p>Script <code>scripts/target_floor_replay.py</code> (à relancer pour remesurer). Mêmes données et conventions que <code>scripts/breakeven_replay.py</code> et <code>scripts/partial_tp_replay.py</code> : bougies 4h Kraken publiques entre l'entrée et la sortie réelle, stop initial prioritaire dans une même bougie, entrée maker 0,30 %, sortie sur cible maker 0,30 % (maker exit), sortie sur stop ou break-even taker 0,60 %. Le break-even (1,5 %, entry + frais) et le partiel (33 % à +3 %) sont actifs. Ce qui ne se déclenche pas avant la sortie réelle garde le PnL réel (colonne « reste »). Les deux règles sont rejouées sur les mêmes trades.</p>
+  <p class="note"><b>Limite</b> : la résolution est de 4h partout, y compris depuis le 22/08 (les rejeux précédents utilisaient la résolution mixte sur cette série). À cette résolution, une bougie qui touche à la fois le stop et la cible compte comme un stop.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>série</th><th>règle</th><th>PnL net (USDC)</th><th>cibles atteintes</th><th>stops</th><th>break-even</th><th>partiels</th><th>trades gagnants</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="2">depuis le 03/07 · 77 trades · cible modifiée sur 64</td><td>actuelle (#516)</td><td class="v">−67,75</td><td class="v">6</td><td class="v">5</td><td class="v">20</td><td class="v">12</td><td class="v">21</td></tr>
+      <tr><td><b>plancher (#519)</b></td><td class="v"><b>−70,98</b></td><td class="v"><b>22</b></td><td class="v"><b>5</b></td><td class="v"><b>10</b></td><td class="v"><b>2</b></td><td class="v"><b>28</b></td></tr>
+      <tr><td rowspan="2">depuis le 22/08 · 28 trades · cible modifiée sur 19</td><td>actuelle (#516)</td><td class="v">−61,73</td><td class="v">1</td><td class="v">2</td><td class="v">9</td><td class="v">2</td><td class="v">6</td></tr>
+      <tr><td><b>plancher (#519)</b></td><td class="v"><b>−57,09</b></td><td class="v"><b>5</b></td><td class="v"><b>2</b></td><td class="v"><b>6</b></td><td class="v"><b>1</b></td><td class="v"><b>8</b></td></tr>
+    </tbody>
+  </table></div>
+
+  <p>Écart plancher − actuelle : <b>−3,22 USDC</b> depuis le 03/07 (11 trades meilleurs, 9 pires) et <b>+4,64 USDC</b> depuis le 22/08 (4 meilleurs, 0 pire). Le signe change selon la série et les deux écarts sont faibles devant le PnL (environ −70 USDC) : <b>pas de dégradation nette ni cohérente, pas d'amélioration robuste non plus.</b> L'implémentation est donc un choix de l'utilisateur, pas une conclusion des mesures.</p>
+  <p>Ce qui change nettement : les cibles atteintes passent de 6 à 22 (77 trades) et de 1 à 5 (28 trades), les sorties au break-even de 20 à 10, les stops restent identiques (5 et 2). Le gain en nombre de cibles atteintes est payé en hauteur : +1,8 % au lieu de +6 %.</p>
+
+  <h3>L'interaction avec le partiel et le break-even</h3>
+  <p>Avec une cible à +1,8 %, le <b>partiel</b> (#514, <span class="cfg-inline">partial_tp_trigger_pct</span> = 0,03) ne se déclenche plus pour ces trades : la cible est atteinte avant. Le rejeu le montre : 12 partiels deviennent 2 depuis le 03/07, 2 deviennent 1 depuis le 22/08. Le <b>break-even</b> (#513, 1,5 %) reste actif, mais seulement dans la fenêtre de 0,3 point entre +1,5 % et +1,8 % : il passe de 20 à 10 sorties.</p>
+
+  <h3>Ce qui a été décidé le 05/10</h3>
+  <p><code>compute_tp_target</code> renvoie le plancher quand la résistance (&gt; entry) × 0,98 est sous le plancher. Aucune clé de configuration ajoutée. La même fonction sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage de la phase 0 : les trois consommateurs sont cohérents.</p>
 </section>
 
 <footer>Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py</footer>
