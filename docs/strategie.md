@@ -815,11 +815,27 @@ Le plus haut des 30 bougies est presque toujours *proche* du prix d'entrée (mé
 
 Pour comparaison, l'ancienne règle (R2 hebdo, repli sur le mécanique non plafonné) donnait une médiane de +6,00 % mais une moyenne de +5,85 % et **15 cibles sur 80 au-dessus du plafond** (maximum +17,11 %) ; la même résistance hebdo avec la nouvelle règle donnerait une moyenne de +4,95 %. Le R2 hebdo mord trois fois plus souvent (31 %) mais à une distance médiane (+5,55 %) proche du plafond ; le plus haut 4h mord peu. La cible mécanique non plafonnée vaut +11,35 % en médiane et dépasse +6 % pour 76 trades sur 80, ce qui confirme que le plafond est le vrai régulateur.
 
-> **Limites** : la mesure reconstruit les cibles à l'entrée à partir des stops d'origine et de la configuration actuelle (frais 0,9 %, ratio 1,5, plafond 6 %), pas celles réellement posées ; le R2 recalculé diffère légèrement de TradingView ; elle ne mesure pas si les cibles sont atteintes. Le choix de N = 30 vient de l'utilisateur, pas d'un réglage optimisé.
+> **Limites** : la mesure reconstruit les cibles à l'entrée à partir des stops d'origine et de la configuration actuelle (frais 0,9 %, ratio 1,5, plafond 6 %), pas celles réellement posées ; le R2 recalculé diffère légèrement de TradingView ; elle ne mesure pas si les cibles sont atteintes. Le choix de N = 30 vient de l'utilisateur ; la grille 30-180 ci-dessous ne le remet pas en cause.
+
+### Quelle valeur de N ? Grille 30 / 60 / 90 / 180
+
+Même méthode, mêmes 80 achats, cible calculée avec `compute_tp_target` et le stop d'origine. Kraken ne renvoie que ~120 jours de bougies 4h : 7 trades de début juillet n'ont pas 180 bougies avant eux, ils sont **exclus de la cellule N = 180**. La comparaison équitable est donc faite sur le **sous-ensemble commun de 73 trades**. « Mord » : `résistance × 0.98` entre le plancher (+1,8 %) et le plafond (+6 %) ; « ignorée » : sous le plancher. « Atteinte » : sur les bougies 4h entre l'entrée et la sortie réelle, la cible est touchée avant le stop d'origine (le stop prime si les deux sont dans la même bougie).
+
+| N | trades | au-dessus de l'entrée | distance médiane | mord | ignorée | cible médiane | cible moyenne | cible atteinte | stop avant | ni l'un ni l'autre |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **30** | 80 | 77 | +1,56 % | 7 | 69 | +6,00 % | +5,58 % | 14 | 10 | 56 |
+| 60 | 80 | 77 | +2,26 % | 12 | 61 | +6,00 % | +5,43 % | 14 | 10 | 56 |
+| 90 | 80 | 78 | +2,47 % | 14 | 56 | +6,00 % | +5,42 % | 17 | 10 | 53 |
+| **30** (commun) | 73 | 71 | +1,57 % | 7 | 62 | +6,00 % | +5,70 % | 13 | 7 | 53 |
+| 60 (commun) | 73 | 71 | +2,31 % | 12 | 54 | +6,00 % | +5,52 % | 13 | 7 | 53 |
+| 90 (commun) | 73 | 72 | +2,47 % | 13 | 51 | +6,00 % | +5,57 % | 15 | 7 | 51 |
+| 180 (commun) | 73 | 72 | +3,00 % | 13 | 46 | +6,00 % | +5,50 % | 14 | 7 | 52 |
+
+**Aucun N ne rapproche significativement la cible.** La médiane reste à +6,00 % partout (le plafond), la moyenne ne bouge que de 0,1 à 0,2 point et le nombre de cibles atteintes passe de 14 à 17 au mieux (N = 90), soit 3 trades sur 80 — dans le bruit. Allonger N éloigne la résistance (distance médiane de +1,56 % à +3,00 %) et la fait mordre plus souvent (7 → 13-14 trades), mais elle reste ignorée pour 46 à 62 trades sur 73-80 : dans les trois quarts des cas elle est encore sous le plancher. La durée de détention médiane réelle est de 19 h (17 h sur le sous-ensemble) : 53 à 56 trades sur 80 ne touchent ni la cible ni le stop avant leur sortie réelle, donc cette mesure d'atteinte ne permet pas de conclure plus finement. **N reste à 30.**
 
 ### Ce qui a été décidé le 05/10
 
-`resistance_lookback_4h` = 30. Résistance = plus haut des 30 dernières bougies 4h Kraken clôturées ; si `résistance × 0.98` est sous le plancher, elle est ignorée mais le plafond `max_tp_pct` est gardé. La même règle s'applique à la cible d'entrée (phases 4 et 5, suivi maker) et au recalibrage de la phase 0, qui n'appelle plus TradingView. Les résistances TradingView de la phase 2 restent stockées à titre informatif : elles ne plafonnent plus aucune cible.
+`resistance_lookback_4h` = 30 (conservé après la grille ci-dessus : aucune valeur ne rapproche significativement la cible). Résistance = plus haut des 30 dernières bougies 4h Kraken clôturées ; si `résistance × 0.98` est sous le plancher, elle est ignorée mais le plafond `max_tp_pct` est gardé. La même règle s'applique à la cible d'entrée (phases 4 et 5, suivi maker) et au recalibrage de la phase 0, qui n'appelle plus TradingView. Les résistances TradingView de la phase 2 restent stockées à titre informatif : elles ne plafonnent plus aucune cible.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*
