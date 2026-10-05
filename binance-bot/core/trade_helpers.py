@@ -137,6 +137,26 @@ def kraken_coin_balance(balance: dict, coin: str) -> float:
     raise KeyError(coin)
 
 
+def initial_stop_price(trade: dict, fee_round_trip_pct: float = 0.009) -> float:
+    """Stop d'origine d'un trade (#513) : indispensable une fois le stop courant remonté au
+    break-even ou suivi, sinon la distance de stop (trailing, recalibrage TP) tombe à zéro.
+
+    Priorité : champ initial_stop_price (posé à l'entrée) ; sinon reconstruction depuis
+    risk_usdc (risk = entry x qty x (stop_distance + frais), cf. phase4_sizing) ; sinon stop courant.
+    """
+    stored = trade.get("initial_stop_price")
+    if stored:
+        return float(stored)
+    entry = float(trade.get("entry_price") or 0)
+    qty = float(trade.get("quantity") or 0)
+    risk = trade.get("risk_usdc")
+    if risk and entry > 0 and qty > 0:
+        sd = float(risk) / (entry * qty) - fee_round_trip_pct
+        if 0 < sd < 0.5:
+            return entry * (1 - sd)
+    return float(trade["stop_price"])
+
+
 def compute_net_pnl(entry_price: float, exit_price: float, qty: float, entry_fee_usdc: float, exit_fee_usdc: float) -> dict:
     """PnL net = PnL brut (diff de prix) moins les frais Kraken entrée+sortie (#382).
 

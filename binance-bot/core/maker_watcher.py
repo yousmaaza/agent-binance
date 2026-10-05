@@ -200,6 +200,7 @@ def _register_open_position(pending: dict, entry_txid: str, actual_qty: float, a
         "signal_score": pending.get("score", 0),
         "entry_price": actual_entry,
         "stop_price": actual_stop_rounded,
+        "initial_stop_price": actual_stop_rounded,
         "tp_price": actual_tp,
         "quantity": actual_qty,
         "risk_usdc": pending.get("risk_usdc"),

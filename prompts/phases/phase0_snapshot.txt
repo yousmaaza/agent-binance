@@ -79,7 +79,13 @@ Le script affiche sur stdout : PHASE0_OCO_DONE|retried=N
 #   Si l'appel échoue → garder le TP existant (continue silencieux)
 #
 # ÉTAPE 3 — Calculer tp_smart pour chaque coin :
-#   stop_distance_pct = (entry_price - stop_price) / entry_price
+#   Distance de stop d'ORIGINE (#513) — jamais le stop courant, qui peut avoir été remonté au
+#   break-even ou suivi (sinon stop_distance_pct tombe à ~0 et la cible est ramenée vers entry × 1,009) :
+#     si trade["initial_stop_price"] existe : stop_origine = trade["initial_stop_price"]
+#     sinon (trades antérieurs) : sd_origine = risk_usdc / (entry_price × quantity) − fee_round_trip_pct
+#                                 stop_origine = entry_price × (1 − sd_origine)
+#     (si risk_usdc absent : stop_origine = stop_price)
+#   stop_distance_pct = (entry_price - stop_origine) / entry_price
 #   tp_mecanique = entry_price × (1 + (stop_distance_pct + fee_round_trip_pct) × reward_risk_ratio + fee_round_trip_pct)
 #   tp_plancher = entry_price × (1 + 2 × fee_round_trip_pct)   # entrée majorée des frais aller-retour
 #                                                                # + marge minimale de gain net (#411)
