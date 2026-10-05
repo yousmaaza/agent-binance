@@ -11,7 +11,10 @@ from core.env import PROJECT_DIR
 from core.lock import acquire_lock, is_locked, release_lock
 from core.maker_exit_watcher import (
     _place_stop_loss,
+    _round_qty,
     attempt_maker_exit,
+    attempt_partial_maker_exit,
+    restore_total_stop,
     load_maker_exit_pending_orders,
     save_maker_exit_pending_orders,
 )
@@ -111,6 +114,93 @@ def _apply_breakeven(pos: dict, current_price: float, cfg: dict) -> bool:
         release_lock()
 
 
+def _apply_partial_tp(pos: dict, current_price: float, cfg: dict) -> tuple[bool, dict | None]:
+    """Profit partiel (#514) : vend partial_tp_fraction de la position dès entry x (1 +
+    partial_tp_trigger_pct), le reste continue. Retourne (history_changed, pending_maker_exit).
+
+    Ordre imposé par le hold_trade de Kraken (le solde est immobilisé sous le stop) :
+    1. annuler le stop ; 2. reposer aussitôt un stop sur le reliquat (niveau break-even si
+    breakeven_enabled, sinon stop courant) ; 3. vente LIMIT post-only de la fraction (mécanisme
+    maker_exit_watcher). La seule fenêtre sans stop est entre 1 et 2 (un appel `pairs` + une pose).
+    Échec de la pose limite -> stop reposé sur la quantité totale ; échec d'un stop -> repli de
+    _apply_breakeven (ancien stop, sinon protection_failed). Un seul essai par position :
+    partial_tp_done est posé dès que le stop a été touché, jamais de cancel/replace en boucle."""
+    if not cfg.get("partial_tp_enabled", True) or not cfg.get("maker_exit_enabled", True) \
+            or pos.get("partial_tp_done"):
+        return False, None
+    old_txid = pos.get("sl_order_txid")
+    entry = float(pos.get("entry_price", 0) or 0)
+    if not old_txid or pos.get("protection_failed") or entry <= 0:
+        return False, None
+    if current_price < entry * (1 + cfg.get("partial_tp_trigger_pct", 0.03)):
+        return False, None
+    if is_locked():
+        return False, None
+
+    coin = pos["coin"]
+    pair = f"{coin}USDC"
+    qty = float(pos["quantity"])
+    fraction = cfg.get("partial_tp_fraction", 0.33)
+    min_order = cfg.get("min_order_usdc", 9)
+    try:
+        pair_data = json.loads(_cli("pairs", "--pair", pair, "-o", "json")).get(pair, {})
+    except Exception as e:
+        logger.warning(f"[TP Watcher] Partiel {coin} : paire indisponible, réessai au prochain tick : {e}")
+        return False, None
+    lot_dec = int(pair_data.get("lot_decimals", 8))
+    ordermin = float(pair_data.get("ordermin", 0) or 0)
+    fraction_qty = _round_qty(qty * fraction, 10 ** (-lot_dec), lot_dec)
+    reliquat_qty = round(qty - fraction_qty, lot_dec)
+    if min(fraction_qty, reliquat_qty) < ordermin or min(fraction_qty, reliquat_qty) * current_price < min_order \
+            or fraction_qty <= 0:
+        pos["partial_tp_done"] = True
+        pos["partial_tp_skipped"] = "below_min"
+        logger.info(f"[TP Watcher] {coin} partiel sauté : {fraction_qty}/{reliquat_qty} sous le minimum")
+        return True, None
+
+    fee = cfg.get("fee_round_trip_pct", 0.009)
+    level = entry * (1 + (fee if cfg.get("breakeven_include_fees", True) else 0.0))
+    old_stop = float(pos.get("stop_price") or 0)
+    new_stop = max(old_stop, level) if cfg.get("breakeven_enabled", True) else old_stop
+    if new_stop >= current_price:
+        return False, None
+
+    acquire_lock()
+    try:
+        try:
+            _cli("order", "cancel", old_txid, "-o", "json", "--yes")
+        except Exception as e:
+            logger.warning(f"[TP Watcher] Partiel {coin} : annulation SL {old_txid} impossible, abandon : {e}")
+            return False, None
+
+        pos.setdefault("initial_stop_price", initial_stop_price(pos, fee))
+        pos["partial_tp_done"] = True
+        new_txid, failed, err_msg, new_stop_rounded = _place_sl_safe(pair, reliquat_qty, new_stop)
+        if failed:
+            logger.error(f"[TP Watcher] Partiel {coin} : stop sur le reliquat échoué{err_msg}, repose de l'ancien")
+            pos["partial_tp_skipped"] = "stop_failed"
+            restored_txid, restore_failed, _, _ = _place_sl_safe(pair, qty, old_stop)
+            if not restore_failed:
+                pos["sl_order_txid"] = restored_txid
+                send_telegram(f"⚠️ {coin} : profit partiel annulé, ancien stop reposé")
+            else:
+                pos["sl_order_txid"] = None
+                pos["protection_failed"] = True
+                send_telegram(f"🚨 {coin} : position NON protégée — profit partiel échoué et ancien stop non reposé !{err_msg}")
+            return True, None
+
+        pos.update({"stop_price": new_stop_rounded, "sl_order_txid": new_txid})
+        if cfg.get("breakeven_enabled", True):
+            pos["breakeven_applied"] = True
+        pending = attempt_partial_maker_exit(pos, fraction_qty, reliquat_qty, cfg)
+        if pending is None:
+            pos["partial_tp_skipped"] = "limit_failed"
+            restore_total_stop(pos, reliquat_qty)
+        return True, pending
+    finally:
+        release_lock()
+
+
 def tp_watcher_loop():
     time.sleep(30)  # laisser le bot démarrer
     while True:
@@ -171,6 +261,18 @@ def _tp_watcher_tick():
                 logger.error(f"[TP Watcher] Erreur break-even {coin} : {e}")
                 tick_status = "error"
                 tick_last_error = f"Erreur break-even {coin} : {e}"
+            try:
+                partial_changed, partial_pending = _apply_partial_tp(pos, current_price, cfg)
+                if partial_pending:
+                    exit_pending.append(partial_pending)
+                    save_maker_exit_pending_orders(exit_pending)
+                if partial_changed:
+                    changed = True
+                    save_trade_history(history)
+            except Exception as e:
+                logger.error(f"[TP Watcher] Erreur partiel {coin} : {e}")
+                tick_status = "error"
+                tick_last_error = f"Erreur partiel {coin} : {e}"
             continue
 
         # Re-vérifier le lock avant d'acquérir — un cycle 4h peut démarrer entre deux positions
