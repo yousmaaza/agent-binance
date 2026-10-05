@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#520](pr-520-cible-plancher-resistance-proche.md) | [STRAT] Cible au plancher quand la résistance 4h est trop proche | 2026-10-05 |
 | [#517](pr-517-resistance-cible-bougies-4h.md) | [STRAT] Résistance de la cible = plus haut des bougies 4h Kraken | 2026-10-05 |
 | [#518](pr-518-partial-tp-33pct.md) | [STRAT] Profit partiel à +3 % (33 %) et laisser courir le reste | 2026-10-05 |
 | [#515](pr-515-breakeven-stop-entree.md) | [STRAT] Remonter le stop au prix d'entrée dès que le trade est en gain | 2026-10-05 |
