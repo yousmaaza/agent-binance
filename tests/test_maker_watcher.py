@@ -204,12 +204,12 @@ class TestMaxTpPctDoesNotAffectLowTarget(unittest.TestCase):
         self.assertAlmostEqual(history[0]["tp_price"], 2076.0, places=6)
 
 
-class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
+class TestMaxTpPctBelowFloorStillCapsTarget(unittest.TestCase):
     """Plafond absolu (#428) vs plancher de viabilité (#411) : si max_tp_pct configuré ramène la
-    cible sous le plancher (entrée + 2× frais), le plancher prime — la cible mécanique est
-    conservée plutôt qu'une cible perdante."""
+    cible sous le plancher (entrée + 2× frais), le plafond est quand même conservé (#516) : plus de
+    repli sur la cible mécanique non plafonnée."""
 
-    def test_max_tp_pct_below_floor_falls_back_to_mecanique(self):
+    def test_max_tp_pct_below_floor_still_caps(self):
         pending = _pending(stop_distance_pct=0.03, reward_risk_ratio=1.5, fee_round_trip_pct=0.009,
                             max_tp_pct=0.01)  # plafond +1% < plancher +1.8%
         fake_cli = _FakeCli(**{
@@ -220,9 +220,24 @@ class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
 
         history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
 
-        # actual_entry = 2000 -> tp_mecanique = 2135.0 ; tp_plafond = 2020 < tp_plancher = 2036 ->
-        # conflit, le plancher prime, mécanique conservée
-        self.assertAlmostEqual(history[0]["tp_price"], 2135.0, places=6)
+        # actual_entry = 2000 -> tp_plafond = 2020 (< tp_plancher 2036, < tp_mecanique 2135) conservé
+        self.assertAlmostEqual(history[0]["tp_price"], 2020.0, places=6)
+
+
+class TestPendingResistanceCapsTarget(unittest.TestCase):
+    """#516 : la résistance 4h figée sur l'ordre pending plafonne la cible comme au recalibrage."""
+
+    def test_resistance_caps_tp_at_fill(self):
+        pending = _pending(stop_distance_pct=0.03, reward_risk_ratio=1.5, fee_round_trip_pct=0.009,
+                            max_tp_pct=0.06)
+        pending["resistance_4h"] = 2100.0  # x 0.98 = 2058 : entre le plancher (2036) et le plafond (2120)
+        fake_cli = _FakeCli(**{
+            "query-orders_TX1": {"status": "closed", "cost": "200.0", "vol_exec": "0.1", "fee": "0.3"},
+            "pairs_ETHUSDC": {"lot_decimals": 8, "tick_size": "0.01"},
+            "order_sell_ETHUSDC_stop-loss": {"txid": ["SLTX1"]},
+        })
+        history, _saved_pending, _mock_save_history, _mock_tg = _run_tick([pending], fake_cli)
+        self.assertAlmostEqual(history[0]["tp_price"], 2058.0, places=6)
 
 
 class TestConcessionExceededAbandonsWithoutMarketBuy(unittest.TestCase):

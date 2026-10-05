@@ -37,6 +37,7 @@ from core.state_manager import load_trade_history, save_trade_history
 from core.telegram import send_telegram
 from core.trade_helpers import (
     binance as _cli,
+    compute_tp_target,
     _load_config,
     load_maker_pending_orders,
     maker_or_taker_from_ordertype,
@@ -168,15 +169,10 @@ def _register_open_position(pending: dict, entry_txid: str, actual_qty: float, a
     max_tp_pct = pending.get("max_tp_pct", 0.06)
     stop_distance_pct = pending["stop_distance_pct"]
     actual_stop = actual_entry * (1 - stop_distance_pct)
-    actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
-    # Plafond absolu (#428) : la cible ne dépasse jamais max_tp_pct, sauf si ça la ramène sous le
-    # plancher de viabilité (entrée majorée de 2× les frais aller-retour, #411) — dans ce cas le
-    # plafond est ignoré et la cible mécanique est conservée.
-    actual_tp_plancher = actual_entry * (1 + 2 * fee_round_trip_pct)
-    actual_tp_plafond = actual_entry * (1 + max_tp_pct)
-    actual_tp = min(actual_tp, actual_tp_plafond)
-    if actual_tp < actual_tp_plancher:
-        actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
+    # Même règle que phase4_sizing, phase5_execution et le recalibrage Phase 0 (#516) ; résistance
+    # figée à la pose de l'ordre (pending["resistance_4h"])
+    actual_tp = compute_tp_target(actual_entry, stop_distance_pct, reward_risk_ratio, fee_round_trip_pct,
+                                  max_tp_pct, pending.get("resistance_4h"))
 
     sl_txid, protection_failed, sl_err_msg, actual_stop_rounded = _place_stop_loss(pair, actual_qty, actual_stop)
     if protection_failed:

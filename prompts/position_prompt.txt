@@ -81,47 +81,19 @@ for coin in all_coins:
         current_prices[coin] = 0
 ```
 
-### 3. Recalibrage TP via résistances TradingView
+### 3. Recalibrage TP via la résistance des bougies 4h Kraken (#516)
+Même règle que la Phase 0 et que la cible d'entrée : résistance = plus haut des `resistance_lookback_4h`
+dernières bougies 4h Kraken clôturées, stop d'origine (#513), plafond `max_tp_pct` toujours conservé.
+Kraken indisponible pour un coin → TP existant conservé. Aucun appel MCP TradingView.
 ```python
-TV_MAP = {"XBT": "BTC", "XDG": "DOGE"}
-reward_risk_ratio = cfg.get("reward_risk_ratio", 2.0)
-changed = False
+sys.path.insert(0, f"{PROJECT_DIR}/binance-bot/core/phases")
+from phase0_calibrate_tp import recalibrate_tps
 
-for pos in positions:
-    coin = pos["coin"]
-    tv_symbol = TV_MAP.get(coin, coin)
-    entry_price = float(pos.get("entry_price", 0))
-    stop_price = float(pos.get("stop_price", 0))
-    tp_actuel = float(pos.get("tp_price", 0))
-
-    if entry_price <= 0 or stop_price <= 0 or tp_actuel <= 0:
-        continue
-
-    try:
-        analysis = mcp__tradingview__combined_analysis(symbol=f"{tv_symbol}USDT", exchange="BINANCE", timeframe="4h")
-        r2_4h = analysis.get("technical", {}).get("support_resistance", {}).get("resistance_2")
-    except:
-        continue
-
-    # Assumes long position (stop < entry); short positions would produce negative distance and invalid tp_mecanique
-    assert stop_price < entry_price, f"stop_price {stop_price} must be < entry_price {entry_price} for long position (coin {coin})"
-    stop_distance_pct = (entry_price - stop_price) / entry_price
-    tp_mecanique = entry_price * (1 + stop_distance_pct * reward_risk_ratio)
-
-    if r2_4h and float(r2_4h) > entry_price:
-        tp_smart = min(tp_mecanique, float(r2_4h) * 0.98)
-        source = f"R {float(r2_4h):.6f} × 0.98"
-    else:
-        tp_smart = tp_mecanique
-        source = "mécanique"
-
-    if abs(tp_smart - tp_actuel) / tp_actuel > 0.005:
-        pos["tp_price"] = tp_smart
-        changed = True
-        tg(f"📐 TP {coin} recalibré : {tp_actuel:.6f} → {tp_smart:.6f} ({source})")
-
-if changed:
+changes = recalibrate_tps(positions, cfg)  # modifie pos["tp_price"] en place
+if changes:
     _save_trade_history_atomic(trade_history)
+    for coin, old_tp, new_tp in changes:
+        tg(f"📐 TP {coin} recalibré : {old_tp:.6f} → {new_tp:.6f}")
 ```
 
 ### 4. Évalue chaque position (bot et manuelles)

@@ -291,18 +291,17 @@ class TestMaxTpPctDoesNotAffectLowTarget(unittest.TestCase):
         mock_save.assert_called_once()
 
 
-class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
+class TestMaxTpPctBelowFloorStillCapsTarget(unittest.TestCase):
     """Plafond absolu (#428) vs plancher de viabilité (#411) : si max_tp_pct configuré ramène la
-    cible sous le plancher (entrée + 2× frais), le plancher prime — la cible mécanique est
-    conservée plutôt qu'une cible perdante."""
+    cible sous le plancher (entrée + 2× frais), le plafond est quand même conservé (#516) : plus de
+    repli sur la cible mécanique non plafonnée."""
 
-    def test_max_tp_pct_below_floor_falls_back_to_mecanique(self):
+    def test_max_tp_pct_below_floor_still_caps(self):
         order = dict(BASE_ORDER, stop_distance_pct=0.03)
         config = {"price_deviation_max_pct": 0.02, "reward_risk_ratio": 1.5, "fee_round_trip_pct": 0.009,
                    "max_tp_pct": 0.01, "maker_entry_enabled": False}  # plafond +1% < plancher +1.8%
         kraken_scenario = {
-            # actual_entry = 2000 -> tp_mecanique = 2000*(1+(0.039)*1.5+0.009) = 2135.0
-            # tp_plafond = 2020 < tp_plancher = 2036 -> conflit, le plancher prime, mécanique conservée
+            # actual_entry = 2000 -> tp_plafond = 2020 (< plancher 2036, < mécanique 2135) conservé
             "ticker": {"ETHUSDC": {"c": ["2000.0", "0.01"]}},
             "balance": {"USDC": "500.0"},
             "order_buy_ETHUSDC": {"txid": ["BUYTX1"]},
@@ -316,7 +315,7 @@ class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
 
         self.assertEqual(output["executed"], 1)
         executed = output["orders_executed"][0]
-        self.assertAlmostEqual(executed["actual_tp"], 2135.0, places=6)
+        self.assertAlmostEqual(executed["actual_tp"], 2020.0, places=6)
         mock_save.assert_called_once()
 
 

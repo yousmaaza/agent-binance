@@ -225,7 +225,7 @@ class TestTrailingStopAfterBreakeven(unittest.TestCase):
 
 
 def _tp_smart_mecanique(entry, stop_for_distance, rr=1.5, fee=0.009):
-    """ÉTAPE 3 du bloc RECALIBRAGE TP de prompts/phases/phase0_snapshot.txt (tp_mecanique)."""
+    """tp_mecanique du recalibrage TP (phase0_calibrate_tp.py)."""
     sd = (entry - stop_for_distance) / entry
     return entry * (1 + (sd + fee) * rr + fee)
 
@@ -239,11 +239,11 @@ class TestRecalibrageTpAfterBreakeven(unittest.TestCase):
         self.assertAlmostEqual(correct, 1000.0 * (1 + (0.07 + 0.009) * 1.5 + 0.009))
         self.assertGreater(correct, 1100)
 
-    def test_prompt_uses_initial_stop(self):
-        with open(os.path.join(PROJECT_DIR, "prompts", "phases", "phase0_snapshot.txt")) as f:
+    def test_script_uses_initial_stop(self):
+        path = os.path.join(PROJECT_DIR, "binance-bot", "core", "phases", "phase0_calibrate_tp.py")
+        with open(path) as f:
             text = f.read()
-        self.assertIn("initial_stop_price", text)
-        self.assertIn("stop_distance_pct = (entry_price - stop_origine) / entry_price", text)
+        self.assertIn("initial_stop_price(trade, fee_round_trip_pct)", text)
 
 
 if __name__ == "__main__":

@@ -61,7 +61,7 @@ seuil d'arrêt = −(437,59 × 0,05) = −21,88 USDC // perte du jour : 0,00 →
 
 ### Le recalibrage de la cible
 
-À chaque cycle, la cible de chaque position ouverte est recalculée — le marché a bougé depuis l'achat, la résistance aussi.
+À chaque cycle, la cible de chaque position ouverte est recalculée — le marché a bougé depuis l'achat, la résistance aussi. La résistance est le **plus haut des `resistance_lookback_4h` dernières bougies 4h Kraken clôturées** (30 par défaut, environ cinq jours) ; la bougie en cours est exclue, son plus haut n'est pas figé. Aucun appel TradingView : si Kraken ne répond pas pour un coin, la cible existante est conservée.
 
 ```text
 stop_distance_pct = (entry_price − stop_origine) / entry_price // stop d'origine, jamais le stop courant (#513)
@@ -70,9 +70,9 @@ tp_plancher = entry_price × (1 + 2 × fee_round_trip_pct)
 tp_plafond = entry_price × (1 + max_tp_pct)
 
 tp_candidat = min(tp_mecanique, tp_plafond)
-Si r2_4h > entry_price → tp_candidat = min(tp_candidat, r2_4h × 0.98)
-Si tp_candidat ≥ tp_plancher → tp_smart = tp_candidat
-Sinon → tp_smart = tp_mecanique // un plafond sous le plancher donnerait une cible perdante
+resistance = max(high des resistance_lookback_4h dernières bougies 4h clôturées)
+Si resistance > entry_price et resistance × 0.98 ≥ tp_plancher → tp_smart = min(tp_candidat, resistance × 0.98)
+Sinon → tp_smart = tp_candidat // résistance ignorée, plafond max_tp_pct conservé : jamais de cible non plafonnée (#516)
 
 Mise à jour si |tp_smart − tp_actuel| / tp_actuel > 0.005
 ```
@@ -92,7 +92,7 @@ plancher 102,05 < 106,27 → cible 106,27
 
 Le stop d'origine est le champ `initial_stop_price`, posé à l'entrée. Pour les trades antérieurs il est reconstruit : `stop_origine = entry × (1 − (risk_usdc / (entry × quantité) − fee_round_trip_pct))`, la formule inverse du dimensionnement (cf. section Septembre).
 
-> Trois plafonds se disputent la cible : le **ratio mécanique**, la **résistance 4h** et le **plafond absolu**. Le plancher les arbitre : une cible qui ne couvrirait même pas deux fois les frais n'est pas une cible, c'est une perte programmée — dans ce cas tous les plafonds sont ignorés.
+> Trois plafonds se disputent la cible : le **ratio mécanique**, la **résistance 4h** et le **plafond absolu**. Le plancher arbitre la résistance : une résistance qui ne laisserait même pas deux fois les frais n'est pas une cible, c'est une perte programmée — elle est ignorée, mais le plafond absolu reste appliqué. La même règle (`compute_tp_target`) sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage.
 
 ### La prise de profit
 
@@ -175,7 +175,7 @@ il faut (périodes ÷ 2 + 1) bougies au-dessus de min_volume_usdc ÷ périodes
 
 ### Ce que l'analyse extrait
 
-Pour chaque crypto retenue, une analyse TradingView en 4h fournit le signal, le RSI, le MACD, l'ADX et les résistances. Le signal 4h est reclassé selon le RSI :
+Pour chaque crypto retenue, une analyse TradingView en 4h fournit le signal, le RSI, le MACD, l'ADX et les résistances (ces résistances sont informatives : elles ne plafonnent aucune cible, cf. recalibrage de la cible). Le signal 4h est reclassé selon le RSI :
 
 ```text
 signal BUY et RSI < 55 → STRONG_BUY
@@ -304,9 +304,10 @@ prix_entry = prix_actuel × (1 − limit_offset_pct)
 prix_stop = prix_entry × (1 − stop_distance_pct)
 prix_tp = prix_entry × (1 + (stop_distance_pct + fee_round_trip_pct) × reward_risk_ratio + fee_round_trip_pct)
 
-// plafond et plancher, comme en phase 0
+// plafond absolu et résistance 4h Kraken, même règle qu'en phase 0 (#516)
 prix_tp = min(prix_tp, prix_entry × (1 + max_tp_pct))
-si prix_tp < prix_entry × (1 + 2 × fee_round_trip_pct) → retour au TP mécanique
+si resistance > prix_entry et resistance × 0.98 ≥ prix_entry × (1 + 2 × fee_round_trip_pct) → prix_tp = min(prix_tp, resistance × 0.98)
+sinon la résistance est ignorée, le plafond absolu reste
 
 quantite = risk_usdc ÷ (prix_entry × (stop_distance_pct + fee_round_trip_pct))
 montant = quantite × prix_entry
@@ -440,7 +441,8 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | atr_stop_multiplier | 2.5 | phase 4 | Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible. |
 | reward_risk_ratio | 1.5 | phases 0 et 4 | Gain net visé rapporté à la perte nette. Porte sur du net depuis août. |
 | fee_round_trip_pct | 0.009 | phases 0, 4, 5 | Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit. |
-| max_tp_pct | 0.06 | phases 0 et 4 | Plafond absolu de la cible. La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026). |
+| max_tp_pct | 0.06 | phases 0, 4, 5 | Plafond absolu de la cible, toujours appliqué (même quand la résistance est ignorée). La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026). |
+| resistance_lookback_4h | 30 | phases 0, 4, 5 | Nombre de bougies 4h Kraken clôturées dont le plus haut sert de résistance de plafonnement de la cible (section 05/10). |
 | max_stop_distance_pct | 0.12 | phase 4 | Écarte en TYPE_B tout candidat dont `stop_distance_pct` dépasse ce seuil — protège contre la queue volatile (ATR 4h > 4,8 %) sans bloquer le flux normal. |
 | usdc_allocation_pct | 0.70 | phase 0 | Part du solde USDC mobilisable. |
 | max_single_position_pct | 0.65 | phase 4 | Plafond d'une position seule, en part du budget disponible. |
@@ -793,6 +795,31 @@ Le niveau **entry + frais** est le seul qui soit un vrai break-even net : avec u
 ### Ce qui a été décidé le 04/10
 
 `breakeven_enabled` = true, `breakeven_trigger_pct` = 0,015, `breakeven_include_fees` = true. Deux pièges corrigés dans le même ticket : le stop suiveur et le recalibrage de la cible utilisent désormais la distance du stop d'origine (`initial_stop_price`), faute de quoi un stop au-dessus du prix d'entrée figeait le suiveur et ramenait la cible à environ +0,9 %.
+
+## 05/10 — La résistance de la cible vient des bougies 4h
+
+Le recalibrage plafonnait la cible à `résistance_2 × 0.98` d'une analyse TradingView « 4h ». Ce R2 est en réalité un **pivot hebdomadaire** : sur ETH il valait 2905,9033, identique au chiffre près du 29/09 au 04/10, puis 2854,96 le lundi 05/10 à 00:05 UTC. La cible ne pouvait donc bouger qu'une fois par semaine. Pire, quand `R2 × 0.98` tombait sous le plancher, le code retombait sur la cible mécanique *sans* plafond : une résistance proche donnait une cible plus lointaine (AVAX, environ +15 %). Le ticket #516 remplace ce R2 par le plus haut des 30 dernières bougies 4h clôturées et ne retombe plus jamais sur une cible non plafonnée.
+
+### La méthode
+
+Script `scripts/resistance_replay.py` (à relancer pour remesurer). Le R2 hebdomadaire historique n'étant pas récupérable via TradingView, il est recalculé depuis les bougies 4h Kraken : semaine précédente (lundi 00:00 UTC à dimanche), P = (H + L + C) / 3, R2 = P + (H − L). Vérification de la formule sur ETH : semaine du 28/09 → **2886,51** contre 2905,90 chez TradingView (BINANCE:ETHUSDT, −0,7 %) ; semaine du 05/10 → **2855,65** contre 2854,96 (+0,02 %). L'écart tient à l'ordre Kraken USDC contre Binance USDT. Pour chaque achat depuis le 03/07 (80 trades, Kraken ne fournissant que 720 bougies 4h), on compare ce R2 au plus haut des 30 bougies 4h clôturées avant l'entrée. Le « plancher » est `entry × (1 + 2 × fee_round_trip_pct)`, soit +1,8 %.
+
+| résistance | au-dessus de l'entrée | distance médiane | mord (cible réduite) | sous le plancher (ignorée) |
+|---|---|---|---|---|
+| R2 hebdomadaire | 62 / 80 | +5,55 % | 25 / 80 (31 %) | 33 / 80 (41 %) |
+| **plus haut des 30 bougies 4h** | 77 / 80 | +1,56 % | 7 / 80 (9 %) | 69 / 80 (86 %) |
+
+### Ce que la mesure dit
+
+Le plus haut des 30 bougies est presque toujours *proche* du prix d'entrée (médiane +1,56 %) : le bot achète des cryptos déjà en hausse, donc près de leur plus haut récent. Dans 86 % des cas, `résistance × 0.98` tombe sous le plancher et la résistance est ignorée ; elle ne réduit la cible que 7 fois sur 80. Avec cette règle, la cible vaut donc presque toujours le plafond `max_tp_pct` (+6 %) : **médiane +6,00 %, moyenne +5,58 %**, aucune cible au-dessus du plafond.
+
+Pour comparaison, l'ancienne règle (R2 hebdo, repli sur le mécanique non plafonné) donnait une médiane de +6,00 % mais une moyenne de +5,85 % et **15 cibles sur 80 au-dessus du plafond** (maximum +17,11 %) ; la même résistance hebdo avec la nouvelle règle donnerait une moyenne de +4,95 %. Le R2 hebdo mord trois fois plus souvent (31 %) mais à une distance médiane (+5,55 %) proche du plafond ; le plus haut 4h mord peu. La cible mécanique non plafonnée vaut +11,35 % en médiane et dépasse +6 % pour 76 trades sur 80, ce qui confirme que le plafond est le vrai régulateur.
+
+> **Limites** : la mesure reconstruit les cibles à l'entrée à partir des stops d'origine et de la configuration actuelle (frais 0,9 %, ratio 1,5, plafond 6 %), pas celles réellement posées ; le R2 recalculé diffère légèrement de TradingView ; elle ne mesure pas si les cibles sont atteintes. Le choix de N = 30 vient de l'utilisateur, pas d'un réglage optimisé.
+
+### Ce qui a été décidé le 05/10
+
+`resistance_lookback_4h` = 30. Résistance = plus haut des 30 dernières bougies 4h Kraken clôturées ; si `résistance × 0.98` est sous le plancher, elle est ignorée mais le plafond `max_tp_pct` est gardé. La même règle s'applique à la cible d'entrée (phases 4 et 5, suivi maker) et au recalibrage de la phase 0, qui n'appelle plus TradingView. Les résistances TradingView de la phase 2 restent stockées à titre informatif : elles ne plafonnent plus aucune cible.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*

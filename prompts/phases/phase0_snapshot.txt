@@ -64,47 +64,15 @@ Le script affiche sur stdout : PHASE0_OCO_DONE|retried=N
 # --- FIN TRAILING STOP ---
 
 # --- RECALIBRAGE TP (Smart TP automatique) ---
-# ⚠️ ÉTAPE OBLIGATOIRE — NE PAS INTÉGRER DANS LE SCRIPT PYTHON PHASE 0
-# Les appels MCP ci-dessous sont des appels directs Claude tools, pas du Python.
-#
-# ÉTAPE 1 — Lire les positions ouvertes depuis trade_history.json (déjà chargé).
-#   TV_MAP = {"XBT": "BTC", "XDG": "DOGE"}
-#   reward_risk_ratio = cfg.get("reward_risk_ratio", 1.5)   # net de frais (#411)
-#   fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
-#   max_tp_pct = cfg.get("max_tp_pct", 0.06)   # plafond absolu, indépendant de la résistance (#428)
-#
-# ÉTAPE 2 — Pour chaque trade "open", appeler DIRECTEMENT le tool MCP (pas via subprocess ni Python) :
-#   mcp__tradingview__combined_analysis(symbol="{TV_MAP.get(coin, coin)}USDT", exchange="BINANCE", timeframe="4h")
-#   Extraire : r2_4h = result["technical"]["support_resistance"]["resistance_2"]
-#   Si l'appel échoue → garder le TP existant (continue silencieux)
-#
-# ÉTAPE 3 — Calculer tp_smart pour chaque coin :
-#   Distance de stop d'ORIGINE (#513) — jamais le stop courant, qui peut avoir été remonté au
-#   break-even ou suivi (sinon stop_distance_pct tombe à ~0 et la cible est ramenée vers entry × 1,009) :
-#     si trade["initial_stop_price"] existe : stop_origine = trade["initial_stop_price"]
-#     sinon (trades antérieurs) : sd_origine = risk_usdc / (entry_price × quantity) − fee_round_trip_pct
-#                                 stop_origine = entry_price × (1 − sd_origine)
-#     (si risk_usdc absent : stop_origine = stop_price)
-#   stop_distance_pct = (entry_price - stop_origine) / entry_price
-#   tp_mecanique = entry_price × (1 + (stop_distance_pct + fee_round_trip_pct) × reward_risk_ratio + fee_round_trip_pct)
-#   tp_plancher = entry_price × (1 + 2 × fee_round_trip_pct)   # entrée majorée des frais aller-retour
-#                                                                # + marge minimale de gain net (#411)
-#   tp_plafond_absolu = entry_price × (1 + max_tp_pct)   # plafond indépendant de la résistance (#428)
-#
-#   tp_candidat = min(tp_mecanique, tp_plafond_absolu)
-#   Si r2_4h existe et r2_4h > entry_price :
-#     tp_candidat = min(tp_candidat, r2_4h × 0.98)
-#   Si tp_candidat >= tp_plancher : tp_smart = tp_candidat
-#   Sinon : tp_smart = tp_mecanique   # tout plafond (résistance et/ou absolu) trop bas pour une
-#                                       cible viable -> pas de plafond perdant, on garde le mécanique
-#   Si |tp_smart - tp_actuel| / tp_actuel > 0.005 → ajouter à updates dict
-#
-# ÉTAPE 4 — Sauvegarder les TPs mis à jour via script Python :
-#   Lire __PROJECT_DIR__/prompts/phases/phase0_calibrate_tp.txt
-#   Remplacer __UPDATES__ par repr(updates) et __PROJECT_DIR__ par le chemin réel
-#   Exécuter le script résultant via bash python3
-#   Le script affiche : PHASE0_CALIBRATE_TP_DONE|updated=N
-#   Si updates vide : afficher PHASE0_CALIBRATE_TP_DONE|updated=0 sans exécuter le script
+# Résistance = plus haut des `resistance_lookback_4h` (défaut 30) dernières bougies 4h Kraken CLÔTURÉES
+# (plus aucun appel MCP TradingView ici, #516). Même règle que la cible d'entrée
+# (core.trade_helpers.compute_tp_target) : tp = min(tp_mecanique, entry × (1 + max_tp_pct)), puis
+# plafonné à résistance × 0.98 si résistance > entry ; si ce plafond tombe sous le plancher
+# entry × (1 + 2 × fee_round_trip_pct), la résistance est ignorée mais le plafond max_tp_pct est gardé.
+# Stop d'ORIGINE (initial_stop_price, #513) pour stop_distance_pct. Kraken indisponible pour un coin
+# → TP existant conservé. Exécute le script :
+#   python3 __PROJECT_DIR__/binance-bot/core/phases/phase0_calibrate_tp.py __CYCLE_ID__
+# Le script affiche sur stdout : PHASE0_CALIBRATE_TP_DONE|updated=N
 # --- FIN RECALIBRAGE TP ---
 
 # --- RÉALISATION DE PROFITS (Calibrage intégré Phase 0) ---
