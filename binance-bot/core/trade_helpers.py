@@ -157,6 +157,53 @@ def initial_stop_price(trade: dict, fee_round_trip_pct: float = 0.009) -> float:
     return float(trade["stop_price"])
 
 
+RESISTANCE_TP_FACTOR = 0.98
+CANDLE_4H_SECONDS = 4 * 3600
+
+
+def resistance_from_candles(candles: list, lookback: int, now_ts: float | None = None) -> float | None:
+    """Plus haut des `lookback` dernières bougies 4h CLÔTURÉES (#516). La bougie en cours (ouverte
+    il y a moins de 4h) est exclue : son plus haut n'est pas encore figé. Format Kraken ohlc :
+    [open_time, open, high, low, close, vwap, volume, count]. None si aucune bougie exploitable."""
+    now_ts = time.time() if now_ts is None else now_ts
+    closed = [c for c in candles if float(c[0]) + CANDLE_4H_SECONDS <= now_ts]
+    highs = [float(c[2]) for c in closed[-lookback:]]
+    return max(highs) if highs else None
+
+
+def fetch_resistance_4h(coin: str, lookback: int = 30) -> float | None:
+    """Résistance de plafonnement de la cible depuis les bougies 4h Kraken (#516). Retourne None si
+    Kraken est indisponible ou si la réponse est inexploitable : l'appelant garde alors le TP existant
+    (recalibrage) ou ne plafonne que par max_tp_pct (entrée) — jamais d'erreur bloquante."""
+    pair = f"{coin}USDC"
+    try:
+        raw = binance("ohlc", pair, "--interval", "240", "-o", "json", _retries=2)
+        return resistance_from_candles(json.loads(raw).get(pair, []), lookback)
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError, KeyError, IndexError, TypeError):
+        return None
+
+
+def compute_tp_target(entry_price: float, stop_distance_pct: float, reward_risk_ratio: float,
+                      fee_round_trip_pct: float, max_tp_pct: float,
+                      resistance: float | None = None) -> float:
+    """Cible de TP unique pour l'entrée (phase 4/5, maker_watcher) et le recalibrage Phase 0 (#516).
+
+    tp_mecanique = cible nette de frais (#411), toujours plafonnée à entry x (1 + max_tp_pct) (#428).
+    Si une résistance 4h > entry existe : tp = min(plafond, résistance x 0.98). Si cette cible tombe
+    sous le plancher de viabilité (entry x (1 + 2 x frais)), la résistance est ignorée mais le
+    plafond max_tp_pct est conservé — jamais de retour à une cible mécanique non plafonnée.
+    """
+    tp_mecanique = entry_price * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
+    tp_plafond = entry_price * (1 + max_tp_pct)
+    tp_plancher = entry_price * (1 + 2 * fee_round_trip_pct)
+    tp_capped = min(tp_mecanique, tp_plafond)
+    if resistance is not None and resistance > entry_price:
+        tp_resistance = min(tp_capped, resistance * RESISTANCE_TP_FACTOR)
+        if tp_resistance >= tp_plancher:
+            return tp_resistance
+    return tp_capped
+
+
 def compute_net_pnl(entry_price: float, exit_price: float, qty: float, entry_fee_usdc: float, exit_fee_usdc: float) -> dict:
     """PnL net = PnL brut (diff de prix) moins les frais Kraken entrée+sortie (#382).
 

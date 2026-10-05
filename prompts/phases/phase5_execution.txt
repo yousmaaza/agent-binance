@@ -9,7 +9,7 @@ Construis /tmp/cycle___CYCLE_ID___phase5_input.json avec les ordres préparés e
   "ordres_prepares": [
     {"coin": "BTC", "quantite": 0.001, "prix_entry": 60000.0, "prix_stop": 57600.0,
      "prix_tp": 64800.0, "montant_ordre": 60.0, "risk_usdc": 1.5,
-     "stop_distance_pct": 0.04, "score": 8}
+     "stop_distance_pct": 0.04, "resistance_4h": 61500.0, "score": 8}
   ],
   "config": null
 }

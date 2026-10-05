@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
 from core.trade_helpers import (  # noqa: E402
     tg, binance, _load_config, _save_trade_history_atomic, compute_net_pnl,
-    maker_or_taker_from_ordertype, load_maker_pending_orders, save_maker_pending_orders,
+    maker_or_taker_from_ordertype, load_maker_pending_orders, save_maker_pending_orders, compute_tp_target,
 )
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
@@ -130,6 +130,7 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
                     "reward_risk_ratio": reward_risk_ratio,
                     "fee_round_trip_pct": fee_round_trip_pct,
                     "max_tp_pct": max_tp_pct,
+                    "resistance_4h": order.get("resistance_4h"),
                     "score": score,
                     "scan_price": prix_entry,
                     "initial_limit_price": maker_limit_price,
@@ -183,16 +184,9 @@ for order in sorted(ordres_prepares, key=lambda o: o.get("score", 0), reverse=Tr
         prix_post_fill = float(json.loads(ticker_raw2).get(f"{coin}USDC", {}).get("c", [0])[0])
 
         actual_stop = actual_entry * (1 - stop_distance_pct)
-        # TP net de frais (#411) : le gain net vise reward_risk_ratio × la perte nette (stop + frais)
-        actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
-        # Plafond absolu (#428) : la cible ne dépasse jamais max_tp_pct, sauf si ça la ramène sous
-        # le plancher de viabilité (entrée majorée de 2× les frais aller-retour, #411) — dans ce
-        # cas le plafond est ignoré et la cible mécanique est conservée.
-        actual_tp_plancher = actual_entry * (1 + 2 * fee_round_trip_pct)
-        actual_tp_plafond = actual_entry * (1 + max_tp_pct)
-        actual_tp = min(actual_tp, actual_tp_plafond)
-        if actual_tp < actual_tp_plancher:
-            actual_tp = actual_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
+        # Même règle que phase4_sizing et le recalibrage Phase 0 (#516) ; résistance figée par la phase 4
+        actual_tp = compute_tp_target(actual_entry, stop_distance_pct, reward_risk_ratio, fee_round_trip_pct,
+                                      max_tp_pct, order.get("resistance_4h"))
 
         if prix_post_fill >= actual_tp:
             sell_raw = binance("order", "sell", f"{coin}USDC", str(actual_qty), "--type", "market", "-o", "json", "--yes")

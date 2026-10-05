@@ -22,7 +22,7 @@ import math
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, binance, _load_config  # noqa: E402
+from core.trade_helpers import tg, binance, _load_config, compute_tp_target, fetch_resistance_4h  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -54,6 +54,8 @@ fee_round_trip_pct = cfg.get("fee_round_trip_pct", 0.009)
 # 28/09/2026) : médiane +1.52%, très en-dessous des cibles mécaniques que produit un stop large
 # (atr_stop_multiplier élevé).
 max_tp_pct = cfg.get("max_tp_pct", 0.06)
+# resistance_lookback_4h : nombre de bougies 4h clôturées pour la résistance de plafonnement (#516)
+resistance_lookback_4h = cfg.get("resistance_lookback_4h", 30)
 limit_offset_pct = cfg.get("limit_offset_pct", 0.001)
 min_order_usdc = cfg.get("min_order_usdc", 9)
 max_single_position_pct = cfg.get("max_single_position_pct", 0.3)
@@ -82,16 +84,12 @@ for candidate in buy_candidates:
 
     prix_entry = prix_actuel * (1 - limit_offset_pct)
     prix_stop = prix_entry * (1 - stop_distance_pct)
-    # TP net de frais (#411) : le gain net vise reward_risk_ratio × la perte nette (stop + frais)
-    prix_tp = prix_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
-    # Plafond absolu (#428) : la cible ne dépasse jamais max_tp_pct, sauf si ça la ramène sous le
-    # plancher de viabilité (entrée majorée de 2× les frais aller-retour, #411) — dans ce cas le
-    # plafond est ignoré et la cible mécanique est conservée plutôt qu'une cible perdante.
-    tp_plancher = prix_entry * (1 + 2 * fee_round_trip_pct)
-    tp_plafond = prix_entry * (1 + max_tp_pct)
-    prix_tp = min(prix_tp, tp_plafond)
-    if prix_tp < tp_plancher:
-        prix_tp = prix_entry * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
+    # Même règle que le recalibrage Phase 0 (#516) : TP net de frais (#411) plafonné par max_tp_pct
+    # (#428) et par la résistance 4h Kraken (plus haut des bougies clôturées) ; Kraken indisponible
+    # -> plafond max_tp_pct seul.
+    resistance_4h = fetch_resistance_4h(coin, resistance_lookback_4h)
+    prix_tp = compute_tp_target(prix_entry, stop_distance_pct, reward_risk_ratio, fee_round_trip_pct,
+                                max_tp_pct, resistance_4h)
 
     if prix_stop <= 0:
         skipped.append({"coin": coin, "reason": "prix_stop négatif (volatilité extrême)"})
@@ -142,6 +140,7 @@ for candidate in buy_candidates:
         "montant_ordre": montant_ordre,
         "risk_usdc": risk_usdc,
         "stop_distance_pct": stop_distance_pct,
+        "resistance_4h": resistance_4h,
         "score": candidate.get("score", 0),
     })
 

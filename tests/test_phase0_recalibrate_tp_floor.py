@@ -1,41 +1,28 @@
-"""Test de spécification pour le plancher de viabilité et le plafond absolu du recalibrage TP
-(#411, #428).
+"""Tests de la règle de cible TP partagée (plancher de viabilité #411, plafond absolu #428,
+résistance 4h #516) — core.trade_helpers.compute_tp_target, utilisée à l'entrée (phase 4/5,
+maker_watcher) et par le recalibrage Phase 0.
 
-Le recalibrage automatique du TP (Phase 0) vit dans prompts/phases/phase0_snapshot.txt, bloc
-« RECALIBRAGE TP », exécuté par Claude comme raisonnement textuel — ce n'est PAS un script Python
-invocable, donc pas testable via unittest de la même façon que phase4_sizing.py/phase5_execution.py
-/maker_watcher.py (voir .claude/memory/contrat-prompts-scripts.md : « de la logique métier vit
-dans les prompts, hors de portée de tout test »).
+Règle : tp = min(tp_mecanique, entry x (1 + max_tp_pct)), puis min(., résistance x 0.98) si la
+résistance dépasse l'entrée ; si cette cible tombe sous le plancher entry x (1 + 2 x frais), la
+résistance est ignorée mais le plafond max_tp_pct est conservé (jamais de cible non plafonnée).
 
-Ce module reproduit fidèlement l'algorithme documenté à l'ÉTAPE 3 du bloc RECALIBRAGE TP et
-vérifie deux invariants : le TP recalibré ne descend jamais sous le prix d'entrée majoré des frais
-aller-retour et d'une marge minimale de gain (plancher, #411), même quand la résistance 4h ou le
-plafond absolu max_tp_pct le permettraient ; et il ne dépasse jamais max_tp_pct (plafond absolu,
-#428), en plus du plafonnement existant à la résistance 4h. Toute modification de la formule dans
-prompts/phases/phase0_snapshot.txt doit être répercutée ici pour que ce test conserve sa valeur de
-garde-fou.
-
-Les tests de la classe TestResistance* et TestNoResistance* isolent volontairement le plafond
-absolu (max_tp_pct=1.0, hors de portée dans tous les scénarios testés) pour continuer à vérifier
-le mécanisme de résistance seul, sans le confondre avec le nouveau plafond absolu — testé
-séparément par TestAbsoluteCap*.
+Les classes TestResistance* et TestNoResistance* isolent le plafond absolu (max_tp_pct=1.0) pour ne
+vérifier que le mécanisme de résistance ; TestAbsoluteCap* le testent séparément.
 """
+import os
+import sys
 import unittest
+
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
+
+from core.trade_helpers import compute_tp_target  # noqa: E402
 
 
 def _compute_tp_smart(entry_price, stop_price, r2_4h, reward_risk_ratio, fee_round_trip_pct, max_tp_pct=0.06):
-    """Reproduit l'ÉTAPE 3 du bloc RECALIBRAGE TP de prompts/phases/phase0_snapshot.txt."""
     stop_distance_pct = (entry_price - stop_price) / entry_price
-    tp_mecanique = entry_price * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
-    tp_plancher = entry_price * (1 + 2 * fee_round_trip_pct)
-    tp_plafond_absolu = entry_price * (1 + max_tp_pct)
-
-    tp_candidat = min(tp_mecanique, tp_plafond_absolu)
-    if r2_4h is not None and r2_4h > entry_price:
-        tp_candidat = min(tp_candidat, r2_4h * 0.98)
-    if tp_candidat >= tp_plancher:
-        return tp_candidat
-    return tp_mecanique
+    return compute_tp_target(entry_price, stop_distance_pct, reward_risk_ratio, fee_round_trip_pct,
+                             max_tp_pct, r2_4h)
 
 
 class TestLowResistanceNeverProducesTpBelowFloor(unittest.TestCase):
@@ -171,29 +158,39 @@ class TestAbsoluteCapDoesNotBiteWhenMecaniqueIsAlreadyLow(unittest.TestCase):
         self.assertAlmostEqual(tp_smart, tp_mecanique, places=6)
 
 
-class TestFloorPrimesOverAbsoluteCapOnConflict(unittest.TestCase):
-    """Si le plafond absolu configuré est plus bas que le plancher de viabilité (#411), c'est le
-    plancher qui prime — le plafond est ignoré et la cible mécanique est conservée plutôt qu'une
-    cible perdante (issue #428, section « Interaction avec le plancher de viabilité »)."""
+class TestResistanceBelowFloorKeepsAbsoluteCap(unittest.TestCase):
+    """#516 : résistance proche -> ignorée, mais le plafond max_tp_pct reste appliqué (avant, la
+    cible retombait sur le mécanique non plafonné : résistance proche = cible plus lointaine)."""
 
-    def test_max_tp_pct_below_floor_falls_back_to_mecanique(self):
+    def test_resistance_below_floor_ignored_but_cap_kept(self):
         entry_price = 100.0
-        stop_price = 97.0  # stop_distance_pct = 0.03
-        reward_risk_ratio = 1.5
-        fee_round_trip_pct = 0.009
-        max_tp_pct = 0.01  # plafond absolu (+1%) < plancher (+1.8% = 2 × fee_round_trip_pct)
+        stop_price = 85.0  # stop_distance_pct = 0.15 -> mécanique +24.5%
+        tp_smart = _compute_tp_smart(entry_price, stop_price, 101.0, 1.5, 0.009, max_tp_pct=0.06)
+        self.assertAlmostEqual(tp_smart, 106.0, places=6)  # 101 x 0.98 = 98.98 < plancher 101.8
 
-        tp_plancher = entry_price * (1 + 2 * fee_round_trip_pct)
-        tp_plafond_absolu = entry_price * (1 + max_tp_pct)
-        self.assertLess(tp_plafond_absolu, tp_plancher)  # le conflit est bien celui testé
+    def test_resistance_exactly_at_floor_is_kept(self):
+        entry_price = 100.0
+        # 0.98 x R = 101.8 pile au plancher -> la résistance mord
+        r = 101.8 / 0.98
+        tp_smart = _compute_tp_smart(entry_price, 85.0, r, 1.5, 0.009, max_tp_pct=0.06)
+        self.assertAlmostEqual(tp_smart, 101.8, places=6)
 
-        tp_smart = _compute_tp_smart(
-            entry_price, stop_price, None, reward_risk_ratio, fee_round_trip_pct, max_tp_pct=max_tp_pct,
-        )
 
-        tp_mecanique = entry_price * (1 + (0.03 + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
-        self.assertAlmostEqual(tp_smart, tp_mecanique, places=6)
-        self.assertGreaterEqual(tp_smart, tp_plancher)
+class TestTargetNeverExceedsAbsoluteCap(unittest.TestCase):
+    def test_cap_holds_in_every_branch(self):
+        for r in (None, 90.0, 100.5, 102.0, 104.0, 150.0):
+            for stop in (99.0, 97.0, 90.0, 80.0):
+                tp = _compute_tp_smart(100.0, stop, r, 1.5, 0.009, max_tp_pct=0.06)
+                self.assertLessEqual(tp, 106.0 + 1e-9)
+
+
+class TestMaxTpBelowFloorStillCaps(unittest.TestCase):
+    """Un plafond absolu configuré sous le plancher de viabilité reste appliqué (#516 : plus de repli
+    sur la cible mécanique non plafonnée)."""
+
+    def test_max_tp_pct_below_floor_still_caps(self):
+        tp_smart = _compute_tp_smart(100.0, 97.0, None, 1.5, 0.009, max_tp_pct=0.01)
+        self.assertAlmostEqual(tp_smart, 101.0, places=6)
 
 
 if __name__ == "__main__":

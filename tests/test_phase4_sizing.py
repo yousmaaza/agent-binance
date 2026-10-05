@@ -223,12 +223,12 @@ class TestMaxTpPctDoesNotAffectLowTarget(unittest.TestCase):
         self.assertAlmostEqual(order["prix_tp"], 1052.5, places=6)
 
 
-class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
+class TestMaxTpPctBelowFloorStillCapsTarget(unittest.TestCase):
     """Plafond absolu (#428) vs plancher de viabilité (#411) : si max_tp_pct configuré ramène la
-    cible sous le plancher (entrée + 2× frais), le plancher prime — le plafond est ignoré et la
-    cible mécanique est conservée plutôt qu'une cible perdante."""
+    cible sous le plancher (entrée + 2× frais), le plafond est quand même conservé (#516) : plus de
+    repli sur la cible mécanique non plafonnée."""
 
-    def test_max_tp_pct_below_floor_falls_back_to_mecanique(self):
+    def test_max_tp_pct_below_floor_still_caps(self):
         candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.015, "score": 8}]
         config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5,
                       fee_round_trip_pct=0.009, max_tp_pct=0.01)  # plafond +1% < plancher +1.8%
@@ -236,9 +236,50 @@ class TestViabilityFloorPrimesOverMaxTpPctOnConflict(unittest.TestCase):
 
         self.assertEqual(output["skipped"], [])
         order = output["ordres_prepares"][0]
-        # stop_distance_pct = 0.03 -> tp_mecanique = 1000*(1+(0.039)*1.5+0.009) = 1067.5
-        # tp_plafond = 1010 < tp_plancher = 1018 -> conflit, le plancher prime, mécanique conservée
-        self.assertAlmostEqual(order["prix_tp"], 1067.5, places=6)
+        # stop_distance_pct = 0.03 -> tp_plafond = 1010 (< plancher 1018, < mécanique 1067.5) conservé
+        self.assertAlmostEqual(order["prix_tp"], 1010.0, places=6)
+
+
+class TestResistance4hCapsEntryTarget(unittest.TestCase):
+    """#516 : la cible d'entrée est plafonnée par le plus haut des bougies 4h Kraken clôturées."""
+
+    def _run(self, candles):
+        candidates = [{"coin": "ETH", "prix_actuel": 1000, "atr_pct": 0.015, "score": 8}]
+        config = dict(DEFAULT_CONFIG, atr_stop_multiplier=2, reward_risk_ratio=1.5,
+                      fee_round_trip_pct=0.009, max_tp_pct=0.06, resistance_lookback_4h=30)
+        cycle_id = harness.new_cycle_id()
+        scenario_path = harness.write_kraken_scenario({"pairs": {}, "ohlc": {"ETHUSDC": candles}})
+        in_path = f"/tmp/cycle_{cycle_id}_phase4_input.json"
+        out_path = f"/tmp/cycle_{cycle_id}_phase4_output.json"
+        with open(in_path, "w") as f:
+            json.dump({"buy_candidates": candidates, "portfolio_total": 10000,
+                       "budget_disponible": 100000, "config": config}, f)
+        old_env = harness.set_fake_kraken_env(scenario_path)
+        try:
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(patch("core.trade_helpers.tg"))
+                stack.enter_context(patch("core.trade_helpers._EXCHANGE_CLI", harness.FAKE_KRAKEN_PATH))
+                harness.exec_phase_script(PHASE4_SIZING_PATH, cycle_id)
+            return harness.load_and_remove_json(out_path)["ordres_prepares"][0]
+        finally:
+            harness.restore_fake_kraken_env(old_env)
+            harness.remove_if_exists(in_path, out_path, scenario_path)
+
+    def test_resistance_from_closed_candles_caps_target(self):
+        import time
+        t0 = int(time.time()) // 14400 * 14400
+        # bougie en cours (t0) à 9999 exclue ; dernière clôturée (t0-14400) high 1040 -> 1040 x 0.98
+        candles = [[t0 - 14400 * 2, "1", "1020", "1", "1", "1", "1", 1],
+                   [t0 - 14400, "1", "1040", "1", "1", "1", "1", 1],
+                   [t0, "1", "9999", "1", "1", "1", "1", 1]]
+        order = self._run(candles)
+        self.assertAlmostEqual(order["prix_tp"], 1040 * 0.98, places=6)
+        self.assertEqual(order["resistance_4h"], 1040.0)
+
+    def test_kraken_unavailable_falls_back_to_max_tp_cap(self):
+        order = self._run([])
+        self.assertIsNone(order["resistance_4h"])
+        self.assertAlmostEqual(order["prix_tp"], 1060.0, places=6)
 
 
 class TestWiderAtrStopMultiplierReducesQuantityAtConstantRisk(unittest.TestCase):
