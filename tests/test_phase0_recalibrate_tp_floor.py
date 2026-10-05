@@ -3,8 +3,8 @@ résistance 4h #516) — core.trade_helpers.compute_tp_target, utilisée à l'en
 maker_watcher) et par le recalibrage Phase 0.
 
 Règle : tp = min(tp_mecanique, entry x (1 + max_tp_pct)), puis min(., résistance x 0.98) si la
-résistance dépasse l'entrée ; si cette cible tombe sous le plancher entry x (1 + 2 x frais), la
-résistance est ignorée mais le plafond max_tp_pct est conservé (jamais de cible non plafonnée).
+résistance dépasse l'entrée ; si résistance x 0.98 tombe sous le plancher entry x (1 + 2 x frais),
+la cible = le plancher (#519). Résistance absente ou <= entry : min(mécanique, plafond).
 
 Les classes TestResistance* et TestNoResistance* isolent le plafond absolu (max_tp_pct=1.0) pour ne
 vérifier que le mécanisme de résistance ; TestAbsoluteCap* le testent séparément.
@@ -159,14 +159,26 @@ class TestAbsoluteCapDoesNotBiteWhenMecaniqueIsAlreadyLow(unittest.TestCase):
 
 
 class TestResistanceBelowFloorKeepsAbsoluteCap(unittest.TestCase):
-    """#516 : résistance proche -> ignorée, mais le plafond max_tp_pct reste appliqué (avant, la
-    cible retombait sur le mécanique non plafonné : résistance proche = cible plus lointaine)."""
+    """#519 : résistance (> entry) trop proche -> cible = plancher (avant : plafond max_tp_pct)."""
 
-    def test_resistance_below_floor_ignored_but_cap_kept(self):
+    def test_resistance_below_floor_gives_floor(self):
         entry_price = 100.0
         stop_price = 85.0  # stop_distance_pct = 0.15 -> mécanique +24.5%
         tp_smart = _compute_tp_smart(entry_price, stop_price, 101.0, 1.5, 0.009, max_tp_pct=0.06)
-        self.assertAlmostEqual(tp_smart, 106.0, places=6)  # 101 x 0.98 = 98.98 < plancher 101.8
+        self.assertAlmostEqual(tp_smart, 101.8, places=6)  # 101 x 0.98 = 98.98 < plancher 101.8
+
+    def test_resistance_just_above_entry_gives_floor(self):
+        self.assertAlmostEqual(_compute_tp_smart(100.0, 85.0, 100.01, 1.5, 0.009), 101.8, places=6)
+
+    def test_resistance_below_or_at_entry_keeps_cap(self):
+        for r in (100.0, 95.0):
+            self.assertAlmostEqual(_compute_tp_smart(100.0, 85.0, r, 1.5, 0.009), 106.0, places=6)
+
+    def test_no_resistance_keeps_cap(self):
+        self.assertAlmostEqual(_compute_tp_smart(100.0, 85.0, None, 1.5, 0.009), 106.0, places=6)
+
+    def test_resistance_between_floor_and_cap_bites(self):
+        self.assertAlmostEqual(_compute_tp_smart(100.0, 85.0, 104.0, 1.5, 0.009), 104.0 * 0.98, places=6)
 
     def test_resistance_exactly_at_floor_is_kept(self):
         entry_price = 100.0

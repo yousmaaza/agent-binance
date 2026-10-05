@@ -190,14 +190,17 @@ def compute_tp_target(entry_price: float, stop_distance_pct: float, reward_risk_
 
     tp_mecanique = cible nette de frais (#411), toujours plafonnée à entry x (1 + max_tp_pct) (#428).
     Si une résistance 4h > entry existe : tp = min(plafond, résistance x 0.98). Si cette cible tombe
-    sous le plancher de viabilité (entry x (1 + 2 x frais)), la résistance est ignorée mais le
-    plafond max_tp_pct est conservé — jamais de retour à une cible mécanique non plafonnée.
+    sous le plancher de viabilité (entry x (1 + 2 x frais)), la cible = le plancher (#519) : la
+    résistance est trop proche pour viser plus haut. Résistance absente ou <= entry : min(mécanique,
+    plafond). Un plafond max_tp_pct configuré sous le plancher reste appliqué.
     """
     tp_mecanique = entry_price * (1 + (stop_distance_pct + fee_round_trip_pct) * reward_risk_ratio + fee_round_trip_pct)
     tp_plafond = entry_price * (1 + max_tp_pct)
     tp_plancher = entry_price * (1 + 2 * fee_round_trip_pct)
     tp_capped = min(tp_mecanique, tp_plafond)
     if resistance is not None and resistance > entry_price:
+        if resistance * RESISTANCE_TP_FACTOR < tp_plancher:
+            return tp_plancher
         tp_resistance = min(tp_capped, resistance * RESISTANCE_TP_FACTOR)
         if tp_resistance >= tp_plancher:
             return tp_resistance
