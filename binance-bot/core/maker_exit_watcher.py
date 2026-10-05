@@ -16,6 +16,12 @@ finir vendue (au marché si nécessaire). Garde-fou spécifique aux sorties : à
 prix courant redescend au niveau où était le stop, bascule immédiate au marché sans attendre le
 budget de concession ni le délai.
 
+Sortie PARTIELLE (#514) : même mécanisme, mais l'ordre porte `partial: True` et une fraction de la
+position seulement (le stop a déjà été reposé sur le reliquat par tp_watcher.py). Ici, la
+sortie manquée n'est PAS forcée au marché : la fraction est abandonnée et un stop est reposé sur la
+quantité totale (_settle_partial). Un remplissage crée un enregistrement clôturé séparé
+(close_reason "partial_tp", parent_trade_id) et réduit l'enregistrement d'origine.
+
 Arbre de décision par tick, pour chaque ordre dans state/maker_exit_pending_orders.json :
 1. Rempli (status "closed") -> position clôturée, exit_maker_or_taker="maker", pas de stop reposé.
 2. Terminé de façon inattendue (canceled/expired hors de notre fait) -> remplissage partiel
@@ -46,6 +52,7 @@ from core.trade_helpers import (
     _load_config,
     _save_json_atomic,
     compute_net_pnl,
+    initial_stop_price,
     maker_or_taker_from_ordertype,
 )
 
@@ -127,6 +134,88 @@ def _place_stop_loss(pair: str, qty: float, stop_price: float):
         return sl_txid, False, "", stop_price_rounded
     except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError, KeyError) as e:
         return None, True, f" {e}", stop_price
+
+
+def place_stop_loss_safe(pair: str, qty: float, price: float):
+    """_place_stop_loss() ne capte pas le RuntimeError de binance() : ici toute erreur = échec de pose."""
+    try:
+        return _place_stop_loss(pair, qty, price)
+    except Exception as e:
+        return None, True, f" {e}", price
+
+
+def restore_total_stop(pos: dict, reliquat_qty: float, notify=None) -> None:
+    """Après abandon d'une sortie partielle (#514) : le stop couvre le reliquat seul, la fraction
+    non vendue est nue. Annule le stop du reliquat et en repose un sur la quantité totale
+    (pos["quantity"]) au niveau courant. Échec -> repose le stop du reliquat, à défaut
+    protection_failed (rattrapage Phase 0), comme _apply_breakeven (#513). Si l'annulation échoue,
+    le stop du reliquat reste en place (rien d'autre à faire côté Kraken : le solde est retenu)."""
+    notify = notify or send_telegram
+    coin = pos["coin"]
+    pair = f"{coin}USDC"
+    stop_price = float(pos.get("stop_price") or 0)
+    total_qty = float(pos["quantity"])
+    old_txid = pos.get("sl_order_txid")
+    if old_txid:
+        try:
+            _cli("order", "cancel", old_txid, "-o", "json", "--yes")
+        except Exception as e:
+            notify(f"🚨 {coin} : stop sur le reliquat non annulé après abandon du partiel — "
+                   f"une partie de la position n'est pas protégée, vérifier à la main ({e})")
+            return
+    new_txid, failed, err_msg, stop_rounded = place_stop_loss_safe(pair, total_qty, stop_price)
+    if not failed:
+        pos.update({"sl_order_txid": new_txid, "stop_price": stop_rounded, "protection_failed": False})
+        return
+    logger.error(f"[Maker Exit Watcher] Partiel {coin} : stop sur la quantité totale échoué{err_msg}, repose du stop du reliquat")
+    restored_txid, restore_failed, _, _ = place_stop_loss_safe(pair, reliquat_qty, stop_price)
+    if not restore_failed:
+        pos["sl_order_txid"] = restored_txid
+        notify(f"⚠️ {coin} : stop sur toute la position échoué, stop reposé sur le reliquat seul")
+    else:
+        pos["sl_order_txid"] = None
+        pos["protection_failed"] = True
+        notify(f"🚨 {coin} : position NON protégée — stops échoués après abandon du partiel !{err_msg}")
+
+
+def attempt_partial_maker_exit(pos: dict, fraction_qty: float, reliquat_qty: float, cfg: dict,
+                               notify=None) -> dict | None:
+    """Pose la vente LIMIT post-only de la fraction (#514). Contrairement à attempt_maker_exit,
+    ne touche pas au stop : l'appelant (tp_watcher) l'a déjà reposé sur le reliquat. Retourne
+    l'enregistrement pour state/maker_exit_pending_orders.json, ou None si la pose échoue
+    (l'appelant restaure alors un stop sur la quantité totale)."""
+    notify = notify or send_telegram
+    coin = pos["coin"]
+    pair = f"{coin}USDC"
+    try:
+        ticker_raw = _cli("ticker", pair, "-o", "json")
+        ask = float(json.loads(ticker_raw).get(pair, {}).get("a", [0])[0])
+        sell_raw = _cli("order", "sell", pair, str(fraction_qty), "--type", "limit", "--price", str(ask),
+                         "--oflags", "post", "-o", "json", "--yes")
+        sell_resp = json.loads(sell_raw) if sell_raw.strip() else {}
+        txid = (sell_resp.get("txid") or [None])[0]
+        if not txid:
+            raise RuntimeError("pas de txid")
+    except Exception as e:
+        logger.warning(f"[Maker Exit Watcher] Partiel {coin} : pose de la limite échouée : {e}")
+        return None
+    notify(f"🧊 LIMIT SELL post-only {coin} (profit partiel)\n{fraction_qty} @ {ask:.4g} USDC (ask)")
+    return {
+        "trade_id": pos["trade_id"],
+        "coin": coin,
+        "pair": pair,
+        "txid": txid,
+        "quantity": fraction_qty,
+        "reliquat_qty": reliquat_qty,
+        "partial": True,
+        "stop_price": pos.get("stop_price"),
+        "close_reason": "partial_tp",
+        "initial_limit_price": ask,
+        "current_limit_price": ask,
+        "adjustments": 0,
+        "placed_at": datetime.now(timezone.utc).isoformat(),
+        "cycle_id": None,
+    }
 
 
 def attempt_maker_exit(pos: dict, close_reason: str, cfg: dict, notify=None, cycle_id: str | None = None,
@@ -216,8 +305,116 @@ def _find_position(history: list, trade_id: str) -> dict | None:
     return next((p for p in history if p.get("trade_id") == trade_id), None)
 
 
+def _fraction_label(fraction: float) -> str:
+    if abs(fraction - 1 / 3) < 0.02:
+        return "un tiers"
+    if abs(fraction - 0.5) < 0.02:
+        return "la moitié"
+    return f"{fraction * 100:.0f} %"
+
+
+def _finalize_partial(history: list, pending: dict, exit_price: float, exit_fee_usdc: float, qty_sold: float) -> bool:
+    """Comptabilité du profit partiel (#514) : enregistrement clôturé séparé pour la part vendue
+    (frais d'entrée au prorata), enregistrement d'origine réduit dans la même proportion —
+    quantity, risk_usdc (initial_stop_price reste exact : risk/(entry x qty) est invariant) et
+    entry_fee_usdc — et marqué partial_tp_done."""
+    pos = _find_position(history, pending["trade_id"])
+    if pos is None:
+        logger.error(f"[Maker Exit Watcher] trade_id {pending['trade_id']} introuvable dans l'historique")
+        return False
+
+    entry_price = float(pos.get("entry_price", 0))
+    parent_qty = float(pos.get("quantity", 0))
+    ratio = qty_sold / parent_qty if parent_qty else 0.0
+    entry_fee_total = float(pos.get("entry_fee_usdc", 0) or 0)
+    entry_fee_share = entry_fee_total * ratio
+    net = compute_net_pnl(entry_price, exit_price, qty_sold, entry_fee_share, exit_fee_usdc)
+
+    child = {k: v for k, v in pos.items()
+             if k not in ("sl_order_txid", "protection_failed", "breakeven_applied", "partial_tp_done",
+                           "partial_tp_skipped", "oco_retry_count", "maker_fill_seconds")}
+    child.update({
+        "trade_id": f"{pos['trade_id']}-partial",
+        "parent_trade_id": pos["trade_id"],
+        "status": "closed",
+        "quantity": qty_sold,
+        "risk_usdc": float(pos["risk_usdc"]) * ratio if pos.get("risk_usdc") is not None else None,
+        "entry_fee_usdc": entry_fee_share,
+        "exit_price": exit_price,
+        "exit_fee_usdc": exit_fee_usdc,
+        "fees_usdc": net["fees_usdc"],
+        "pnl_gross_usdc": net["pnl_gross_usdc"],
+        "pnl_usdc": net["pnl_usdc"],
+        "pnl_gross_pct": net["pnl_gross_pct"],
+        "pnl_pct": net["pnl_pct"],
+        "close_reason": "partial_tp",
+        "cycle_id": None,
+        "exit_date": datetime.now(timezone.utc).isoformat() + "Z",
+        "exit_maker_or_taker": _MAKER_FILL_LABEL,
+    })
+    pos.setdefault("initial_stop_price", initial_stop_price(pos))
+    pos["quantity"] = round(parent_qty - qty_sold, 8)
+    if pos.get("risk_usdc") is not None:
+        pos["risk_usdc"] = float(pos["risk_usdc"]) * (1 - ratio)
+    pos["entry_fee_usdc"] = entry_fee_total - entry_fee_share
+    pos["partial_tp_done"] = True
+    history.append(child)
+
+    gain_pct = (exit_price / entry_price - 1) * 100 if entry_price else 0.0
+    protected = float(pos.get("stop_price") or 0) >= entry_price
+    send_telegram(
+        f"💰 {pos.get('coin')} : {_fraction_label(ratio)} de la position vendu "
+        f"à {gain_pct:+.1f} % ({net['pnl_usdc']:+.2f} USDC), le reste continue"
+        f"{' avec un stop qui ne peut plus perdre' if protected else ''}"
+    )
+    return True
+
+
+def _settle_partial(pending: dict, history: list, fill: dict) -> None:
+    """La limite du partiel n'est plus vivante (annulée par nous ou hors de notre fait) : comptabilise
+    ce qui a été rempli, puis abandonne le reste — jamais de vente au marché pour un partiel
+    (#514) — et reprotège la quantité totale."""
+    pos = _find_position(history, pending["trade_id"])
+    if pos is None:
+        logger.error(f"[Maker Exit Watcher] trade_id {pending['trade_id']} introuvable dans l'historique")
+        return
+    qty = float(pending["quantity"])
+    vol_exec = min(float(fill.get("vol_exec", 0) or 0), qty)
+    if vol_exec > _QTY_EPSILON:
+        cost = float(fill.get("cost", 0) or 0)
+        exit_price = cost / vol_exec if cost else pending["current_limit_price"]
+        _finalize_partial(history, pending, exit_price, float(fill.get("fee", 0) or 0), vol_exec)
+    if vol_exec >= qty - _QTY_EPSILON:
+        return
+    send_telegram(f"ℹ️ {pos.get('coin')} : profit partiel non servi, la position reste entière avec son stop")
+    restore_total_stop(pos, float(pending.get("reliquat_qty", 0)))
+
+
+def _handle_partial_chase_end(pending: dict, history: list) -> tuple[bool, bool]:
+    """Fin de chasse d'un partiel. Retourne (history_changed, keep_pending) : si la limite ne peut
+    pas être annulée elle reste vivante et suivie, jamais orpheline."""
+    acquire_lock()
+    try:
+        try:
+            _cli("order", "cancel", pending["txid"], "-o", "json", "--yes")
+        except Exception as e:
+            logger.warning(f"[Maker Exit Watcher] Partiel {pending['coin']} : annulation limite échouée, réessai : {e}")
+            return False, True
+        time.sleep(1)
+        try:
+            fill = json.loads(_cli("query-orders", pending["txid"], "-o", "json")).get(pending["txid"]) or {}
+        except Exception:
+            fill = {}
+        _settle_partial(pending, history, fill)
+        return True, False
+    finally:
+        release_lock()
+
+
 def _finalize_position(history: list, pending: dict, exit_price: float, exit_fee_usdc: float,
                         exit_maker_or_taker: str) -> bool:
+    if pending.get("partial"):
+        return _finalize_partial(history, pending, exit_price, exit_fee_usdc, float(pending["quantity"]))
     pos = _find_position(history, pending["trade_id"])
     if pos is None:
         logger.error(f"[Maker Exit Watcher] trade_id {pending['trade_id']} introuvable dans l'historique")
@@ -310,6 +507,10 @@ def _handle_externally_resolved(pending: dict, history: list, tick_state: dict) 
             fill = json.loads(query_raw).get(txid) or {}
         except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, OSError):
             fill = {}
+
+        if pending.get("partial"):
+            _settle_partial(pending, history, fill)
+            return True, 0, 0
 
         vol_exec = float(fill.get("vol_exec", 0) or 0)
         remaining_qty = pending["quantity"] - vol_exec
@@ -508,6 +709,12 @@ def _maker_exit_watcher_tick(cfg: dict) -> None:
         price_redescended = bool(stop_price) and current_last <= stop_price
 
         if price_redescended or concession_pct >= maker_exit_max_concession_pct or elapsed_seconds >= maker_exit_timeout_seconds:
+            if pending.get("partial"):
+                changed, keep = _handle_partial_chase_end(pending, history)
+                history_changed = history_changed or changed
+                if keep:
+                    remaining_pending.append(pending)
+                continue
             changed, fills, fallbacks = _handle_chase_end(pending, history, tick_state)
             history_changed = history_changed or changed
             fills_delta += fills
