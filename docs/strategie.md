@@ -135,6 +135,8 @@ contrôle 2 : 99,11 < 106,13 × 0,98 = 104,01 ✓ → stop déplacé
 
 Le stop ne descend jamais. Il ne remonte que si le gain justifie le déplacement — au moins 20 % de la distance initiale — et jamais à moins de 2 % sous le prix courant, pour ne pas se faire sortir par une mèche.
 
+> Avec le stop de départ à −20 % (#521), `trail_dist` vaut 20 % de l'entrée : une fois le stop au break-even, le suiveur n'avance qu'au-delà de +24,9 %, au-dessus de la cible (+6 % au plus). Il est donc quasi inactif, sans modification de code.
+
 > Depuis le ticket #513 la distance est mesurée sur le stop *d'origine*. Avec l'ancienne formule (`entry − stop_actuel`), un stop remonté au-dessus du prix d'entrée donnait `trail_dist ≤ 0` et le stop suiveur ne bougeait plus jamais.
 
 ### Le break-even
@@ -266,6 +268,10 @@ Sur 19 trades reconstruits (bougies Kraken, 30 j), 100 % des entrées suivaient 
 
 `change_24h_pct` est calculé en phase 1 à partir des bougies déjà récupérées pour vérifier la persistance du volume (pas d'appel réseau supplémentaire) : variation entre l'ouverture de la bougie la plus ancienne et la clôture de la plus récente, sur les six bougies de 4h couvrant les dernières 24h. Au-delà de `max_24h_runup_pct` (0,04, soit 4 % — proche de la médiane mesurée de +3,05 %), l'entrée est refusée en TYPE_A. Une valeur absente ou nulle ne bloque jamais. Le filtre ne s'applique pas à un coin déjà en portefeuille : il ne remet jamais en cause un HOLD.
 
+### Le filtre de tendance de fond
+
+Sixième verrou, après le filtre anti-poursuite et avant le mode dégradé (#521). Si `trend_filter_enabled` est vrai, un coin hors portefeuille n'est acheté que si sa clôture 1d *et* celle de BTC sont au-dessus de leur EMA`trend_filter_ema_days` (100). Les bougies 1d viennent de Kraken (`ohlc --interval 1440`), la bougie du jour en cours est exclue. Sinon SKIP TYPE_A, avec un skip_detail chiffré (« ETH clôture 1d 1980 <= EMA100 2050 (−3,4 %) »). Kraken indisponible, réponse inexploitable ou moins de 100 bougies : **pas d'achat** (prudence), skip_detail « tendance de fond indisponible ». Ne s'applique jamais à un HOLD. Mesures et limites : section 08/10.
+
 ### La vente
 
 ```text
@@ -313,7 +319,7 @@ Le dimensionnement part du risque accepté, pas du capital disponible. On décid
 
 ```text
 risk_usdc = portfolio_total × risk_per_trade_pct
-stop_distance_pct = atr_pct × atr_stop_multiplier
+stop_distance_pct = fixed_stop_pct si stop_mode = "fixed", sinon atr_pct × atr_stop_multiplier // #521
 
 prix_entry = prix_actuel × (1 − limit_offset_pct)
 prix_stop = prix_entry × (1 − stop_distance_pct)
@@ -454,12 +460,14 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | Réglage | Valeur | Où | Ce qu'il fait |
 |---|---|---|---|
 | risk_per_trade_pct | 0.02 | phase 4 | Part du portefeuille risquée par trade. Fixe `risk_usdc`, donc la quantité. |
-| atr_stop_multiplier | 2.5 | phase 4 | Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible. |
+| stop_mode | "fixed" | phase 4 | "fixed" : stop de départ à `fixed_stop_pct` sous l'entrée ; "atr" : ancien calcul en multiples d'ATR (#521). |
+| fixed_stop_pct | 0.20 | phase 4 | Distance du stop de départ en mode "fixed". Ne sert qu'aux chutes anormales : le break-even prend le relais dès +1,5 %. |
+| atr_stop_multiplier | 2.5 | phase 4 | Largeur du stop en multiples d'ATR, utilisée seulement si `stop_mode` = "atr". Plus il est grand, plus le stop est loin — et plus la quantité est faible. |
 | reward_risk_ratio | 1.5 | phases 0 et 4 | Gain net visé rapporté à la perte nette. Porte sur du net depuis août. |
 | fee_round_trip_pct | 0.009 | phases 0, 4, 5 | Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit. |
 | max_tp_pct | 0.06 | phases 0, 4, 5 | Plafond absolu de la cible, appliqué sauf quand une résistance 4h trop proche ramène la cible au plancher (#519). La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026). |
 | resistance_lookback_4h | 30 | phases 0, 4, 5 | Nombre de bougies 4h Kraken clôturées dont le plus haut sert de résistance de plafonnement de la cible (section 05/10). |
-| max_stop_distance_pct | 0.12 | phase 4 | Écarte en TYPE_B tout candidat dont `stop_distance_pct` dépasse ce seuil — protège contre la queue volatile (ATR 4h > 4,8 %) sans bloquer le flux normal. |
+| max_stop_distance_pct | 0.12 | phase 4 | Écarte en TYPE_B tout candidat dont `stop_distance_pct` dépasse ce seuil — protège contre la queue volatile (ATR 4h > 4,8 %) sans bloquer le flux normal. Non appliqué en mode "fixed" (#521) : la distance ne dépend plus de l'ATR. |
 | usdc_allocation_pct | 0.70 | phase 0 | Part du solde USDC mobilisable. |
 | max_single_position_pct | 0.65 | phase 4 | Plafond d'une position seule, en part du budget disponible. |
 | min_order_usdc | 9 | phase 4 | Montant minimal d'un ordre. En dessous, skip TYPE_B. |
@@ -476,6 +484,8 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | max_open_positions | 4 | phase 3 | Nombre de positions simultanées. Compte aussi les candidats retenus dans le cycle en cours. |
 | max_correlated_positions | 2 | phase 3 | Plafond de positions dans le groupe SOL · SUI · STX · ETH. |
 | max_24h_runup_pct | 0.04 | phase 3 | Hausse de prix sur 24h au-delà de laquelle une entrée est refusée (filtre anti-poursuite). Ne s'applique jamais à un coin déjà en portefeuille. |
+| trend_filter_enabled | true | phase 3 | Active le filtre de tendance de fond (#521) : coin et BTC au-dessus de l'EMA 1d. Kraken indisponible : pas d'achat. |
+| trend_filter_ema_days | 100 | phase 3 | Période de l'EMA journalière du filtre de tendance. |
 | min_volume_usdc | 500 000 | phase 1 | Volume 24h minimal pour entrer dans l'univers. |
 | max_spread_pct | 0.0008 | phase 1 | Écart achat-vente maximal. Relevé de 0,05 % à 0,08 % : ADA était exclue pour quatre millièmes de point. |
 | volume_persistence_periods | 6 | phase 1 | Nombre de bougies 4h sur lesquelles le volume doit tenir. Écarte les pics isolés. |
@@ -940,6 +950,81 @@ Avec une cible à +1,8 %, le **partiel** (#514, `partial_tp_trigger_pct` = 0,03)
 ### Ce qui a été décidé le 05/10
 
 `compute_tp_target` renvoie le plancher quand la résistance (> entry) × 0,98 est sous le plancher. Aucune clé de configuration ajoutée. La même fonction sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage de la phase 0 : les trois consommateurs sont cohérents.
+
+## 08/10 — Stop de départ à −20 % et filtre de tendance de fond
+
+Décision de l'utilisateur (#521), prise en connaissance de cause : le stop de départ passe de 2,5×ATR à une distance fixe de −20 %, et un nouveau verrou de la phase 3 n'autorise l'achat que si le coin *et* BTC clôturent au-dessus de leur EMA100 journalière. **Ce changement réduit la perte, il ne rend pas la stratégie gagnante** : sans frais, toutes les variantes testées restent négatives, donc les entrées n'ont pas d'avantage mesurable. Le gain vient surtout de positions plus petites (~36 USDC au lieu de 110 à 180) à risque constant de 2 %, et d'un filtre qui évite les phases baissières.
+
+### La méthode du rejeu
+
+Script `scripts/stop_trend_replay.py` (`--fetch` télécharge les bougies, puis rejeu). Approximation du bot sur les bougies 4h Binance depuis 01/2022 (7 coins) : entrée EMA20 > EMA50 + MACD + RSI 4h dans [30, 65] + hausse 24h < 4 %, 4 positions maximum, dimensionnement à 2 % de risque comme la phase 4, vrais frais (entrée maker 0,30 %, sortie sur stop taker 0,60 % + 0,05 % de glissement), cible #519, partiel #514, break-even #513, stop suiveur du bot, sortie sur signal approximée, détention 14 j maximum. Le filtre utilise la dernière bougie 1d *clôturée*. Capital de départ 380 USDC. Rendement et pire repli (DD) de l'equity sur chaque fenêtre.
+
+> **Limites** : c'est une approximation sur bougies (le score TradingView et le sentiment ne sont pas rejoués), une bougie qui touche stop et cible compte comme un stop, et les paires sont en USDT pour Binance.
+
+### Résultats — bougies Binance 4h depuis 2022
+
+| configuration | depuis 01/2022 | depuis 01/2024 | depuis 01/2025 | 12 mois | 3 mois |
+|---|---|---|---|---|---|
+| réglage actuel (ATR 2,5×, plafond 12 %) | −96,1 % (DD −96 %) | −95,4 % (DD −95 %) | −90,9 % (DD −91 %) | −73,9 % (DD −74 %) | −35,3 % (DD −36 %) |
+| stop −20 % seul | −75,6 % (DD −76 %) | −71,0 % (DD −72 %) | −54,6 % (DD −57 %) | −24,8 % (DD −28 %) | +0,6 % (DD −3 %) |
+| filtre seul (stop ATR) | −95,0 % (DD −95 %) | −89,1 % (DD −89 %) | −75,6 % (DD −76 %) | −37,6 % (DD −38 %) | −22,4 % (DD −23 %) |
+| **stop −20 % + filtre** | −67,8 % (DD −69 %) | −58,6 % (DD −60 %) | −37,6 % (DD −40 %) | −10,1 % (DD −12 %) | 0,0 % (DD −3 %) |
+| + palier X=2 % Y=3 % | −70,0 % (DD −70 %) | −57,8 % (DD −58 %) | −35,7 % (DD −37 %) | −11,8 % (DD −13 %) | −2,4 % (DD −4 %) |
+| + palier X=2 % Y=5 % | −69,0 % (DD −70 %) | −57,7 % (DD −59 %) | −35,0 % (DD −37 %) | −9,9 % (DD −12 %) | −0,8 % (DD −3 %) |
+| + palier X=2 % Y=8 % | −67,0 % (DD −68 %) | −56,6 % (DD −57 %) | −37,6 % (DD −39 %) | −10,9 % (DD −12 %) | −1,4 % (DD −3 %) |
+| + palier X=3 % Y=3 % | −71,1 % (DD −72 %) | −59,7 % (DD −60 %) | −39,1 % (DD −40 %) | −11,9 % (DD −13 %) | −1,4 % (DD −3 %) |
+| + palier X=3 % Y=5 % | −69,1 % (DD −70 %) | −59,1 % (DD −60 %) | −37,7 % (DD −39 %) | −10,8 % (DD −13 %) | −0,8 % (DD −3 %) |
+| + palier X=3 % Y=8 % | −68,9 % (DD −69 %) | −59,3 % (DD −60 %) | −39,5 % (DD −41 %) | −11,6 % (DD −13 %) | −1,4 % (DD −3 %) |
+| + palier X=5 % Y=3 % | −71,0 % (DD −72 %) | −60,3 % (DD −61 %) | −38,2 % (DD −40 %) | −10,6 % (DD −12 %) | −0,8 % (DD −3 %) |
+| + palier X=5 % Y=5 % | −70,6 % (DD −71 %) | −60,7 % (DD −62 %) | −38,8 % (DD −40 %) | −10,7 % (DD −13 %) | −0,7 % (DD −3 %) |
+| + palier X=5 % Y=8 % | −69,5 % (DD −70 %) | −60,5 % (DD −61 %) | −40,0 % (DD −41 %) | −11,2 % (DD −13 %) | −1,0 % (DD −3 %) |
+
+### Vérification sur les bougies Kraken (720 dernières bougies 4h, ~120 j)
+
+| configuration | ~110 j (EMA chauffées) | 3 mois |
+|---|---|---|
+| réglage actuel (ATR 2,5×, plafond 12 %) | −30,0 % (DD −31 %) | −30,6 % (DD −31 %) |
+| stop −20 % seul | +2,6 % (DD −3 %) | +1,1 % (DD −3 %) |
+| filtre seul (stop ATR) | −20,2 % (DD −21 %) | −20,2 % (DD −21 %) |
+| **stop −20 % + filtre** | +0,4 % (DD −3 %) | +0,4 % (DD −3 %) |
+| + palier X=2 % Y=3 % | −0,9 % (DD −4 %) | −0,9 % (DD −4 %) |
+| + palier X=2 % Y=5 % | −0,1 % (DD −4 %) | −0,1 % (DD −4 %) |
+| + palier X=2 % Y=8 % | +0,4 % (DD −3 %) | +0,4 % (DD −3 %) |
+| + palier X=3 % Y=3 % | +0,1 % (DD −3 %) | +0,1 % (DD −3 %) |
+| + palier X=3 % Y=5 % | −0,1 % (DD −4 %) | −0,1 % (DD −4 %) |
+| + palier X=3 % Y=8 % | +0,4 % (DD −3 %) | +0,4 % (DD −3 %) |
+| + palier X=5 % Y=3 % | +0,2 % (DD −3 %) | +0,2 % (DD −3 %) |
+| + palier X=5 % Y=5 % | +0,1 % (DD −3 %) | +0,1 % (DD −3 %) |
+| + palier X=5 % Y=8 % | +0,4 % (DD −3 %) | +0,4 % (DD −3 %) |
+
+### Ce que ces chiffres disent — et ne disent pas
+
+Stop −20 % + filtre contre le réglage actuel : **−58,6 % contre −95,4 %** depuis 01/2024, **−37,6 % contre −90,9 %** depuis 01/2025, **−10,1 % contre −73,9 %** sur 12 mois, **0,0 % contre −35,3 %** sur 3 mois. Sur Kraken la même hiérarchie ressort (+0,4 % contre −30,0 %). Chaque brique aide seule (le stop large surtout, le filtre ensuite) et leur somme est la meilleure configuration sur les cinq fenêtres.
+
+**Mais la stratégie reste perdante** : −67,8 % depuis 2022 et −37,6 % depuis 2025, même avec les deux changements. Rejouées sans aucun frais (mêmes signaux, dimensionnement inchangé), les quatre configurations restent négatives depuis 2022, 2024, 2025 et sur 12 mois (« stop −20 % + filtre » : −36,2 %, −36,3 %, −23,7 %, −5,2 %) ; seule la fenêtre de 3 mois devient légèrement positive (+3,3 %), ce qui tient dans le bruit d'une fenêtre de ~45 trades. Les signaux d'entrée n'ont donc pas d'avantage à protéger. Le stop à −20 % n'améliore pas la qualité des entrées : il réduit la taille des positions (à 2 % de risque, une position fait ≈ 2 % ÷ 20,9 % ≈ 9,6 % du portefeuille, soit ~36 USDC pour 380) donc la perte par trade perdant, au prix de trades perdants qui vont plus loin. Les chiffres ne sont pas une promesse de rendement.
+
+### Ce que le code fait désormais
+
+```text
+stop_mode = "fixed" : stop_distance_pct = fixed_stop_pct (0,20) // phase 4 ; "atr" garde atr_pct × atr_stop_multiplier
+filtre de tendance (phase 3, trend_filter_enabled) : clôture 1d du coin > EMAtrend_filter_ema_days (100) ET clôture 1d de BTC > EMA100
+// bougies 1d Kraken, bougie du jour en cours exclue ; sinon SKIP TYPE_A avec les chiffres
+// Kraken indisponible ou moins de 100 bougies → pas d'achat, skip_detail « tendance de fond indisponible »
+```
+
+La phase 5 et le suivi maker recalculent stop, cible et `initial_stop_price` depuis le `stop_distance_pct` de la phase 4 : aucun changement de leur côté. Les positions déjà ouvertes gardent leur stop actuel ; seules les nouvelles entrées utilisent les nouvelles règles.
+
+`max_stop_distance_pct` (0,12) **n'est pas appliqué en mode fixe** : sa raison d'être est d'écarter un ATR aberrant, or la distance ne dépend plus de l'ATR et 0,20 > 0,12 bloquerait toute entrée. Le risque reste borné par le dimensionnement (la quantité diminue quand le stop s'éloigne). Le plafond reste actif en mode `"atr"`.
+
+### Interaction avec le break-even, le partiel, la cible et le stop suiveur
+
+La cible reste plafonnée par `max_tp_pct` : à 20 % de stop la cible mécanique serait +32 %, elle vaut +6 % au plus. Le **break-even** (+1,5 %, stop à entry × 1,009) ramène le stop de −20 % à +0,9 % dès le premier mouvement favorable : c'est lui, pas le stop de départ, qui borne la perte d'un trade qui a décollé. Le **partiel** (1/3 à +3 %) vaut ≈ 12 USDC sur une position de ~36 USDC, au-dessus de `min_order_usdc` (9) ; sous ~27 USDC de position il est sauté (`below_min`). Le **stop suiveur** garde la distance d'origine (20 %) : une fois le stop au break-even (entry × 1,009), il faudrait un prix à plus de +24,9 % de l'entrée pour qu'il avance, alors que la cible est à +6 % au plus : il est de fait inactif, sans modification de code. Sans break-even (`breakeven_enabled` = false), il se déclencherait dès +4 %.
+
+### Le palier intermédiaire : testé et écarté
+
+Idée : si le trade est d'abord descendu d'au moins X % puis revient au prix d'entrée, remonter le stop de −20 % à −Y % avant le break-even. Grille X ∈ {2, 3, 5 %} × Y ∈ {3, 5, 8 %}, ajoutée aux tableaux ci-dessus. Critère fixé d'avance : n'implémenter que si une valeur intérieure de la grille améliore de façon cohérente les cinq fenêtres. **Aucune ne le fait.** La valeur centrale (X = 3 %, Y = 5 %) est moins bonne que « stop −20 % + filtre » sur les cinq fenêtres (par exemple −69,1 % contre −67,8 % depuis 2022, −0,8 % contre 0,0 % sur 3 mois) et sur Kraken (−0,1 % contre +0,4 %). Les meilleures cases (X = 2 %, Y = 5 %) gagnent 0,2 à 2,6 points sur trois fenêtres mais en perdent sur 2022, 3 mois et Kraken : un bruit autour de zéro, pas un signal. Le palier n'est donc pas implémenté.
+
+> À remesurer après 30 trades ou plus sous ce réglage (`scripts/stop_trend_replay.py`). Les interrupteurs `stop_mode` (`"atr"`) et `trend_filter_enabled` (`false`) permettent de revenir à l'ancien comportement sans toucher au code.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*

@@ -26,7 +26,7 @@ import json
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(PROJECT_DIR, "binance-bot"))
 
-from core.trade_helpers import tg, _load_config  # noqa: E402
+from core.trade_helpers import tg, _load_config, fetch_daily_trend  # noqa: E402
 
 CYCLE_ID = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
@@ -49,6 +49,29 @@ max_correlated_positions = cfg.get("max_correlated_positions", 2)
 rsi_zone_min = cfg.get("rsi_zone_min", 30)
 rsi_zone_max = cfg.get("rsi_zone_max", 65)
 max_24h_runup_pct = cfg.get("max_24h_runup_pct", 0.04)
+# Filtre de tendance de fond (#521) : n'acheter que si la clôture 1d du coin ET de BTC est au-dessus
+# de l'EMA 1d. Défaut désactivé (config.json l'active) ; Kraken indisponible -> pas d'achat.
+trend_filter_enabled = cfg.get("trend_filter_enabled", False)
+trend_filter_ema_days = cfg.get("trend_filter_ema_days", 100)
+_trend_cache = {}
+
+
+def trend_block_detail(coin):
+    """None si la tendance de fond autorise l'achat, sinon le skip_detail chiffré."""
+    if not trend_filter_enabled:
+        return None
+    for ref in ([coin] if coin.upper() in ("BTC", "XBT") else [coin, "BTC"]):
+        if ref not in _trend_cache:
+            _trend_cache[ref] = fetch_daily_trend(ref, trend_filter_ema_days)
+        res = _trend_cache[ref]
+        if res is None:
+            return f"Tendance de fond indisponible ({ref} : bougies 1d Kraken), pas d'achat par prudence"
+        close, ema_val = res
+        if close <= ema_val:
+            return (f"Tendance de fond baissière : {ref} clôture 1d {close:.4g} <= EMA{trend_filter_ema_days} "
+                    f"{ema_val:.4g} ({(close / ema_val - 1) * 100:+.1f}%)")
+    return None
+
 
 # Mode dégradé : rate limit TradingView 1D
 buy_4h = [c for c in analysis_results if analysis_results[c].get("signal_4h") in ("BUY", "STRONG_BUY")]
@@ -127,6 +150,9 @@ for coin, data in analysis_results.items():
             skip_detail_str = f"Hausse 24h +{change_24h_pct * 100:.1f}% > seuil {max_24h_runup_pct * 100:.1f}% (poursuite)"
             skip_coins_detail[coin] = {"skip_type": "TYPE_A", "skip_detail": skip_detail_str}
             scores_detail[coin] = {"score": score, "decision": "SKIP", "skip_type": "TYPE_A", "reasons": reasons + [skip_detail_str]}
+        elif (trend_detail := trend_block_detail(coin)) is not None:
+            skip_coins_detail[coin] = {"skip_type": "TYPE_A", "skip_detail": trend_detail}
+            scores_detail[coin] = {"score": score, "decision": "SKIP", "skip_type": "TYPE_A", "reasons": reasons + [trend_detail]}
         elif degraded_rsi_block:
             skip_detail_str = ("RSI indisponible (mode dégradé)" if rsi_4h is None
                                 else f"RSI {rsi_4h:.0f} hors zone (mode dégradé)")
