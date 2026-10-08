@@ -3146,17 +3146,19 @@
     "entry_order_id": "OFVD55-UISJQ-F4BAEX",
     "sl_order_txid": "O4FYCV-LZ4YR-4NZIMD",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
+    "status": "closed",
+    "exit_price": 0.24959184667892365,
+    "exit_date": "2026-10-08T12:06:21.934238+00:00",
     "entry_fee_usdc": 0.25558071,
-    "exit_fee_usdc": null,
-    "fees_usdc": null,
+    "exit_fee_usdc": 0.46927301,
+    "fees_usdc": 0.72485372,
     "maker_or_taker": "maker",
     "maker_fill_seconds": 77.33981,
-    "pnl_gross_usdc": null,
-    "pnl_usdc": null,
-    "pnl_gross_pct": null,
-    "pnl_pct": null
+    "pnl_gross_usdc": -6.9814,
+    "pnl_usdc": -7.7063,
+    "pnl_gross_pct": -8.19,
+    "pnl_pct": -9.05,
+    "close_reason": "sl_hit",
+    "cycle_id": null
   }
 ]
