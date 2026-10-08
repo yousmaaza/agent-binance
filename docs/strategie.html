@@ -286,6 +286,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     contrôle 2 : 99,11 &lt; 106,13 × 0,98 = 104,01 &nbsp;<b>✓</b> → stop déplacé
   </div>
   <p>Le stop ne descend jamais. Il ne remonte que si le gain justifie le déplacement — au moins 20 % de la distance initiale — et jamais à moins de 2 % sous le prix courant, pour ne pas se faire sortir par une mèche.</p>
+  <p class="note">Avec le stop de départ à −20 % (#521), <code>trail_dist</code> vaut 20 % de l'entrée : une fois le stop au break-even, le suiveur n'avance qu'au-delà de +24,9 %, au-dessus de la cible (+6 % au plus). Il est donc quasi inactif, sans modification de code.</p>
   <p class="note">Depuis le ticket #513 la distance est mesurée sur le stop <em>d'origine</em>. Avec l'ancienne formule (<code>entry − stop_actuel</code>), un stop remonté au-dessus du prix d'entrée donnait <code>trail_dist ≤ 0</code> et le stop suiveur ne bougeait plus jamais.</p>
 
   <h3>Le break-even</h3>
@@ -464,6 +465,9 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
   <p>Sur 19 trades reconstruits (bougies Kraken, 30 j), 100 % des entrées suivaient une hausse sur 24h — médiane +3,05 % — et 79 % étaient en perte 24h plus tard (médiane -1,83 %). Le bot achète systématiquement des sommets locaux : les bonus <span class="cfg-inline">top_gainers</span> et <span class="cfg-inline">breakout_symbols</span> du score récompensent explicitement ce momentum, sans protection quand il se retourne.</p>
   <p><span class="cfg-inline">change_24h_pct</span> est calculé en phase 1 à partir des bougies déjà récupérées pour vérifier la persistance du volume (pas d'appel réseau supplémentaire) : variation entre l'ouverture de la bougie la plus ancienne et la clôture de la plus récente, sur les six bougies de 4h couvrant les dernières 24h. Au-delà de <span class="cfg-inline">max_24h_runup_pct</span> (0,04, soit 4 % — proche de la médiane mesurée de +3,05 %), l'entrée est refusée en TYPE_A. Une valeur absente ou nulle ne bloque jamais. Le filtre ne s'applique pas à un coin déjà en portefeuille : il ne remet jamais en cause un HOLD.</p>
 
+  <h3>Le filtre de tendance de fond</h3>
+  <p>Sixième verrou, après le filtre anti-poursuite et avant le mode dégradé (#521). Si <span class="cfg-inline">trend_filter_enabled</span> est vrai, un coin hors portefeuille n'est acheté que si sa clôture 1d <em>et</em> celle de BTC sont au-dessus de leur EMA<span class="cfg-inline">trend_filter_ema_days</span> (100). Les bougies 1d viennent de Kraken (<code>ohlc --interval 1440</code>), la bougie du jour en cours est exclue. Sinon SKIP TYPE_A, avec un skip_detail chiffré (« ETH clôture 1d 1980 &lt;= EMA100 2050 (−3,4 %) »). Kraken indisponible, réponse inexploitable ou moins de 100 bougies : <b>pas d'achat</b> (prudence), skip_detail « tendance de fond indisponible ». Ne s'applique jamais à un HOLD. Mesures et limites : section 08/10.</p>
+
   <h3>La vente</h3>
   <div class="f">
     <b>Si</b> score ≤ 3 <b>ET</b> déjà en portefeuille <b>ET</b> prix_courant &gt; prix_entrée → <b>SELL</b><br>
@@ -512,7 +516,7 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 
   <div class="f">
     risk_usdc = portfolio_total × <span class="cfg">risk_per_trade_pct</span><br>
-    stop_distance_pct = atr_pct × <span class="cfg">atr_stop_multiplier</span><br><br>
+    stop_distance_pct = <span class="cfg">fixed_stop_pct</span> <b>si</b> <span class="cfg">stop_mode</span> = "fixed", sinon atr_pct × <span class="cfg">atr_stop_multiplier</span> <span class="cm">// #521</span><br><br>
     prix_entry = prix_actuel × (1 − <span class="cfg">limit_offset_pct</span>)<br>
     prix_stop  = prix_entry × (1 − stop_distance_pct)<br>
     prix_tp    = prix_entry × (1 + (stop_distance_pct + <span class="cfg">fee_round_trip_pct</span>) × <span class="cfg">reward_risk_ratio</span> + <span class="cfg">fee_round_trip_pct</span>)<br><br>
@@ -657,12 +661,14 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
     <thead><tr><th>Réglage</th><th>Valeur</th><th>Où</th><th>Ce qu'il fait</th></tr></thead>
     <tbody>
       <tr><td class="k">risk_per_trade_pct</td><td class="v">0.02</td><td>phase 4</td><td>Part du portefeuille risquée par trade. Fixe <code>risk_usdc</code>, donc la quantité.</td></tr>
-      <tr><td class="k">atr_stop_multiplier</td><td class="v">2.5</td><td>phase 4</td><td>Largeur du stop en multiples d'ATR. Plus il est grand, plus le stop est loin — et plus la quantité est faible.</td></tr>
+      <tr><td class="k">stop_mode</td><td class="v">"fixed"</td><td>phase 4</td><td>"fixed" : stop de départ à <code>fixed_stop_pct</code> sous l'entrée ; "atr" : ancien calcul en multiples d'ATR (#521).</td></tr>
+      <tr><td class="k">fixed_stop_pct</td><td class="v">0.20</td><td>phase 4</td><td>Distance du stop de départ en mode "fixed". Ne sert qu'aux chutes anormales : le break-even prend le relais dès +1,5 %.</td></tr>
+      <tr><td class="k">atr_stop_multiplier</td><td class="v">2.5</td><td>phase 4</td><td>Largeur du stop en multiples d'ATR, utilisée seulement si <code>stop_mode</code> = "atr". Plus il est grand, plus le stop est loin — et plus la quantité est faible.</td></tr>
       <tr><td class="k">reward_risk_ratio</td><td class="v">1.5</td><td>phases 0 et 4</td><td>Gain net visé rapporté à la perte nette. Porte sur du net depuis août.</td></tr>
       <tr><td class="k">fee_round_trip_pct</td><td class="v">0.009</td><td>phases 0, 4, 5</td><td>Coût aller-retour estimé. Entre dans la cible, dans la quantité et dans la prise de profit.</td></tr>
       <tr><td class="k">max_tp_pct</td><td class="v">0.06</td><td>phases 0, 4, 5</td><td>Plafond absolu de la cible, appliqué sauf quand une résistance 4h trop proche ramène la cible au plancher (#519). La reconstruction du chemin de prix (MFE) donne une hausse médiane réellement offerte de +1,52 % pendant la détention (n=19, 28/09/2026).</td></tr>
       <tr><td class="k">resistance_lookback_4h</td><td class="v">30</td><td>phases 0, 4, 5</td><td>Nombre de bougies 4h Kraken clôturées dont le plus haut sert de résistance de plafonnement de la cible (section 05/10).</td></tr>
-      <tr><td class="k">max_stop_distance_pct</td><td class="v">0.12</td><td>phase 4</td><td>Écarte en TYPE_B tout candidat dont <code>stop_distance_pct</code> dépasse ce seuil — protège contre la queue volatile (ATR 4h &gt; 4,8 %) sans bloquer le flux normal.</td></tr>
+      <tr><td class="k">max_stop_distance_pct</td><td class="v">0.12</td><td>phase 4</td><td>Écarte en TYPE_B tout candidat dont <code>stop_distance_pct</code> dépasse ce seuil — protège contre la queue volatile (ATR 4h &gt; 4,8 %) sans bloquer le flux normal. Non appliqué en mode "fixed" (#521) : la distance ne dépend plus de l'ATR.</td></tr>
       <tr><td class="k">usdc_allocation_pct</td><td class="v">0.70</td><td>phase 0</td><td>Part du solde USDC mobilisable.</td></tr>
       <tr><td class="k">max_single_position_pct</td><td class="v">0.65</td><td>phase 4</td><td>Plafond d'une position seule, en part du budget disponible.</td></tr>
       <tr><td class="k">min_order_usdc</td><td class="v">9</td><td>phase 4</td><td>Montant minimal d'un ordre. En dessous, skip TYPE_B.</td></tr>
@@ -681,6 +687,8 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
       <tr><td class="k">max_open_positions</td><td class="v">4</td><td>phase 3</td><td>Nombre de positions simultanées. Compte aussi les candidats retenus dans le cycle en cours.</td></tr>
       <tr><td class="k">max_correlated_positions</td><td class="v">2</td><td>phase 3</td><td>Plafond de positions dans le groupe SOL · SUI · STX · ETH.</td></tr>
       <tr><td class="k">max_24h_runup_pct</td><td class="v">0.04</td><td>phase 3</td><td>Hausse de prix sur 24h au-delà de laquelle une entrée est refusée (filtre anti-poursuite). Ne s'applique jamais à un coin déjà en portefeuille.</td></tr>
+      <tr><td class="k">trend_filter_enabled</td><td class="v">true</td><td>phase 3</td><td>Active le filtre de tendance de fond (#521) : coin et BTC au-dessus de l'EMA 1d. Kraken indisponible : pas d'achat.</td></tr>
+      <tr><td class="k">trend_filter_ema_days</td><td class="v">100</td><td>phase 3</td><td>Période de l'EMA journalière du filtre de tendance.</td></tr>
       <tr><td class="k">min_volume_usdc</td><td class="v">500 000</td><td>phase 1</td><td>Volume 24h minimal pour entrer dans l'univers.</td></tr>
       <tr><td class="k">max_spread_pct</td><td class="v">0.0008</td><td>phase 1</td><td>Écart achat-vente maximal. Relevé de 0,05 % à 0,08 % : ADA était exclue pour quatre millièmes de point.</td></tr>
       <tr><td class="k">volume_persistence_periods</td><td class="v">6</td><td>phase 1</td><td>Nombre de bougies 4h sur lesquelles le volume doit tenir. Écarte les pics isolés.</td></tr>
@@ -1112,6 +1120,78 @@ footer{padding:28px 0 46px;font-family:"IBM Plex Mono",monospace;font-size:10.5p
 
   <h3>Ce qui a été décidé le 05/10</h3>
   <p><code>compute_tp_target</code> renvoie le plancher quand la résistance (&gt; entry) × 0,98 est sous le plancher. Aucune clé de configuration ajoutée. La même fonction sert à l'entrée (phases 4 et 5, suivi maker) et au recalibrage de la phase 0 : les trois consommateurs sont cohérents.</p>
+</section>
+
+<section>
+  <h2><span class="ph">08/10</span>Stop de départ à −20 % et filtre de tendance de fond</h2>
+  <p class="lede">Décision de l'utilisateur (#521), prise en connaissance de cause : le stop de départ passe de 2,5×ATR à une distance fixe de −20 %, et un nouveau verrou de la phase 3 n'autorise l'achat que si le coin <em>et</em> BTC clôturent au-dessus de leur EMA100 journalière. <b>Ce changement réduit la perte, il ne rend pas la stratégie gagnante</b> : sans frais, toutes les variantes testées restent négatives, donc les entrées n'ont pas d'avantage mesurable. Le gain vient surtout de positions plus petites (~36 USDC au lieu de 110 à 180) à risque constant de 2 %, et d'un filtre qui évite les phases baissières.</p>
+
+  <h3>La méthode du rejeu</h3>
+  <p>Script <code>scripts/stop_trend_replay.py</code> (<code>--fetch</code> télécharge les bougies, puis rejeu). Approximation du bot sur les bougies 4h Binance depuis 01/2022 (7 coins) : entrée EMA20 &gt; EMA50 + MACD + RSI 4h dans [30, 65] + hausse 24h &lt; 4 %, 4 positions maximum, dimensionnement à 2 % de risque comme la phase 4, vrais frais (entrée maker 0,30 %, sortie sur stop taker 0,60 % + 0,05 % de glissement), cible #519, partiel #514, break-even #513, stop suiveur du bot, sortie sur signal approximée, détention 14 j maximum. Le filtre utilise la dernière bougie 1d <em>clôturée</em>. Capital de départ 380 USDC. Rendement et pire repli (DD) de l'equity sur chaque fenêtre.</p>
+  <p class="note"><b>Limites</b> : c'est une approximation sur bougies (le score TradingView et le sentiment ne sont pas rejoués), une bougie qui touche stop et cible compte comme un stop, et les paires sont en USDT pour Binance.</p>
+
+  <h3>Résultats — bougies Binance 4h depuis 2022</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>configuration</th><th>depuis 01/2022</th><th>depuis 01/2024</th><th>depuis 01/2025</th><th>12 mois</th><th>3 mois</th></tr></thead>
+    <tbody>
+      <tr><td>réglage actuel (ATR 2,5×, plafond 12 %)</td><td class="v">−96,1 % <span class="cm">(DD −96 %)</span></td><td class="v">−95,4 % <span class="cm">(DD −95 %)</span></td><td class="v">−90,9 % <span class="cm">(DD −91 %)</span></td><td class="v">−73,9 % <span class="cm">(DD −74 %)</span></td><td class="v">−35,3 % <span class="cm">(DD −36 %)</span></td></tr>
+      <tr><td>stop −20 % seul</td><td class="v">−75,6 % <span class="cm">(DD −76 %)</span></td><td class="v">−71,0 % <span class="cm">(DD −72 %)</span></td><td class="v">−54,6 % <span class="cm">(DD −57 %)</span></td><td class="v">−24,8 % <span class="cm">(DD −28 %)</span></td><td class="v">+0,6 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>filtre seul (stop ATR)</td><td class="v">−95,0 % <span class="cm">(DD −95 %)</span></td><td class="v">−89,1 % <span class="cm">(DD −89 %)</span></td><td class="v">−75,6 % <span class="cm">(DD −76 %)</span></td><td class="v">−37,6 % <span class="cm">(DD −38 %)</span></td><td class="v">−22,4 % <span class="cm">(DD −23 %)</span></td></tr>
+      <tr><td><b>stop −20 % + filtre</b></td><td class="v">−67,8 % <span class="cm">(DD −69 %)</span></td><td class="v">−58,6 % <span class="cm">(DD −60 %)</span></td><td class="v">−37,6 % <span class="cm">(DD −40 %)</span></td><td class="v">−10,1 % <span class="cm">(DD −12 %)</span></td><td class="v">0,0 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=2 % Y=3 %</td><td class="v">−70,0 % <span class="cm">(DD −70 %)</span></td><td class="v">−57,8 % <span class="cm">(DD −58 %)</span></td><td class="v">−35,7 % <span class="cm">(DD −37 %)</span></td><td class="v">−11,8 % <span class="cm">(DD −13 %)</span></td><td class="v">−2,4 % <span class="cm">(DD −4 %)</span></td></tr>
+      <tr><td>+ palier X=2 % Y=5 %</td><td class="v">−69,0 % <span class="cm">(DD −70 %)</span></td><td class="v">−57,7 % <span class="cm">(DD −59 %)</span></td><td class="v">−35,0 % <span class="cm">(DD −37 %)</span></td><td class="v">−9,9 % <span class="cm">(DD −12 %)</span></td><td class="v">−0,8 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=2 % Y=8 %</td><td class="v">−67,0 % <span class="cm">(DD −68 %)</span></td><td class="v">−56,6 % <span class="cm">(DD −57 %)</span></td><td class="v">−37,6 % <span class="cm">(DD −39 %)</span></td><td class="v">−10,9 % <span class="cm">(DD −12 %)</span></td><td class="v">−1,4 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=3 % Y=3 %</td><td class="v">−71,1 % <span class="cm">(DD −72 %)</span></td><td class="v">−59,7 % <span class="cm">(DD −60 %)</span></td><td class="v">−39,1 % <span class="cm">(DD −40 %)</span></td><td class="v">−11,9 % <span class="cm">(DD −13 %)</span></td><td class="v">−1,4 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=3 % Y=5 %</td><td class="v">−69,1 % <span class="cm">(DD −70 %)</span></td><td class="v">−59,1 % <span class="cm">(DD −60 %)</span></td><td class="v">−37,7 % <span class="cm">(DD −39 %)</span></td><td class="v">−10,8 % <span class="cm">(DD −13 %)</span></td><td class="v">−0,8 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=3 % Y=8 %</td><td class="v">−68,9 % <span class="cm">(DD −69 %)</span></td><td class="v">−59,3 % <span class="cm">(DD −60 %)</span></td><td class="v">−39,5 % <span class="cm">(DD −41 %)</span></td><td class="v">−11,6 % <span class="cm">(DD −13 %)</span></td><td class="v">−1,4 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=5 % Y=3 %</td><td class="v">−71,0 % <span class="cm">(DD −72 %)</span></td><td class="v">−60,3 % <span class="cm">(DD −61 %)</span></td><td class="v">−38,2 % <span class="cm">(DD −40 %)</span></td><td class="v">−10,6 % <span class="cm">(DD −12 %)</span></td><td class="v">−0,8 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=5 % Y=5 %</td><td class="v">−70,6 % <span class="cm">(DD −71 %)</span></td><td class="v">−60,7 % <span class="cm">(DD −62 %)</span></td><td class="v">−38,8 % <span class="cm">(DD −40 %)</span></td><td class="v">−10,7 % <span class="cm">(DD −13 %)</span></td><td class="v">−0,7 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=5 % Y=8 %</td><td class="v">−69,5 % <span class="cm">(DD −70 %)</span></td><td class="v">−60,5 % <span class="cm">(DD −61 %)</span></td><td class="v">−40,0 % <span class="cm">(DD −41 %)</span></td><td class="v">−11,2 % <span class="cm">(DD −13 %)</span></td><td class="v">−1,0 % <span class="cm">(DD −3 %)</span></td></tr>
+
+    </tbody>
+  </table></div>
+
+  <h3>Vérification sur les bougies Kraken (720 dernières bougies 4h, ~120 j)</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>configuration</th><th>~110 j (EMA chauffées)</th><th>3 mois</th></tr></thead>
+    <tbody>
+      <tr><td>réglage actuel (ATR 2,5×, plafond 12 %)</td><td class="v">−30,0 % <span class="cm">(DD −31 %)</span></td><td class="v">−30,6 % <span class="cm">(DD −31 %)</span></td></tr>
+      <tr><td>stop −20 % seul</td><td class="v">+2,6 % <span class="cm">(DD −3 %)</span></td><td class="v">+1,1 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>filtre seul (stop ATR)</td><td class="v">−20,2 % <span class="cm">(DD −21 %)</span></td><td class="v">−20,2 % <span class="cm">(DD −21 %)</span></td></tr>
+      <tr><td><b>stop −20 % + filtre</b></td><td class="v">+0,4 % <span class="cm">(DD −3 %)</span></td><td class="v">+0,4 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=2 % Y=3 %</td><td class="v">−0,9 % <span class="cm">(DD −4 %)</span></td><td class="v">−0,9 % <span class="cm">(DD −4 %)</span></td></tr>
+      <tr><td>+ palier X=2 % Y=5 %</td><td class="v">−0,1 % <span class="cm">(DD −4 %)</span></td><td class="v">−0,1 % <span class="cm">(DD −4 %)</span></td></tr>
+      <tr><td>+ palier X=2 % Y=8 %</td><td class="v">+0,4 % <span class="cm">(DD −3 %)</span></td><td class="v">+0,4 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=3 % Y=3 %</td><td class="v">+0,1 % <span class="cm">(DD −3 %)</span></td><td class="v">+0,1 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=3 % Y=5 %</td><td class="v">−0,1 % <span class="cm">(DD −4 %)</span></td><td class="v">−0,1 % <span class="cm">(DD −4 %)</span></td></tr>
+      <tr><td>+ palier X=3 % Y=8 %</td><td class="v">+0,4 % <span class="cm">(DD −3 %)</span></td><td class="v">+0,4 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=5 % Y=3 %</td><td class="v">+0,2 % <span class="cm">(DD −3 %)</span></td><td class="v">+0,2 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=5 % Y=5 %</td><td class="v">+0,1 % <span class="cm">(DD −3 %)</span></td><td class="v">+0,1 % <span class="cm">(DD −3 %)</span></td></tr>
+      <tr><td>+ palier X=5 % Y=8 %</td><td class="v">+0,4 % <span class="cm">(DD −3 %)</span></td><td class="v">+0,4 % <span class="cm">(DD −3 %)</span></td></tr>
+
+    </tbody>
+  </table></div>
+
+  <h3>Ce que ces chiffres disent — et ne disent pas</h3>
+  <p>Stop −20 % + filtre contre le réglage actuel : <b>−58,6 % contre −95,4 %</b> depuis 01/2024, <b>−37,6 % contre −90,9 %</b> depuis 01/2025, <b>−10,1 % contre −73,9 %</b> sur 12 mois, <b>0,0 % contre −35,3 %</b> sur 3 mois. Sur Kraken la même hiérarchie ressort (+0,4 % contre −30,0 %). Chaque brique aide seule (le stop large surtout, le filtre ensuite) et leur somme est la meilleure configuration sur les cinq fenêtres.</p>
+  <p><b>Mais la stratégie reste perdante</b> : −67,8 % depuis 2022 et −37,6 % depuis 2025, même avec les deux changements. Rejouées sans aucun frais (mêmes signaux, dimensionnement inchangé), les quatre configurations restent négatives depuis 2022, 2024, 2025 et sur 12 mois (« stop −20 % + filtre » : −36,2 %, −36,3 %, −23,7 %, −5,2 %) ; seule la fenêtre de 3 mois devient légèrement positive (+3,3 %), ce qui tient dans le bruit d'une fenêtre de ~45 trades. Les signaux d'entrée n'ont donc pas d'avantage à protéger. Le stop à −20 % n'améliore pas la qualité des entrées : il réduit la taille des positions (à 2 % de risque, une position fait ≈ 2 % ÷ 20,9 % ≈ 9,6 % du portefeuille, soit ~36 USDC pour 380) donc la perte par trade perdant, au prix de trades perdants qui vont plus loin. Les chiffres ne sont pas une promesse de rendement.</p>
+
+  <h3>Ce que le code fait désormais</h3>
+  <div class="f">
+    <b>stop_mode = "fixed"</b> : stop_distance_pct = <span class="cfg">fixed_stop_pct</span> (0,20) &nbsp;<span class="cm">// phase 4 ; "atr" garde atr_pct × atr_stop_multiplier</span><br>
+    <b>filtre de tendance</b> (phase 3, <span class="cfg">trend_filter_enabled</span>) : clôture 1d du coin &gt; EMA<span class="cfg">trend_filter_ema_days</span> (100) <b>ET</b> clôture 1d de BTC &gt; EMA100<br>
+    <span class="cm">// bougies 1d Kraken, bougie du jour en cours exclue ; sinon SKIP TYPE_A avec les chiffres</span><br>
+    <span class="cm">// Kraken indisponible ou moins de 100 bougies → pas d'achat, skip_detail « tendance de fond indisponible »</span>
+  </div>
+  <p>La phase 5 et le suivi maker recalculent stop, cible et <code>initial_stop_price</code> depuis le <code>stop_distance_pct</code> de la phase 4 : aucun changement de leur côté. Les positions déjà ouvertes gardent leur stop actuel ; seules les nouvelles entrées utilisent les nouvelles règles.</p>
+  <p><span class="cfg-inline">max_stop_distance_pct</span> (0,12) <b>n'est pas appliqué en mode fixe</b> : sa raison d'être est d'écarter un ATR aberrant, or la distance ne dépend plus de l'ATR et 0,20 &gt; 0,12 bloquerait toute entrée. Le risque reste borné par le dimensionnement (la quantité diminue quand le stop s'éloigne). Le plafond reste actif en mode <code>"atr"</code>.</p>
+
+  <h3>Interaction avec le break-even, le partiel, la cible et le stop suiveur</h3>
+  <p>La cible reste plafonnée par <span class="cfg-inline">max_tp_pct</span> : à 20 % de stop la cible mécanique serait +32 %, elle vaut +6 % au plus. Le <b>break-even</b> (+1,5 %, stop à entry × 1,009) ramène le stop de −20 % à +0,9 % dès le premier mouvement favorable : c'est lui, pas le stop de départ, qui borne la perte d'un trade qui a décollé. Le <b>partiel</b> (1/3 à +3 %) vaut ≈ 12 USDC sur une position de ~36 USDC, au-dessus de <span class="cfg-inline">min_order_usdc</span> (9) ; sous ~27 USDC de position il est sauté (<code>below_min</code>). Le <b>stop suiveur</b> garde la distance d'origine (20 %) : une fois le stop au break-even (entry × 1,009), il faudrait un prix à plus de +24,9 % de l'entrée pour qu'il avance, alors que la cible est à +6 % au plus : il est de fait inactif, sans modification de code. Sans break-even (<span class="cfg-inline">breakeven_enabled</span> = false), il se déclencherait dès +4 %.</p>
+
+  <h3>Le palier intermédiaire : testé et écarté</h3>
+  <p>Idée : si le trade est d'abord descendu d'au moins X % puis revient au prix d'entrée, remonter le stop de −20 % à −Y % avant le break-even. Grille X ∈ {2, 3, 5 %} × Y ∈ {3, 5, 8 %}, ajoutée aux tableaux ci-dessus. Critère fixé d'avance : n'implémenter que si une valeur intérieure de la grille améliore de façon cohérente les cinq fenêtres. <b>Aucune ne le fait.</b> La valeur centrale (X = 3 %, Y = 5 %) est moins bonne que « stop −20 % + filtre » sur les cinq fenêtres (par exemple −69,1 % contre −67,8 % depuis 2022, −0,8 % contre 0,0 % sur 3 mois) et sur Kraken (−0,1 % contre +0,4 %). Les meilleures cases (X = 2 %, Y = 5 %) gagnent 0,2 à 2,6 points sur trois fenêtres mais en perdent sur 2022, 3 mois et Kraken : un bruit autour de zéro, pas un signal. Le palier n'est donc pas implémenté.</p>
+  <p class="note">À remesurer après 30 trades ou plus sous ce réglage (<code>scripts/stop_trend_replay.py</code>). Les interrupteurs <span class="cfg-inline">stop_mode</span> (<code>"atr"</code>) et <span class="cfg-inline">trend_filter_enabled</span> (<code>false</code>) permettent de revenir à l'ancien comportement sans toucher au code.</p>
 </section>
 
 <footer>Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py</footer>

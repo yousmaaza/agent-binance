@@ -183,6 +183,40 @@ def fetch_resistance_4h(coin: str, lookback: int = 30) -> float | None:
         return None
 
 
+CANDLE_1D_SECONDS = 24 * 3600
+
+
+def ema_last(values: list, n: int) -> float | None:
+    """Dernière valeur de l'EMA(n) (alpha 2/(n+1), amorcée sur la première valeur, comme le rejeu
+    scripts/stop_trend_replay.py). None s'il y a moins de n valeurs : EMA pas encore fiable."""
+    if len(values) < n:
+        return None
+    alpha = 2 / (n + 1)
+    e = values[0]
+    for v in values[1:]:
+        e += alpha * (v - e)
+    return e
+
+
+def fetch_daily_trend(coin: str, ema_days: int = 100, now_ts: float | None = None) -> tuple[float, float] | None:
+    """(clôture 1d, EMA(ema_days) 1d) d'un coin depuis les bougies 1d Kraken (#521). La bougie du jour
+    en cours est exclue : sa clôture n'est pas figée. None si Kraken est indisponible, si la réponse
+    est inexploitable ou s'il y a moins de ema_days bougies clôturées — l'appelant ne doit alors PAS
+    acheter. Format Kraken ohlc : [open_time, open, high, low, close, vwap, volume, count]."""
+    now_ts = time.time() if now_ts is None else now_ts
+    pair = f"{coin}USDC"
+    try:
+        raw = binance("ohlc", pair, "--interval", "1440", "-o", "json", _retries=2)
+        data = json.loads(raw)
+        candles = data.get(pair) or next(v for k, v in data.items() if k != "last")
+        closes = [float(c[4]) for c in candles if float(c[0]) + CANDLE_1D_SECONDS <= now_ts]
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError, KeyError, IndexError, TypeError,
+            StopIteration, AttributeError):
+        return None
+    e = ema_last(closes, ema_days)
+    return None if e is None else (closes[-1], e)
+
+
 def compute_tp_target(entry_price: float, stop_distance_pct: float, reward_risk_ratio: float,
                       fee_round_trip_pct: float, max_tp_pct: float,
                       resistance: float | None = None) -> float:

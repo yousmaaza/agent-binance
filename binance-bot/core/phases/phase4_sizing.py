@@ -39,6 +39,10 @@ cfg = inp.get("config") or _load_config()
 
 risk_per_trade_pct = cfg.get("risk_per_trade_pct", 0.01)
 atr_stop_multiplier = cfg.get("atr_stop_multiplier", 2)
+# stop_mode (#521) : "fixed" = stop de départ à fixed_stop_pct sous l'entrée (chutes anormales seulement),
+# "atr" = atr_pct x atr_stop_multiplier. Défaut "atr" : le comportement d'avant #521 reste le repli.
+stop_mode = cfg.get("stop_mode", "atr")
+fixed_stop_pct = cfg.get("fixed_stop_pct", 0.20)
 # max_stop_distance_pct : plafond sur la distance de stop, au-delà écarte le coin en TYPE_B (#508)
 # — protège contre la queue volatile (ATR 4h > 4.8%, cf. TRUMP 22-23/08/2026, volume x27) sans
 # bloquer le flux normal (10.9% de trades bloqués mesurés à ce seuil, n=110 trades réels).
@@ -69,12 +73,14 @@ for candidate in buy_candidates:
     prix_actuel = candidate.get("prix_actuel", 0)
     atr_pct = candidate.get("atr_pct", 0.02)
 
-    stop_distance_pct = atr_pct * atr_stop_multiplier
+    stop_distance_pct = fixed_stop_pct if stop_mode == "fixed" else atr_pct * atr_stop_multiplier
 
     # Plafond distance de stop (#508) : un stop au-delà de max_stop_distance_pct signale une
     # volatilité extrême — skip avant de calculer prix_stop/prix_tp plutôt que de dimensionner
-    # une position sur un ATR aberrant.
-    if stop_distance_pct > max_stop_distance_pct:
+    # une position sur un ATR aberrant. Non appliqué en mode "fixed" (#521) : la distance ne
+    # dépend plus de l'ATR (20 % > 12 % bloquerait tout) et le risque reste borné à
+    # risk_per_trade_pct par le dimensionnement (la quantité diminue quand le stop s'éloigne).
+    if stop_mode != "fixed" and stop_distance_pct > max_stop_distance_pct:
         skipped.append({
             "coin": coin,
             "reason": f"Stop {stop_distance_pct * 100:.1f}% > plafond {max_stop_distance_pct * 100:.1f}% "
