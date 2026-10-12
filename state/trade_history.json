@@ -3160,5 +3160,33 @@
     "pnl_pct": -9.05,
     "close_reason": "sl_hit",
     "cycle_id": null
+  },
+  {
+    "trade_id": "e6e06964",
+    "date": "2026-10-12T08:09:41.518273+00:00",
+    "coin": "XBT",
+    "side": "BUY",
+    "signal_score": 6,
+    "entry_price": 83759.99713343843,
+    "stop_price": 67008.0,
+    "initial_stop_price": 67008.0,
+    "tp_price": 85267.67708184033,
+    "quantity": 0.00041862,
+    "risk_usdc": 7.296799999999999,
+    "entry_order_id": "OKJHP3-SPQPV-2DGADA",
+    "sl_order_txid": "OLMOIR-XG2TT-XCFW3B",
+    "protection_failed": false,
+    "status": "open",
+    "exit_price": null,
+    "exit_date": null,
+    "entry_fee_usdc": 0.10519,
+    "exit_fee_usdc": null,
+    "fees_usdc": null,
+    "maker_or_taker": "maker",
+    "maker_fill_seconds": 56.147227,
+    "pnl_gross_usdc": null,
+    "pnl_usdc": null,
+    "pnl_gross_pct": null,
+    "pnl_pct": null
   }
 ]
