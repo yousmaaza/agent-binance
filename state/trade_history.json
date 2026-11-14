@@ -3176,17 +3176,19 @@
     "entry_order_id": "OKJHP3-SPQPV-2DGADA",
     "sl_order_txid": "OLMOIR-XG2TT-XCFW3B",
     "protection_failed": false,
-    "status": "open",
-    "exit_price": null,
-    "exit_date": null,
+    "status": "closed",
+    "exit_price": 67000.00000000001,
+    "exit_date": "2026-11-14T04:05:53.088900+00:00",
     "entry_fee_usdc": 0.10519,
-    "exit_fee_usdc": null,
-    "fees_usdc": null,
+    "exit_fee_usdc": 0.22438,
+    "fees_usdc": 0.32957000000000003,
     "maker_or_taker": "maker",
     "maker_fill_seconds": 56.147227,
-    "pnl_gross_usdc": null,
-    "pnl_usdc": null,
-    "pnl_gross_pct": null,
-    "pnl_pct": null
+    "pnl_gross_usdc": -7.016069999999989,
+    "pnl_usdc": -7.34563999999999,
+    "pnl_gross_pct": -20.00954836082192,
+    "pnl_pct": -20.949468694181775,
+    "close_reason": "sl_hit",
+    "cycle_id": null
   }
 ]
