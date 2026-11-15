@@ -141,12 +141,12 @@ class TestPhase3TrendFilter(unittest.TestCase):
         self.assertEqual(fn.calls, [])
         self.assertEqual(out["scores_detail"]["ETH"]["decision"], "BUY")
 
-    def test_config_json_enables_new_rules(self):
+    def test_config_json_new_rules(self):
         with open(os.path.join(PROJECT_DIR, "config.json")) as f:
             cfg = json.load(f)
         self.assertEqual(cfg["stop_mode"], "fixed")
         self.assertEqual(cfg["fixed_stop_pct"], 0.20)
-        self.assertTrue(cfg["trend_filter_enabled"])
+        self.assertFalse(cfg["trend_filter_enabled"])  # désactivé par #523
         self.assertEqual(cfg["trend_filter_ema_days"], 100)
 
 

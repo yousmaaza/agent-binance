@@ -270,7 +270,7 @@ Sur 19 trades reconstruits (bougies Kraken, 30 j), 100 % des entrées suivaient 
 
 ### Le filtre de tendance de fond
 
-Sixième verrou, après le filtre anti-poursuite et avant le mode dégradé (#521). Si `trend_filter_enabled` est vrai, un coin hors portefeuille n'est acheté que si sa clôture 1d *et* celle de BTC sont au-dessus de leur EMA`trend_filter_ema_days` (100). Les bougies 1d viennent de Kraken (`ohlc --interval 1440`), la bougie du jour en cours est exclue. Sinon SKIP TYPE_A, avec un skip_detail chiffré (« ETH clôture 1d 1980 <= EMA100 2050 (−3,4 %) »). Kraken indisponible, réponse inexploitable ou moins de 100 bougies : **pas d'achat** (prudence), skip_detail « tendance de fond indisponible ». Ne s'applique jamais à un HOLD. Mesures et limites : section 08/10.
+Sixième verrou, après le filtre anti-poursuite et avant le mode dégradé (#521). Si `trend_filter_enabled` est vrai (désactivé par défaut depuis #523), un coin hors portefeuille n'est acheté que si sa clôture 1d *et* celle de BTC sont au-dessus de leur EMA`trend_filter_ema_days` (100). Les bougies 1d viennent de Kraken (`ohlc --interval 1440`), la bougie du jour en cours est exclue. Sinon SKIP TYPE_A, avec un skip_detail chiffré (« ETH clôture 1d 1980 <= EMA100 2050 (−3,4 %) »). Kraken indisponible, réponse inexploitable ou moins de 100 bougies : **pas d'achat** (prudence), skip_detail « tendance de fond indisponible ». Ne s'applique jamais à un HOLD. **Désactivé depuis #523 (15/11)** : le verrou est inactif tant que `trend_filter_enabled` vaut `false`, le code reste disponible derrière l'interrupteur. Mesures et limites : sections 08/10 et 15/11.
 
 ### La vente
 
@@ -484,7 +484,7 @@ Trente-six clés dans `config.json`. Voici où chacune agit, et ce qu'elle dépl
 | max_open_positions | 4 | phase 3 | Nombre de positions simultanées. Compte aussi les candidats retenus dans le cycle en cours. |
 | max_correlated_positions | 2 | phase 3 | Plafond de positions dans le groupe SOL · SUI · STX · ETH. |
 | max_24h_runup_pct | 0.04 | phase 3 | Hausse de prix sur 24h au-delà de laquelle une entrée est refusée (filtre anti-poursuite). Ne s'applique jamais à un coin déjà en portefeuille. |
-| trend_filter_enabled | true | phase 3 | Active le filtre de tendance de fond (#521) : coin et BTC au-dessus de l'EMA 1d. Kraken indisponible : pas d'achat. |
+| trend_filter_enabled | false | phase 3 | Filtre de tendance de fond (#521) : coin et BTC au-dessus de l'EMA 1d. Désactivé depuis #523 ; à `true`, Kraken indisponible = pas d'achat. |
 | trend_filter_ema_days | 100 | phase 3 | Période de l'EMA journalière du filtre de tendance. |
 | min_volume_usdc | 500 000 | phase 1 | Volume 24h minimal pour entrer dans l'univers. |
 | max_spread_pct | 0.0008 | phase 1 | Écart achat-vente maximal. Relevé de 0,05 % à 0,08 % : ADA était exclue pour quatre millièmes de point. |
@@ -1025,6 +1025,31 @@ La cible reste plafonnée par `max_tp_pct` : à 20 % de stop la cible mécanique
 Idée : si le trade est d'abord descendu d'au moins X % puis revient au prix d'entrée, remonter le stop de −20 % à −Y % avant le break-even. Grille X ∈ {2, 3, 5 %} × Y ∈ {3, 5, 8 %}, ajoutée aux tableaux ci-dessus. Critère fixé d'avance : n'implémenter que si une valeur intérieure de la grille améliore de façon cohérente les cinq fenêtres. **Aucune ne le fait.** La valeur centrale (X = 3 %, Y = 5 %) est moins bonne que « stop −20 % + filtre » sur les cinq fenêtres (par exemple −69,1 % contre −67,8 % depuis 2022, −0,8 % contre 0,0 % sur 3 mois) et sur Kraken (−0,1 % contre +0,4 %). Les meilleures cases (X = 2 %, Y = 5 %) gagnent 0,2 à 2,6 points sur trois fenêtres mais en perdent sur 2022, 3 mois et Kraken : un bruit autour de zéro, pas un signal. Le palier n'est donc pas implémenté.
 
 > À remesurer après 30 trades ou plus sous ce réglage (`scripts/stop_trend_replay.py`). Les interrupteurs `stop_mode` (`"atr"`) et `trend_filter_enabled` (`false`) permettent de revenir à l'ancien comportement sans toucher au code.
+
+## 15/11 — Filtre de tendance de fond désactivé pour observer le bot
+
+Décision de l'utilisateur (#523), prise en connaissance de cause : depuis le 31/10, 90 cycles sans aucun ordre (scores 4h majoritairement NEUTRAL, et le filtre de tendance bloque tout achat tant que BTC est sous son EMA100 1d). `trend_filter_enabled` passe à `false` pour voir le bot trader, puis le surveiller sur une période d'observation. **Ce n'est pas une amélioration mesurée** : ni avec ni sans le filtre la stratégie n'est gagnante.
+
+### Mesure (rejeu approximé)
+
+`scripts/stop_trend_replay.py` avec score approximé, bougies Binance 4h depuis 2024, frais réels, break-even, partiel, stop −20 %, risque 2 %.
+
+| réglage | 2024 | 2025 | 2026 | 12 mois | trades 12 mois |
+|---|---|---|---|---|---|
+| actuel (filtre de tendance actif) | −30,6 % | −29,4 % | −9,4 % | −9,4 % | 75 |
+| **sans filtre de tendance** | −30,8 % | −32,8 % | −6,9 % | −8,7 % | 176 |
+
+Retirer le filtre double le nombre de trades pour un résultat comparable (un peu pire en 2025, un peu meilleur sur 12 mois). Les entrées n'ont pas d'avantage mesuré dans les deux cas.
+
+### Pistes écartées par la même mesure
+
+Stops serrés (−5 %, −8 %, 1,5×ATR) : −26 à −42 % sur 12 mois. Objectifs plus hauts (+10 / +15 %) : pas d'effet. Risque par trade de 4 à 6 % : perte multipliée par environ 2.
+
+### Ce qui ne change pas
+
+`min_signal_score` 6, zone RSI 30-65, anti-poursuite 4 %, `max_open_positions` 4, corrélation, stop fixe −20 %, risque 2 %. Aucun changement de code.
+
+> À remesurer après ~30 trades clôturés ou 4 semaines (taux de gain, PnL net, achats faits pendant que BTC est sous son EMA100). Retour arrière : repasser `trend_filter_enabled` à `true`.
 ---
 
 *Source : docs/strategie.html · le markdown docs/strategie.md en est généré par scripts/strategie_to_md.py*
