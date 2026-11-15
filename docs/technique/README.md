@@ -6,7 +6,7 @@ Documentation technique du projet, mise à jour automatiquement par l'agent `bin
 
 | Document | Description | Dernière mise à jour |
 |---|---|---|
-| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-10-08 (PR #522) |
+| [SPEC.md](SPEC.md) | Spécification technique complète : architecture, composants, fonctions clés, état persistant, contraintes | 2026-11-15 (PR #524) |
 
 ## Diagrammes
 
@@ -25,6 +25,7 @@ Générés automatiquement via `/generate-diagrams` (D2 + Kroki.io). Sources dan
 
 | PR | Titre | Date |
 |---|---|---|
+| [#524](pr-524-desactiver-filtre-tendance.md) | [CONFIG] Désactiver le filtre de tendance de fond pour observation | 2026-11-15 |
 | [#522](pr-522-stop-20pct-filtre-tendance.md) | [STRAT] Stop de départ à −20 % et filtre de tendance de fond (EMA100 1d) | 2026-10-08 |
 | [#520](pr-520-cible-plancher-resistance-proche.md) | [STRAT] Cible au plancher quand la résistance 4h est trop proche | 2026-10-05 |
 | [#517](pr-517-resistance-cible-bougies-4h.md) | [STRAT] Résistance de la cible = plus haut des bougies 4h Kraken | 2026-10-05 |
